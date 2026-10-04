@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { killTree, stopTracked } from './process-tree.js';
+import { childEnv, killTree, stopTracked } from './process-tree.js';
 import { ensureDir, sleep } from './util.js';
 
 export function browserCandidates(explicitPath) {
@@ -334,6 +334,7 @@ export async function openUi(options) {
   ], {
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
+    env: childEnv(),
   });
   const tracked = { child, pid: child.pid };
   let client = null;
@@ -511,6 +512,7 @@ export async function evaluateOnce(options = {}) {
   ], {
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
+    env: childEnv(),
   });
   const tracked = { child, pid: child.pid };
   let client = null;

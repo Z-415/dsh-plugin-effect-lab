@@ -74,6 +74,22 @@ export function createIsolatedHome(options = {}) {
   };
 }
 
+/**
+ * Remove a tree entry by entry with `lstat`, unlinking symlinks/junctions
+ * instead of traversing them. A profile can contain a link to a local plugin
+ * source (pnpm links `file:` directory dependencies), and a recursive delete
+ * that followed such a link would erase the user's source tree.
+ */
+export function removeTreeSafely(target) {
+  const stat = fs.lstatSync(target);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    fs.unlinkSync(target);
+    return;
+  }
+  for (const entry of fs.readdirSync(target)) removeTreeSafely(path.join(target, entry));
+  fs.rmdirSync(target);
+}
+
 /** Delete an isolated root, retrying briefly for Windows file-handle release. */
 export async function disposeIsolatedHome(root, options = {}) {
   const { retries = 6, delayMs = 400 } = options;
@@ -81,7 +97,7 @@ export async function disposeIsolatedHome(root, options = {}) {
   let lastError = null;
   for (let attempt = 0; attempt < retries; attempt += 1) {
     try {
-      fs.rmSync(root, { recursive: true, force: true });
+      removeTreeSafely(root);
       if (!fs.existsSync(root)) return { removed: true, root, attempts: attempt + 1 };
     } catch (error) {
       lastError = error;

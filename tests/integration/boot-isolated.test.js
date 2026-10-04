@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { seederPluginDir } from '../../src/fixture-manager.js';
 import { runLab } from '../../src/runner.js';
 
 const enabled = process.env.DSH_LAB_E2E === '1';
@@ -29,6 +30,9 @@ test('isolated web boot captures UI, cleans up, and leaves the real home unchang
     assert.equal(html.startsWith('<!doctype html>'), true);
     assert.equal(html.includes('DSH Plugin Effect Lab'), true);
     assert.equal((html.match(/data:image\/png;base64,/g) ?? []).length >= 1, true);
+    // Installing a local-directory plugin must never delete its source tree.
+    assert.equal(fs.existsSync(path.join(seederPluginDir(), 'lib', 'index.js')), true, 'fixture source must survive the run');
+    assert.equal(fs.existsSync(path.join(seederPluginDir(), 'package.json')), true);
     assert.equal(report.ok, true, JSON.stringify(report.checks, null, 2));
   } finally {
     fs.rmSync(artifactsRoot, { recursive: true, force: true });

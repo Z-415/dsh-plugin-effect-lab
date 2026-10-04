@@ -2,6 +2,20 @@ import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { sleep } from './util.js';
 
+/**
+ * Environment for a spawned child.
+ *
+ * `ELECTRON_RUN_AS_NODE` makes an Electron binary behave as plain Node. The GUI
+ * launcher sets it to run `bin/lab.js`, but it must never leak into the
+ * grandchildren: the lab's own Electron shell would then start as Node, run
+ * `main.js` without a browser process, and never show a window.
+ */
+export function childEnv(overrides) {
+  const env = overrides ? { ...process.env, ...overrides } : { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  return env;
+}
+
 /** Quote one argv element for cmd.exe. */
 export function quoteForCmd(value) {
   const text = String(value);
@@ -32,7 +46,7 @@ export function runCommand(file, args = [], options = {}) {
     const started = Date.now();
     const child = spawn(resolved.file, resolved.args, {
       cwd,
-      env: env ? { ...process.env, ...env } : process.env,
+      env: childEnv(env),
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsVerbatimArguments: process.platform === 'win32' && /cmd\.exe$/i.test(resolved.file),
@@ -77,7 +91,7 @@ export function spawnTracked(file, args = [], options = {}) {
   const resolved = resolveCommand(file, args);
   const child = spawn(resolved.file, resolved.args, {
     cwd,
-    env: env ? { ...process.env, ...env } : process.env,
+    env: childEnv(env),
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsVerbatimArguments: process.platform === 'win32' && /cmd\.exe$/i.test(resolved.file),
