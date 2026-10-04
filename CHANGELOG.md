@@ -227,3 +227,27 @@ Final suite: unit 83/83, integration 11/11.
   silently embedded nothing.
 
 Final suite: unit 87/87, integration 11/11.
+
+## 0.1.0 - 2026-10-04 (desktop GUI launcher)
+
+### Added
+
+- `lab gui`: copies the official Electron runtime once into
+  `%LOCALAPPDATA%\dsh-plugin-effect-lab\gui-<version>\` (renamed to
+  `DSH Plugin Effect Lab.exe`) and opens a desktop launcher. `--install-shortcut`
+  drops a Desktop shortcut, `--rebuild` re-copies, `--no-open` only builds.
+- `src/gui/{main.js,preload.js,index.html}`: buttons for doctor / verify /
+  settings screenshot / empty / long / shell (20 s) / shell (keep open) /
+  shell-vs-web / wallpaper plugin / theme matrix / effect matrix / clean, a
+  live log pane, an abort button, and buttons to open the newest HTML report or
+  the artifacts folder. Every button spawns the same `bin/lab.js` command.
+- `启动实验台.cmd` for double-clicking from the project folder.
+- `DSH_LAB_GUI_HOME` relocates the copied runtime.
+
+### Fixed
+
+- Runs looked like a hang because nothing was printed until the end; `verify`,
+  `capture`, and `shell` now stream `[lab] ...` progress lines, and
+  `--show`/`--keep-open` centre, focus, and keep the window on top.
+
+Final suite: unit 90/90, integration 11/11.

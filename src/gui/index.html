@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DSH Plugin Effect Lab</title>
+<style>
+  :root { --bg: #f5f6f8; --panel: #fff; --line: #dfe3e8; --text: #1b1e24; --muted: #5d6570; --accent: #2f6fd0; --ok: #0a7b3e; --bad: #b42318; }
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 100vh; display: flex; flex-direction: column;
+         font: 13px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; color: var(--text); background: var(--bg); }
+  header { padding: 14px 18px 10px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  h1 { margin: 0; font-size: 16px; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  main { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 14px 18px 18px; gap: 12px; }
+  .group { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .group h2 { margin: 0 0 10px; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); font-weight: 650; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  button { font: inherit; padding: 7px 13px; border-radius: 6px; border: 1px solid var(--line); background: #fff; color: var(--text); cursor: pointer; }
+  button:hover:not(:disabled) { border-color: #b9c0c9; background: #fafbfc; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { background: #2a63bb; }
+  button:disabled { opacity: .45; cursor: default; }
+  .logwrap { flex: 1; min-height: 0; display: flex; flex-direction: column; background: #10141a; border-radius: 8px; overflow: hidden; }
+  .logbar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #171c24; color: #c8d0da; font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #7c8794; }
+  .dot.run { background: #e0a23a; } .dot.ok { background: #35b06a; } .dot.bad { background: #e0544a; }
+  pre { margin: 0; padding: 12px; overflow: auto; flex: 1; color: #d7dee7; font: 12px/1.55 Consolas, "Cascadia Mono", monospace; white-space: pre-wrap; }
+  footer { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+  footer .spacer { flex: 1; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>DSH Plugin Effect Lab</h1>
+    <div class="sub" id="env">正在读取环境…</div>
+  </header>
+  <main>
+    <div class="group">
+      <h2>检查</h2>
+      <div class="row">
+        <button data-args="doctor">自检 doctor</button>
+        <button class="primary" data-args="verify">快速验证</button>
+        <button data-args="verify|--screenshot|home|--screenshot|settings">验证 + 设置页截图</button>
+        <button data-args="verify|--fixture-variant|empty">空会话</button>
+        <button data-args="verify|--fixture-variant|long">长会话（12 轮）</button>
+      </div>
+    </div>
+    <div class="group">
+      <h2>Electron 壳</h2>
+      <div class="row">
+        <button data-args="shell|--no-compare-web|--show|--show-hold|20000">打开壳窗口（20 秒）</button>
+        <button data-args="shell|--no-compare-web|--keep-open">打开壳窗口（自己关）</button>
+        <button data-args="shell">壳 vs web 对比</button>
+      </div>
+    </div>
+    <div class="group">
+      <h2>插件与主题</h2>
+      <div class="row">
+        <button data-args="verify|--plugin|dsh-plugin-wallpaper-engine@1.2.0|--online">验证 wallpaper 插件</button>
+        <button data-args="matrix|--config|fixtures/matrix/theme-conflict.json|--online">主题冲突矩阵</button>
+        <button data-args="matrix|--config|fixtures/matrix/effect-conflict.json">效果探针矩阵</button>
+      </div>
+    </div>
+    <div class="group">
+      <h2>清理</h2>
+      <div class="row">
+        <button data-args="clean|--dry-run">查看残留（不改动）</button>
+        <button data-args="clean">清理残留临时目录</button>
+      </div>
+    </div>
+    <div class="logwrap">
+      <div class="logbar"><span class="dot" id="dot"></span><span id="status">空闲</span><span style="flex:1"></span><span id="hint"></span></div>
+      <pre id="log">选择上面的按钮开始。所有操作都在隔离的 DSH_HOME 里进行，不会碰你的真实配置。
+</pre>
+    </div>
+    <footer>
+      <button id="report">打开最新 HTML 报告</button>
+      <button id="artifacts">打开 artifacts 文件夹</button>
+      <span class="spacer"></span>
+      <button id="stop" disabled>中止</button>
+    </footer>
+  </main>
+<script>
+  const log = document.getElementById('log');
+  const dot = document.getElementById('dot');
+  const status = document.getElementById('status');
+  const hint = document.getElementById('hint');
+  const stopBtn = document.getElementById('stop');
+  const buttons = [...document.querySelectorAll('button[data-args]')];
+
+  function setBusy(busy, label) {
+    buttons.forEach((b) => { b.disabled = busy; });
+    stopBtn.disabled = !busy;
+    dot.className = 'dot' + (busy ? ' run' : '');
+    status.textContent = label || (busy ? '运行中' : '空闲');
+  }
+  function append(text) {
+    log.textContent += text;
+    log.scrollTop = log.scrollHeight;
+  }
+
+  for (const button of buttons) {
+    button.addEventListener('click', async () => {
+      const args = button.dataset.args.split('|');
+      log.textContent = '';
+      hint.textContent = `${args.join(' ')}`;
+      setBusy(true, '运行中');
+      const result = await window.labGui.run(args);
+      if (result && result.started === false) {
+        append(`\n[gui] ${result.reason}\n`);
+        setBusy(false);
+      }
+    });
+  }
+
+  document.getElementById('stop').addEventListener('click', async () => {
+    await window.labGui.stop();
+  });
+  document.getElementById('report').addEventListener('click', async () => {
+    const result = await window.labGui.openReport();
+    if (!result.opened) append(`\n[gui] ${result.reason || result.error}\n`);
+  });
+  document.getElementById('artifacts').addEventListener('click', () => window.labGui.openArtifacts());
+
+  window.labGui.onOutput((text) => append(text));
+  window.labGui.onDone(({ code }) => {
+    setBusy(false, code === 0 ? '完成' : `结束（退出码 ${code}）`);
+    dot.className = 'dot' + (code === 0 ? ' ok' : ' bad');
+    append(`\n[gui] 退出码 ${code}${code === 0 ? '，可点下方按钮打开报告' : ''}\n`);
+  });
+
+  window.labGui.info().then((info) => {
+    document.getElementById('env').textContent =
+      `electron ${info.electron} · node ${info.node} · ${info.repo}`;
+  });
+</script>
+</body>
+</html>

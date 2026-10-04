@@ -1,6 +1,7 @@
 import { runCaptureCommand } from './commands/capture.js';
 import { runCleanCommand } from './commands/clean.js';
 import { runDoctor } from './commands/doctor.js';
+import { runGuiCommand } from './commands/gui.js';
 import { runMatrixCommand } from './commands/matrix.js';
 import { runScanCommand } from './commands/scan.js';
 import { runShellCommand } from './commands/shell.js';
@@ -36,6 +37,7 @@ const BOOLEAN_FLAGS = new Set([
   'json', 'offline', 'online', 'no-fixture', 'mock-model', 'strict-console',
   'no-cache', 'no-compare-web', 'dry-run', 'help', 'h',
   'no-html',
+  'rebuild', 'install-shortcut', 'no-open',
 ]);
 
 /**
@@ -183,6 +185,13 @@ export async function main(argv) {
         keepOpen: flags['keep-open'] === true,
         showHoldMs: numberFlag(flags, 'show-hold'),
       });
+    case 'gui':
+      return runGuiCommand({
+        ...common,
+        rebuild: flags.rebuild === true,
+        installShortcut: flags['install-shortcut'] === true,
+        open: flags['no-open'] !== true,
+      });
     default:
       process.stderr.write(`unknown command: ${command}\n\n${helpText()}`);
       return 2;
@@ -208,6 +217,7 @@ Usage:
             [--fixture-variant default|empty|long]
             [--show] [--keep-open] [--show-hold <ms>] [--no-html]
             [--browser <exe>] [--browser-timeout <ms>] [--json]
+  lab gui [--install-shortcut] [--rebuild] [--no-open] [--json]
   lab scan --log <boot.err.log> [--json]
   lab clean [--dry-run] [--older-than <minutes>] [--json]
 
@@ -221,5 +231,9 @@ through a minimal Electron shell, then diffs DOM slots, body attributes, and
 the Electron window visible (--show-hold <ms>, default 6000); --keep-open keeps
 it open until you close it, then cleans up. Every run also writes an HTML
 report next to report.md; pass --no-html to skip it.
+
+lab gui copies the official Electron runtime into LOCALAPPDATA\\dsh-plugin-effect-lab
+(once) and opens a desktop launcher whose buttons run the same commands and
+stream their output. --install-shortcut also drops a Desktop shortcut.
 `;
 }

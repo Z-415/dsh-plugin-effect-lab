@@ -3,6 +3,20 @@
 Isolated plugin compatibility and effect verification for the official
 DeepSeek Harness Desktop runtime `0.2.0-rc.2`.
 
+## Desktop GUI
+
+```powershell
+node bin/lab.js gui                     # build once, then open the launcher
+node bin/lab.js gui --install-shortcut  # also put a shortcut on the Desktop
+```
+
+Or double-click `启动实验台.cmd`. The launcher is a normal Windows window with
+buttons for 自检 / 快速验证 / 设置页 / 空会话 / 长会话 / 壳窗口 / 插件 / 主题矩阵 /
+清理, a live log pane, and buttons to open the newest `report.html` or the
+`artifacts/` folder in your browser. It reuses the official Electron runtime
+(no packaging tool, no extra dependency) and every button runs the same
+`lab.js` command the CLI does. See [docs/GUI.md](docs/GUI.md).
+
 Phase 1 is the minimum closed loop:
 
 1. locate the official `D:\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd`;
@@ -87,6 +101,7 @@ sessions, or settings, and never installs a plugin outside its own temp home.
 ## Usage
 
 ```powershell
+node bin/lab.js gui
 node bin/lab.js doctor
 node bin/lab.js verify
 node bin/lab.js verify --screenshot home --screenshot settings

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CACHE_PREFIX = 'dsh-lab-electron-';
 
-const COPY_FILES = [
+export const COPY_FILES = [
   'DeepSeek Harness.exe',
   'chrome_100_percent.pak',
   'chrome_200_percent.pak',
@@ -26,7 +26,7 @@ const COPY_FILES = [
   'vulkan-1.dll',
 ];
 
-const COPY_DIRS = ['locales'];
+export const COPY_DIRS = ['locales'];
 
 function directorySize(dir) {
   let total = 0;

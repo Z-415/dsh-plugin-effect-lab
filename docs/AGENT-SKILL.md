@@ -70,6 +70,11 @@ An agent using this tool should:
     it. Use `lab shell --show` (optionally `--keep-open`) when someone needs to
     look at or click the real Electron window; that opens a real window on the
     desktop.
+27. prefer `lab gui` when the user wants to drive the lab with a mouse. It is a
+    thin launcher: every button runs the same `bin/lab.js` command, so behavior
+    and safety are identical to the CLI. Its copied runtime lives in
+    `%LOCALAPPDATA%\dsh-plugin-effect-lab\gui-<version>` (override with
+    `DSH_LAB_GUI_HOME`), and the official install is only read.
 
 Do not attach large screenshots to a model context. `artifacts/**/screenshots`
 are evidence for humans; machine decisions come from the DOM/token JSON.
