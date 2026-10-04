@@ -3,6 +3,9 @@
 Isolated plugin compatibility and effect verification for the official
 DeepSeek Harness Desktop runtime `0.2.0-rc.2`.
 
+> 接手继续开发请看 [docs/HANDOFF-20261005.md](docs/HANDOFF-20261005.md)
+> （状态、命令、代码地图、踩过的坑、检查清单）。
+
 ## Desktop GUI
 
 ```powershell
