@@ -1,7 +1,14 @@
 import { runShell } from '../electron-shell/shell-runner.js';
 
 export async function runShellCommand(options) {
+  const progress = options.json ? null : (message) => process.stdout.write(`[lab] ${message}\n`);
+  if (progress && options.keepOpen) {
+    progress('--keep-open: a real Electron window will open in a few seconds; close it to finish the run.');
+  } else if (progress && options.show) {
+    progress('--show: a real Electron window will open in a few seconds.');
+  }
   const report = await runShell({
+    onProgress: progress,
     runtimePath: options.runtimePath,
     artifactsRoot: options.artifactsRoot,
     noCache: options.noCache,
@@ -25,6 +32,7 @@ export async function runShellCommand(options) {
   else {
     process.stdout.write(`DSH Plugin Effect Lab shell: ${report.ok ? 'PASS' : 'FAIL'} (${report.runId})\n`);
     process.stdout.write(`artifacts: ${report.artifacts?.runDir ?? report.runId}\n`);
+    if (report.artifacts?.reportHtml) process.stdout.write(`html report: ${report.artifacts.reportHtml}\n`);
     for (const check of report.checks) {
       const label = check.pass ? 'PASS' : check.informational ? 'INFO' : 'FAIL';
       process.stdout.write(`[${label}] ${check.name}: ${check.detail ?? ''}\n`);

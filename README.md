@@ -76,7 +76,10 @@ is stubbed so nothing blocks on a native dialog.
 Every run also writes a self-contained `report.html` (checks + embedded
 screenshots + diffs) next to `report.md`; `--no-html` skips it. `lab shell
 --show` renders the real Electron window on screen (`--show-hold <ms>`,
-default 6000), and `--keep-open` leaves it open until you close it.
+default 6000), and `--keep-open` leaves it open until you close it. Runs stream
+`[lab] ...` progress lines, so a long step never looks like a hang; with
+`--keep-open` the run finishes only after you close the window (Ctrl+C aborts
+and leaves the temp home for `lab clean`).
 
 The lab never starts the real `desktop` profile, never reads credentials,
 sessions, or settings, and never installs a plugin outside its own temp home.

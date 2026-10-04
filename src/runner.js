@@ -69,6 +69,7 @@ function isolatedEnv(iso) {
  *   stop -> delete -> hash compare -> report.
  */
 export async function runLab(options = {}) {
+  const progress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
   const runId = options.runId ?? makeRunId();
   const artifactsRoot = options.artifactsRoot ?? defaultArtifactsRoot();
   const runDir = prepareArtifacts(artifactsRoot, runId);
@@ -123,6 +124,7 @@ export async function runLab(options = {}) {
     };
     addCheck(checks, 'runtime-located', fs.existsSync(runtime.cmd), runtime.cmd);
     addCheck(checks, 'runtime-version', version.version === '0.2.0-rc.2', `detected ${version.version ?? 'unknown'}`);
+    progress(`runtime ${version.version ?? 'unknown'}`);
 
     realBefore = snapshotRealHome();
     residueBefore = snapshotLabResidue();
@@ -136,6 +138,7 @@ export async function runLab(options = {}) {
     iso = createIsolatedHome({ withAgents: true });
     report.isolation = { root: iso.root, home: iso.home, agents: iso.agents, tmp: iso.tmp };
     addCheck(checks, 'isolated-home', true, iso.home);
+    progress(`isolated home ${iso.home}`);
     const credentials = scanForCredentials(iso.home);
     report.agentCoverage = describeAgentCoverage({ mockModel: options.mockModel === true, credentials });
     addCheck(
@@ -208,6 +211,7 @@ export async function runLab(options = {}) {
     }
     report.pluginValidation = pluginPipeline.validation;
     report.plugins = pluginPipeline.pluginList;
+    progress(pluginPipeline.install ? `installed ${pluginPipeline.resolvedSpecs.length} plugin spec(s)` : 'no plugins requested');
 
     if (options.mockModel) {
       mockServer = await startMockLlmServer({ model: MOCK_MODEL });
@@ -231,6 +235,7 @@ export async function runLab(options = {}) {
       },
     });
     addCheck(checks, 'boot-url', Number(boot.port) > 0, `port ${boot.port}`);
+    progress(`isolated host booted on port ${boot.port}`);
 
     bootOutput = boot.getOutput();
     report.signatureHits = scanLogs(`${bootOutput.stdout}\n${bootOutput.stderr}`);
@@ -363,6 +368,7 @@ export async function runLab(options = {}) {
     }
 
     const assertTokens = options.assertTokens ?? ['--dsw-alias-bg-base'];
+    progress('opening the UI in headless Edge');
     const requestedScreenshots = options.screenshots ?? ['home'];
     const wantsSettings = requestedScreenshots.includes('settings');
     browser = await openUi({
@@ -432,6 +438,7 @@ export async function runLab(options = {}) {
     errors.push(message);
     addCheck(checks, 'run', false, message.split('\n')[0].slice(0, 500));
   } finally {
+    progress('cleaning up processes and the isolated home');
     let processesLeft = 0;
     if (browser) {
       try {

@@ -353,6 +353,15 @@ app.whenReady().then(async () => {
   });
   mainWindow = window;
   installWebSocketFence();
+  if (config.show) {
+    // Make the deliberately-visible window findable: front, centred, on top.
+    window.once('ready-to-show', () => {
+      window.show();
+      window.center();
+      window.focus();
+      window.setAlwaysOnTop(true, 'normal');
+    });
+  }
   window.webContents.on('console-message', (_event, level, message) => {
     if (level >= 2) consoleErrors.push(String(message).slice(0, 1000));
   });

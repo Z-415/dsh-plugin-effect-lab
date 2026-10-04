@@ -32,6 +32,7 @@ function addCheck(checks, name, pass, detail, extra = {}) {
 
 /** Minimal standalone Electron shell prototype: official frontend + isolated host. */
 export async function runShell(options = {}) {
+  const progress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
   const runId = options.runId ?? makeRunId();
   const artifactsRoot = options.artifactsRoot ?? defaultArtifactsRoot();
   const runDir = prepareArtifacts(artifactsRoot, runId);
@@ -66,6 +67,7 @@ export async function runShell(options = {}) {
   try {
     const runtime = locateRuntime(options.runtimePath);
     const version = await readRuntimeVersion(runtime);
+    progress(`runtime ${version.version ?? 'unknown'}`);
     report.runtime = { cmd: runtime.cmd, installDir: runtime.installDir, version: version.version };
     addCheck(checks, 'runtime-located', fs.existsSync(runtime.cmd), runtime.cmd);
     addCheck(checks, 'runtime-version', version.version === '0.2.0-rc.2', version.version ?? 'unknown');
@@ -78,6 +80,7 @@ export async function runShell(options = {}) {
     const profileDir = iso.profileDir(profileName);
     writeMinimalProfile(profileDir, { name: profileName });
     addCheck(checks, 'isolated-home', true, iso.home);
+    progress(`isolated home ${iso.home}`);
 
     const fixtureEnabled = options.fixture !== false;
     const fixtureVariant = options.fixtureVariant ?? 'default';
@@ -138,6 +141,7 @@ export async function runShell(options = {}) {
     report.pluginValidation = pipeline.validation;
     report.plugins = pipeline.pluginList;
     const fixtureWorkspace = pipeline.fixtureWorkspace;
+    progress(pipeline.install ? `installed ${pipeline.resolvedSpecs.length} plugin spec(s)` : 'no plugins requested');
 
     boot = await bootWeb({
       runtime,
@@ -152,10 +156,12 @@ export async function runShell(options = {}) {
         : fixtureEnv({ enabled: false }),
     });
     addCheck(checks, 'host-boot', Number(boot.port) > 0, `port ${boot.port}`);
+    progress(`isolated host booted on port ${boot.port}`);
     const auth = await mintAuthCookie(boot.url);
     addCheck(checks, 'host-token', Boolean(auth.cookie), `status ${auth.status}`);
 
     if (options.compareWeb !== false) {
+      progress('capturing web baseline in headless Edge');
       try {
         webBrowser = await openUi({
           baseUrl: boot.url,
@@ -176,6 +182,7 @@ export async function runShell(options = {}) {
           `${webBrowser.consoleErrors.length} console error(s)`,
           { informational: true },
         );
+        progress(`web baseline captured (${webProbe.slotCount} slots, ${webProbe.tokenCount} tokens)`);
       } catch (error) {
         addCheck(checks, 'web-baseline-ui', false, String(error?.message ?? error), { informational: true });
       } finally {
@@ -199,6 +206,7 @@ export async function runShell(options = {}) {
       fs.existsSync(shell.exe),
       shell.cached ? `cached ${shell.dir}` : `built ${shell.dir} (${shell.bytes} bytes, ${shell.copyMs}ms)`,
     );
+    progress(`launching Electron shell window${options.keepOpen ? ' (close it to finish)' : ''}`);
 
     const userDataDir = ensureDir(path.join(iso.root, 'electron-userdata'));
     const screenshotFile = path.join(runDir, 'screenshots', 'shell.png');
@@ -231,6 +239,7 @@ export async function runShell(options = {}) {
       await sleep(500);
     }
     const result = fs.existsSync(resultFile) ? JSON.parse(fs.readFileSync(resultFile, 'utf8')) : null;
+    progress(result ? 'shell result received' : 'shell result missing');
     addCheck(checks, 'shell-result', result?.ok === true, result?.error ?? (result ? 'written' : 'missing'));
     if (result?.dom) {
       const shellProbe = normalizeProbe(result.dom);
@@ -370,6 +379,7 @@ export async function runShell(options = {}) {
     errors.push(String(error?.stack ?? error));
     addCheck(checks, 'shell-run', false, String(error?.message ?? error));
   } finally {
+    progress('cleaning up processes and the isolated home');
     if (webBrowser) {
       try {
         await webBrowser.close();

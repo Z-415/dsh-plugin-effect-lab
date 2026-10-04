@@ -2,7 +2,9 @@ import { runLab } from '../runner.js';
 
 export async function runVerifyCommand(options) {
   const pluginSpecs = [...(options.plugins ?? []), ...(options.withPlugins ?? [])];
+  const progress = options.json ? null : (message) => process.stdout.write(`[lab] ${message}\n`);
   const report = await runLab({
+    onProgress: progress,
     mode: options.mode ?? 'web',
     runtimePath: options.runtimePath,
     plugins: pluginSpecs,
@@ -28,6 +30,7 @@ export async function runVerifyCommand(options) {
   } else {
     process.stdout.write(`${winnerLine(report)}\n`);
     process.stdout.write(`artifacts: ${report.runDir}\n`);
+    if (report.artifacts?.reportHtml) process.stdout.write(`html report: ${report.artifacts.reportHtml}\n`);
     for (const check of report.checks) {
       const label = check.pass ? 'PASS' : check.informational ? 'INFO' : 'FAIL';
       process.stdout.write(`[${label}] ${check.name}: ${check.detail ?? ''}\n`);
