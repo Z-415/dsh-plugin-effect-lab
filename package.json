@@ -1,0 +1,21 @@
+{
+  "name": "dsh-plugin-effect-lab",
+  "version": "0.1.0",
+  "description": "Isolated plugin compatibility and effect verification lab for DeepSeek Harness 0.2.0-rc.2.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "dsh-plugin-effect-lab": "./bin/lab.js"
+  },
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test tests/unit/*.test.js",
+    "test:e2e": "node --test --test-concurrency=1 tests/integration/*.test.js"
+  },
+  "license": "MIT"
+}

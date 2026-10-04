@@ -1,0 +1,15 @@
+{
+  "baselineId": "baseline",
+  "runs": [
+    {
+      "id": "baseline",
+      "plugins": [],
+      "assertTokens": ["--dsw-alias-bg-base"]
+    },
+    {
+      "id": "probe-one",
+      "plugins": ["./fixtures/plugins/effect-probe"],
+      "assertTokens": ["--dsw-alias-bg-base", "--lab-effect-probe-color"]
+    }
+  ]
+}

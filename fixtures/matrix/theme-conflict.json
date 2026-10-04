@@ -1,0 +1,33 @@
+{
+  "baselineId": "wallpaper-only",
+  "runs": [
+    {
+      "id": "wallpaper-only",
+      "plugins": ["dsh-plugin-wallpaper-engine@1.2.0"],
+      "fixture": true,
+      "screenshots": ["home"],
+      "assertTokens": ["--dsw-alias-bg-base"]
+    },
+    {
+      "id": "wallpaper-ui-tweaks",
+      "plugins": ["dsh-plugin-wallpaper-engine@1.2.0", "dsh-ui-tweaks@0.20.0"],
+      "fixture": true,
+      "screenshots": ["home"],
+      "assertTokens": ["--dsw-alias-bg-base"]
+    },
+    {
+      "id": "wallpaper-dream-skin",
+      "plugins": ["dsh-plugin-wallpaper-engine@1.2.0", "dsh-dream-skin@9.29.0"],
+      "fixture": true,
+      "screenshots": ["home"],
+      "assertTokens": ["--dsw-alias-bg-base"]
+    },
+    {
+      "id": "wallpaper-bloom",
+      "plugins": ["dsh-plugin-wallpaper-engine@1.2.0", "dsh-bloom-theme@0.17.2"],
+      "fixture": true,
+      "screenshots": ["home"],
+      "assertTokens": ["--dsw-alias-bg-base"]
+    }
+  ]
+}

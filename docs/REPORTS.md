@@ -1,0 +1,69 @@
+# Reports
+
+Every run writes `artifacts/<run-id>/`:
+
+```text
+report.md
+report.json
+boot.out.log
+boot.err.log
+install.log
+routes.json
+runtime.json
+cleanup.json
+profile.package.json
+profile.cordis.patch.yml
+profile.cordis.yml
+dom/dom.json
+screenshots/home.png
+screenshots/fixture.png
+plugin-validation.json
+fixture.json
+mock-llm.json
+```
+
+`lab shell` writes a shell-specific set into the same run directory:
+
+```text
+dom/web-dom.json        headless Edge baseline for the same isolated host
+dom/shell-dom.json      Electron renderer probe (preload `__dshLabShell.collect()`)
+dom/shell-vs-web.json   slot / body-attribute / token diff, plus desktop-only keys
+screenshots/web-baseline.png
+screenshots/shell.png
+shell-result.json       raw shell result (DOM, console errors, page errors, settle)
+```
+
+`report.json` is the machine-readable record. Its important fields are:
+
+- `ok`: all non-informational checks passed;
+- `checks[]`: boot, token, route, UI, token probe, cleanup, and hash checks;
+- `signatureHits[]`: fatal or warning boot-log fingerprints;
+- `browser.consoleErrors[]`, `pageErrors[]`, `networkFailures[]`;
+- `cleanup.homeRemoved` and `cleanup.portsLeft`;
+- `realHome.diff`: structural file hash comparison against the real `~/.dsh`.
+- `plugin-validation.json`: manifest findings for each installed plugin.
+- `fixture.json`: fixed session id, workspace id, and event types.
+- `mock-llm.json`: loopback provider session, event types, and every request
+  summary/scripted response.
+- `shell`: Electron result, normalized probes, `shellVsWeb` diff, and
+  `diffMagnitude`. `shell.transport` records the renderer
+  `__DSH_TRANSPORT__` bridge; `shell.result.consoleErrors` must not contain
+  `[connection] connection lost`.
+- `agentCoverage`: `fixture-only` or `loopback-mock-model`, always with
+  `realModelRequests: false`, plus the covered/uncovered surface list.
+- `settings`: with `--screenshot settings`, `{ totalSlots, added }` lists the
+  slots the settings page added on top of the conversation view.
+- `cleanup.residue`: `{ ok, checks, advisory, newHomes, portsStillListening }`.
+  `isolated-root-removed` and `ports-released` gate `ok`; `no-new-lab-homes` is
+  advisory because concurrent lab runs create their own homes.
+
+Matrix runs also write `matrix.json` and `matrix.md` under
+`artifacts/<matrix-id>/`, with token, body-attribute, layer z-index, and slot
+conflicts plus a `classification` block per run
+(`high-conflict` / `manual-review` / `coexist`). The CLI prints `[CLASS]`
+lines; a conflict matrix reports `FAIL (conflicts detected)` on purpose.
+Per-run `dom/layers` capture background layers (lowest `z-index` first) so
+wallpaper-style stacking is machine-readable.
+
+Screenshots are saved even when the UI is not visually inspected by the caller.
+DOM and CSS token probes provide the machine-decidable result.
