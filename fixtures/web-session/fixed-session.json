@@ -1,0 +1,17 @@
+{
+  "name": "fixed",
+  "sessionId": "session-00000000-0000-4000-8000-000000000001",
+  "title": "Lab fixed session",
+  "formatVersion": 4,
+  "turns": [
+    {
+      "user": "Lab fixed session",
+      "assistant": "Fixed fixture reply: the lab rendered this without a model.",
+      "tool": {
+        "name": "lab_fixture_echo",
+        "arguments": "{\"text\":\"ok\"}",
+        "result": "lab fixture tool result: ok"
+      }
+    }
+  ]
+}

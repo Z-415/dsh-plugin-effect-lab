@@ -204,8 +204,18 @@ function install(runtime) {
   });
   runtime.contextBridge.exposeInMainWorld('__dshLabShell', {
     collect: () => collectSnapshot(runtime),
+    notify: (title, body) => runtime.ipcRenderer.invoke('dsh-lab:notify', String(title ?? ''), String(body ?? '')),
     desktopAttributeHints: DESKTOP_ATTRIBUTE_HINTS,
     tokenPrefixes: TOKEN_PREFIXES,
+  });
+  // Same names the official desktop preload exposes. The directory picker is a
+  // lab stub (it returns the fixture workspace instead of opening a native
+  // dialog) so automation never blocks on UI.
+  runtime.contextBridge.exposeInMainWorld('__DSH_DIRECTORY_PICKER__', {
+    pick: () => runtime.ipcRenderer.invoke('dsh-lab:pick-directory'),
+  });
+  runtime.contextBridge.exposeInMainWorld('__DSH_HOST_PATHS__', {
+    pathFor: (file) => (file && typeof file === 'object' && typeof file.path === 'string' ? file.path : ''),
   });
 }
 

@@ -16,6 +16,7 @@ export { classifyMatrixRuns, changedStringKeys, layerIndex } from './effect-clas
 export { collectSlotRegistrations, collectToolNames, findDeclarationConflicts, scanPluginDeclarations } from './declaration-scanner.js';
 export { installProfilePlugins } from './plugin-install.js';
 export { compareScreenshots, pngStats } from './screenshot-diff.js';
+export { FIXTURE_VARIANTS, fixtureVariantPath, readFixtureSpec } from './fixture-manager.js';
 export { runShell } from './electron-shell/shell-runner.js';
 export {
   DESKTOP_ATTRIBUTE_HINTS,

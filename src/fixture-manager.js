@@ -8,8 +8,29 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const FIXTURE_SESSION_ID = 'session-00000000-0000-4000-8000-000000000001';
 export const FIXTURE_SESSION_TITLE = 'Lab fixed session';
 
+/** Committed fixture specs; `default` is the single-turn conversation. */
+export const FIXTURE_VARIANTS = {
+  default: 'fixed-session.json',
+  empty: 'empty-session.json',
+  long: 'long-session.json',
+};
+
 export function seederPluginDir() {
   return path.resolve(here, '..', 'fixtures', 'plugins', 'session-seeder');
+}
+
+export function webSessionDir() {
+  return path.resolve(here, '..', 'fixtures', 'web-session');
+}
+
+export function fixtureVariantPath(variant = 'default') {
+  const file = FIXTURE_VARIANTS[variant];
+  if (!file) throw new Error(`unknown fixture variant: ${variant}`);
+  return path.join(webSessionDir(), file);
+}
+
+export function readFixtureSpec(variant = 'default') {
+  return JSON.parse(fs.readFileSync(fixtureVariantPath(variant), 'utf8'));
 }
 
 /** Create a fixed workspace with stable files for the conversation fixture. */
@@ -33,10 +54,13 @@ export function fixtureEnv(options = {}) {
     enabled = true,
     sessionId = FIXTURE_SESSION_ID,
     cwd,
+    variant = null,
   } = options;
+  const file = enabled && variant ? fixtureVariantPath(variant) : null;
   return {
     DSH_LAB_FIXTURE_ENABLED: enabled ? '1' : '0',
     DSH_LAB_FIXTURE_SESSION_ID: sessionId,
     ...(cwd ? { DSH_LAB_FIXTURE_CWD: cwd } : {}),
+    ...(file ? { DSH_LAB_FIXTURE_FILE: file } : {}),
   };
 }

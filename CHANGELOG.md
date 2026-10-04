@@ -173,3 +173,38 @@ Final suite: unit 72/72, integration 8/8 (`docs/PHASE5-RESULTS.md`).
   bloom 0.8060.
 
 Final suite: unit 77/77, integration 9/9.
+
+## 0.1.0 - 2026-10-04 (fixture variants and desktop bridges)
+
+### Added
+
+- `fixtures/web-session/{fixed,empty,long}-session.json`: the conversation
+  fixture is now committed data instead of hardcoded events. `--fixture-variant
+  default|empty|long` selects one; the seeder reads `DSH_LAB_FIXTURE_FILE` and
+  keeps an inline default so it still works standalone.
+- Desktop bridges in the shell preload: `__DSH_DIRECTORY_PICKER__` (stubbed to
+  the fixture workspace), `__DSH_HOST_PATHS__`, and
+  `__dshLabShell.notify()`. `report.shell.capabilities` records the window
+  controls, a real clipboard round-trip, the directory-picker stub, host-path
+  resolution, and suppressed notification requests.
+- New shell checks: `shell-window-controls` (real, hard),
+  `shell-clipboard` (real, informational), `shell-desktop-bridges` (stubs).
+
+### Fixed
+
+- Generated sessions now set `surfaceOp: "append"` on every message-producing
+  event; the 0.2.0-rc.2 session format rejects a second turn without it.
+- `discoverCursor` did not parse the `past cursor -1` reported by an empty
+  session, so the empty variant failed before its events were read.
+- The CLI printed `[FAIL]` for informational checks that do not affect the
+  result; they now print `[INFO]`.
+
+### Measured
+
+- Empty and long variants both boot and render (`fixture-variant` integration
+  tests).
+- `shell-window-controls`: overlay available, height 40.
+- `shell-desktop-bridges`: directory picker stubbed to the fixture workspace,
+  host paths resolved, notification recorded and suppressed.
+
+Final suite: unit 83/83, integration 11/11.

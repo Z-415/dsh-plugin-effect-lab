@@ -15,6 +15,7 @@ import {
   FIXTURE_SESSION_ID,
   FIXTURE_SESSION_TITLE,
   fixtureEnv,
+  readFixtureSpec,
 } from './fixture-manager.js';
 import { hasFatal, scanLogs, scanNoise, summarize } from './log-scanner.js';
 import { describeAgentCoverage, scanForCredentials } from './model-coverage.js';
@@ -153,6 +154,10 @@ export async function runLab(options = {}) {
 
     const env = isolatedEnv(iso);
     const fixtureEnabled = options.fixture !== false;
+    const fixtureVariant = options.fixtureVariant ?? 'default';
+    const fixtureSpec = fixtureEnabled ? readFixtureSpec(fixtureVariant) : null;
+    const fixtureSessionId = fixtureSpec?.sessionId ?? FIXTURE_SESSION_ID;
+    const fixtureTitle = fixtureSpec?.title ?? FIXTURE_SESSION_TITLE;
     const pluginPipeline = await installProfilePlugins({
       runtime,
       env,
@@ -219,7 +224,7 @@ export async function runLab(options = {}) {
       timeoutMs: options.bootTimeoutMs,
       env: {
         ...(fixtureEnabled
-          ? fixtureEnv({ enabled: true, sessionId: FIXTURE_SESSION_ID, cwd: fixtureWorkspace })
+          ? fixtureEnv({ enabled: true, sessionId: fixtureSessionId, cwd: fixtureWorkspace, variant: fixtureVariant })
           : fixtureEnv({ enabled: false })),
         ...(mockServer ? { [MOCK_API_KEY_ENV]: 'lab-mock-key' } : {}),
       },
@@ -253,17 +258,17 @@ export async function runLab(options = {}) {
         const workspaceId = workspaceResult?.workspace?.workspaceId ?? null;
         addCheck(checks, 'fixture-workspace', Boolean(workspaceId), workspaceId ?? 'not registered');
         const sessions = await listSessions(boot.origin, auth.cookie);
-        const fixtureSession = sessions.find((item) => item.sessionId === FIXTURE_SESSION_ID);
+        const fixtureSession = sessions.find((item) => item.sessionId === fixtureSessionId);
         addCheck(
           checks,
           'fixture-session-listed',
           Boolean(fixtureSession),
-          fixtureSession ? FIXTURE_SESSION_ID : `not in ${sessions.length} session(s)`,
+          fixtureSession ? fixtureSessionId : `not in ${sessions.length} session(s)`,
         );
         if (fixtureSession) {
-          const page = await sessionPage(boot.origin, auth.cookie, FIXTURE_SESSION_ID);
+          const page = await sessionPage(boot.origin, auth.cookie, fixtureSessionId);
           const types = new Set(page.events.map((event) => event.type));
-          const expected = ['user/message', 'assistant/message', 'tool/result'];
+          const expected = fixtureVariant === 'empty' ? [] : ['user/message', 'assistant/message', 'tool/result'];
           const missing = expected.filter((type) => !types.has(type));
           addCheck(
             checks,
@@ -272,8 +277,9 @@ export async function runLab(options = {}) {
             missing.length ? `missing ${missing.join(', ')}` : `${page.events.length} event(s)`,
           );
           report.fixture = {
-            sessionId: FIXTURE_SESSION_ID,
-            title: FIXTURE_SESSION_TITLE,
+            variant: fixtureVariant,
+            sessionId: fixtureSessionId,
+            title: fixtureTitle,
             workspace: fixtureWorkspace,
             workspaceId,
             events: page.events.length,

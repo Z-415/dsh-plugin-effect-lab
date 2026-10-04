@@ -7,6 +7,7 @@ export async function runVerifyCommand(options) {
     runtimePath: options.runtimePath,
     plugins: pluginSpecs,
     fixture: options.fixture,
+    fixtureVariant: options.fixtureVariant,
     mockModel: options.mockModel,
     online: options.online,
     screenshots: options.screenshots,
@@ -27,7 +28,8 @@ export async function runVerifyCommand(options) {
     process.stdout.write(`${winnerLine(report)}\n`);
     process.stdout.write(`artifacts: ${report.runDir}\n`);
     for (const check of report.checks) {
-      process.stdout.write(`[${check.pass ? 'PASS' : 'FAIL'}] ${check.name}: ${check.detail ?? ''}\n`);
+      const label = check.pass ? 'PASS' : check.informational ? 'INFO' : 'FAIL';
+      process.stdout.write(`[${label}] ${check.name}: ${check.detail ?? ''}\n`);
     }
   }
   return report.ok ? 0 : 1;

@@ -122,6 +122,18 @@ test('preload exposes the desktop boot bridge and calls the lab boot channel', a
   assert.deepEqual(invoked[1], ['dsh-lab:boot-failed', 'boom']);
 });
 
+test('preload exposes the desktop bridges with a stubbed directory picker', async () => {
+  const { exposed, invoked } = makeRendererSandbox();
+  assert.equal(typeof exposed.__DSH_DIRECTORY_PICKER__.pick, 'function');
+  assert.equal(typeof exposed.__DSH_HOST_PATHS__.pathFor, 'function');
+  assert.equal(exposed.__DSH_HOST_PATHS__.pathFor({ path: 'C:/lab/a.txt' }), 'C:/lab/a.txt');
+  assert.equal(exposed.__DSH_HOST_PATHS__.pathFor(null), '');
+  await exposed.__DSH_DIRECTORY_PICKER__.pick();
+  await exposed.__dshLabShell.notify('title', 'body');
+  assert.deepEqual(invoked[0], ['dsh-lab:pick-directory']);
+  assert.deepEqual(invoked[1], ['dsh-lab:notify', 'title', 'body']);
+});
+
 test('preload probe records slots, tokens, desktop-only body attributes, and transport', async () => {
   const { exposed, sandbox } = makeRendererSandbox();
   assert.ok(exposed.__dshLabShell, '__dshLabShell must be exposed');

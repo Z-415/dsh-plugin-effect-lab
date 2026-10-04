@@ -4,94 +4,116 @@
  * It writes one fixed conversation through the official session-persistence
  * handle API (`create` -> `append` -> `flush` -> `close`), so the Web UI can
  * render a real conversation without any model call or real credential.
+ *
+ * The event sequence is derived from a JSON spec so the fixture data is a
+ * committed artifact (`fixtures/web-session/*.json`) instead of hardcoded
+ * here. `DSH_LAB_FIXTURE_FILE` points at the chosen variant; without it the
+ * inline default keeps the plugin self-contained.
  */
+
+import fs from 'node:fs';
 
 export const name = 'dsh-lab-session-fixture';
 export const inject = ['sessionPersistence'];
 
-const SESSION_FORMAT_VERSION = 4;
+const DEFAULT_SPEC = {
+  name: 'fixed',
+  sessionId: 'session-00000000-0000-4000-8000-000000000001',
+  title: 'Lab fixed session',
+  formatVersion: 4,
+  turns: [
+    {
+      user: 'Lab fixed session',
+      assistant: 'Fixed fixture reply: the lab rendered this without a model.',
+      tool: { name: 'lab_fixture_echo', arguments: '{"text":"ok"}', result: 'lab fixture tool result: ok' },
+    },
+  ],
+};
 
 function textBlock(text) {
   return { type: 'text', text };
 }
 
-export function buildFixtureEvents(startedAt) {
-  const turn = 1;
-  const step = 1;
-  const callId = 'call-lab-fixture-1';
-  const toolName = 'lab_fixture_echo';
-  const toolArguments = '{"text":"ok"}';
-  const assistantText = 'Fixed fixture reply: the lab rendered this without a model.';
-  const time = (offset) => startedAt + offset;
-  return [
-    { type: 'turn/start', seq: 0, time: time(0), data: { turn } },
-    { type: 'step/start', seq: 1, time: time(1), data: { turn, step } },
-    {
-      type: 'user/message',
-      seq: 2,
-      time: time(2),
-      surfaceOp: 'append',
-      data: {
-        id: 'msg-lab-user-1',
+/** Expand a fixture spec into the official session event sequence. */
+export function buildEventsFromSpec(spec, startedAt = Date.now()) {
+  const events = [];
+  let seq = 0;
+  const turns = spec?.turns ?? [];
+  const push = (type, data, extra = {}) => {
+    events.push({ type, seq, time: startedAt + seq, data, ...extra });
+    seq += 1;
+  };
+  turns.forEach((turn, index) => {
+    const turnNumber = index + 1;
+    const step = 1;
+    const callId = `call-lab-fixture-${turnNumber}`;
+    const assistantText = turn.assistant ?? `Reply ${turnNumber}`;
+    push('turn/start', { turn: turnNumber });
+    push('step/start', { turn: turnNumber, step });
+    push(
+      'user/message',
+      {
+        id: `msg-lab-user-${turnNumber}`,
         role: 'user',
-        content: [textBlock('Lab fixed session')],
+        content: [textBlock(turn.user ?? `Turn ${turnNumber}`)],
         source: { kind: 'user' },
       },
-    },
-    {
-      type: 'assistant/message',
-      seq: 3,
-      time: time(3),
-      surfaceOp: 'append',
-      data: {
-        turn,
+      { surfaceOp: 'append' },
+    );
+    push(
+      'assistant/message',
+      {
+        turn: turnNumber,
         step,
         message: {
-          id: 'msg-lab-assistant-1',
+          id: `msg-lab-assistant-${turnNumber}`,
           role: 'assistant',
           content: [
             textBlock(assistantText),
-            { type: 'tool-call', id: callId, name: toolName, arguments: toolArguments },
+            ...(turn.tool ? [{ type: 'tool-call', id: callId, name: turn.tool.name, arguments: turn.tool.arguments }] : []),
           ],
           source: { kind: 'model', provider: 'lab-fixture', model: 'fixed' },
         },
-        stream: [
-          { type: 'text-chunks', time0: 0, index: 0, dt: [1], texts: [assistantText] },
-        ],
+        stream: [{ type: 'text-chunks', time0: 0, index: 0, dt: [1], texts: [assistantText] }],
       },
-    },
-    {
-      type: 'tool/call',
-      seq: 4,
-      time: time(4),
-      data: { turn, step, callId, name: toolName, arguments: toolArguments },
-    },
-    {
-      type: 'tool/result',
-      seq: 5,
-      time: time(5),
-      surfaceOp: 'append',
-      data: {
-        turn,
-        step,
-        message: {
-          id: 'msg-lab-tool-1',
-          role: 'tool',
-          content: [textBlock('lab fixture tool result: ok')],
-          source: { kind: 'tool', callId },
-          toolCallId: callId,
+      { surfaceOp: 'append' },
+    );
+    if (turn.tool) {
+      push('tool/call', { turn: turnNumber, step, callId, name: turn.tool.name, arguments: turn.tool.arguments });
+      push(
+        'tool/result',
+        {
+          turn: turnNumber,
+          step,
+          message: {
+            id: `msg-lab-tool-${turnNumber}`,
+            role: 'tool',
+            content: [textBlock(turn.tool.result ?? 'tool result')],
+            source: { kind: 'tool', callId },
+            toolCallId: callId,
+          },
         },
-      },
-    },
-    {
-      type: 'session/title',
-      seq: 6,
-      time: time(6),
-      data: { title: 'Lab fixed session', messageSeqs: [], source: { kind: 'user' } },
-    },
-    { type: 'step/end', seq: 7, time: time(7), data: { turn, step } },
-    { type: 'turn/end', seq: 8, time: time(8), data: { turn, reason: { kind: 'completed' } } },
-  ];
+        { surfaceOp: 'append' },
+      );
+    }
+    if (turnNumber === 1) {
+      push('session/title', { title: spec?.title ?? 'Lab fixed session', messageSeqs: [], source: { kind: 'user' } });
+    }
+    push('step/end', { turn: turnNumber, step });
+    push('turn/end', { turn: turnNumber, reason: { kind: 'completed' } });
+  });
+  return events;
+}
+
+/** Backwards-compatible default used by the unit tests. */
+export function buildFixtureEvents(startedAt) {
+  return buildEventsFromSpec(DEFAULT_SPEC, startedAt);
+}
+
+function loadSpec() {
+  const file = process.env.DSH_LAB_FIXTURE_FILE;
+  if (!file) return DEFAULT_SPEC;
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
 export async function apply(ctx) {
@@ -101,9 +123,10 @@ export async function apply(ctx) {
   if (!sessionId) return;
   const persistence = ctx.sessionPersistence;
   if (await persistence.stat(sessionId)) return;
+  const spec = loadSpec();
   const startedAt = Date.now();
   const handle = await persistence.create({
-    version: SESSION_FORMAT_VERSION,
+    version: spec.formatVersion ?? 4,
     id: sessionId,
     createdAt: startedAt,
     ...(cwd ? { cwd } : {}),
@@ -111,10 +134,10 @@ export async function apply(ctx) {
     delegationDepth: 0,
   });
   try {
-    await handle.append(buildFixtureEvents(startedAt));
+    await handle.append(buildEventsFromSpec(spec, startedAt));
     await handle.flush();
   } finally {
     await handle.close();
   }
-  ctx.logger?.info?.(`[dsh-lab] fixture session ${sessionId} written`);
+  ctx.logger?.info?.(`[dsh-lab] fixture session ${sessionId} written (${spec.name ?? 'custom'})`);
 }

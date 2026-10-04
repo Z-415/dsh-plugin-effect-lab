@@ -67,6 +67,12 @@ web baseline against the shell with both a DOM/token diff and a pixel diff
 (`dom/shell-screenshot-diff.json`). On an unmodified profile the two
 screenshots are pixel-identical.
 
+Conversation fixtures are committed data (`fixtures/web-session/`) with
+`default`, `empty`, and `long` variants selected by `--fixture-variant`. Shell
+mode also bridges and reports the desktop-only surfaces (window controls,
+clipboard, directory picker, host paths, notifications); the directory picker
+is stubbed so nothing blocks on a native dialog.
+
 The lab never starts the real `desktop` profile, never reads credentials,
 sessions, or settings, and never installs a plugin outside its own temp home.
 
@@ -76,6 +82,7 @@ sessions, or settings, and never installs a plugin outside its own temp home.
 node bin/lab.js doctor
 node bin/lab.js verify
 node bin/lab.js verify --screenshot home --screenshot settings
+node bin/lab.js verify --fixture-variant long
 node bin/lab.js capture --screenshot home
 node bin/lab.js verify --mock-model
 node bin/lab.js verify --assert-slot conversation.composer --assert-body-attr style --min-slots 30

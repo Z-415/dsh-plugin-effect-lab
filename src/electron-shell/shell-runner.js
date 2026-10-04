@@ -7,7 +7,7 @@ import { evaluateDomAssertions } from '../dom-assertions.js';
 import { defaultArtifactsRoot } from '../config.js';
 import { createIsolatedHome } from '../home-manager.js';
 import { mintAuthCookie } from '../port-and-token.js';
-import { FIXTURE_SESSION_ID, fixtureEnv } from '../fixture-manager.js';
+import { FIXTURE_SESSION_ID, fixtureEnv, readFixtureSpec } from '../fixture-manager.js';
 import { installProfilePlugins } from '../plugin-install.js';
 import { spawnTracked, stopTracked } from '../process-tree.js';
 import { writeMinimalProfile } from '../profile-builder.js';
@@ -78,6 +78,10 @@ export async function runShell(options = {}) {
     addCheck(checks, 'isolated-home', true, iso.home);
 
     const fixtureEnabled = options.fixture !== false;
+    const fixtureVariant = options.fixtureVariant ?? 'default';
+    const fixtureSessionId = fixtureEnabled
+      ? (readFixtureSpec(fixtureVariant).sessionId ?? FIXTURE_SESSION_ID)
+      : FIXTURE_SESSION_ID;
     const pipeline = await installProfilePlugins({
       runtime,
       env: {
@@ -142,7 +146,7 @@ export async function runShell(options = {}) {
       tmpDir: iso.tmp,
       timeoutMs: options.bootTimeoutMs ?? 90_000,
       env: fixtureEnabled
-        ? fixtureEnv({ enabled: true, sessionId: FIXTURE_SESSION_ID, cwd: fixtureWorkspace })
+        ? fixtureEnv({ enabled: true, sessionId: fixtureSessionId, cwd: fixtureWorkspace, variant: fixtureVariant })
         : fixtureEnv({ enabled: false }),
     });
     addCheck(checks, 'host-boot', Number(boot.port) > 0, `port ${boot.port}`);
@@ -205,6 +209,7 @@ export async function runShell(options = {}) {
       userDataDir,
       resultFile,
       screenshotFile,
+      fixtureDir: fixtureWorkspace ?? null,
       assertTokens: options.assertTokens ?? ['--dsw-alias-bg-base'],
     }, null, 2)}\n`, 'utf8');
 
@@ -250,6 +255,33 @@ export async function runShell(options = {}) {
         'shell-transport-bridge',
         shellProbe.transport.present && shellProbe.transport.ownsHost && Boolean(shellProbe.transport.streamBaseUrl),
         JSON.stringify(shellProbe.transport),
+      );
+      addCheck(
+        checks,
+        'shell-window-controls',
+        shellProbe.titlebar?.available === true,
+        `available=${shellProbe.titlebar?.available === true};`
+          + ` visible=${shellProbe.titlebar?.visible === true};`
+          + ` height=${shellProbe.titlebar?.rect?.height ?? 'n/a'}`,
+      );
+      const capabilities = result.capabilities ?? null;
+      addCheck(
+        checks,
+        'shell-clipboard',
+        capabilities?.clipboard?.ok === true,
+        capabilities?.clipboard?.ok === true
+          ? `round-trip ok (${capabilities.clipboard.tokenLength} chars)`
+          : `not verified: ${JSON.stringify(capabilities?.clipboard ?? null)} (the OS clipboard is shared; another process may own it)`,
+        { informational: true },
+      );
+      addCheck(
+        checks,
+        'shell-desktop-bridges',
+        true,
+        `directoryPicker=${capabilities?.bridged?.directoryPicker ?? 'n/a'}`
+          + ` hostPaths=${capabilities?.bridged?.hostPaths ?? 'n/a'}`
+          + ` notifications=${capabilities?.bridge?.notification?.requested ?? 0} suppressed`,
+        { informational: true },
       );
 
       if (webProbe) {
@@ -324,6 +356,7 @@ export async function runShell(options = {}) {
       shellVsWeb,
       diffMagnitude: shellVsWeb ? diffMagnitude(shellVsWeb) : null,
       screenshotDiff: shellScreenshotDiff,
+      capabilities: result?.capabilities ?? null,
       stdout: tail(shellProc.getOutput().stdout, 4000),
       stderr: tail(shellProc.getOutput().stderr, 4000),
     };

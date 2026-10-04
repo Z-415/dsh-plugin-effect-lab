@@ -15,6 +15,7 @@ const VALUE_FLAGS = new Set([
   'assert-slot',
   'assert-body-attr',
   'min-slots',
+  'fixture-variant',
   'artifacts',
   'browser',
   'boot-timeout',
@@ -101,6 +102,10 @@ export async function main(argv) {
     assertBodyAttributes: flags['assert-body-attr'] ?? [],
     minSlots: numberFlag(flags, 'min-slots'),
   };
+  const fixtureOptions = {
+    fixture: flags['no-fixture'] !== true,
+    fixtureVariant: flags['fixture-variant'] ?? 'default',
+  };
   switch (command) {
     case 'doctor':
       return runDoctor(common);
@@ -109,7 +114,7 @@ export async function main(argv) {
         ...common,
         plugins: flags.plugin ?? [],
         withPlugins: flags.with ?? [],
-        fixture: flags['no-fixture'] !== true,
+        ...fixtureOptions,
         mockModel: flags['mock-model'] === true,
         online: flags.online === true,
         screenshots: flags.screenshot ?? ['home'],
@@ -126,7 +131,7 @@ export async function main(argv) {
         ...common,
         plugins: flags.plugin ?? [],
         withPlugins: flags.with ?? [],
-        fixture: flags['no-fixture'] !== true,
+        ...fixtureOptions,
         mockModel: flags['mock-model'] === true,
         online: flags.online === true,
         screenshots: flags.screenshot ?? ['home'],
@@ -162,6 +167,7 @@ export async function main(argv) {
         plugins: flags.plugin ?? [],
         withPlugins: flags.with ?? [],
         fixture: flags['no-fixture'] !== true,
+        fixtureVariant: flags['fixture-variant'] ?? 'default',
         online: flags.online === true,
         installTimeoutMs: numberFlag(flags, 'install-timeout'),
         assertTokens: flags['assert-token'] ?? ['--dsw-alias-bg-base'],
@@ -183,12 +189,14 @@ Usage:
              [--screenshot home] [--assert-token --dsw-alias-bg-base]
              [--assert-slot conversation.view] [--assert-body-attr data-we-wallpaper]
              [--min-slots <n>]
+             [--fixture-variant default|empty|long]
              [--artifacts <dir>] [--browser <exe>] [--no-fixture]
              [--mock-model] [--route /plugin/health] [--json]
   lab capture [same options as verify]
   lab matrix --config <file.json> [--online] [--json]
   lab shell [--no-cache] [--no-compare-web] [--shell-timeout <ms>]
             [--plugin <spec>] [--with <spec>] [--offline|--online] [--no-fixture]
+            [--fixture-variant default|empty|long]
             [--browser <exe>] [--browser-timeout <ms>] [--json]
   lab scan --log <boot.err.log> [--json]
   lab clean [--dry-run] [--older-than <minutes>] [--json]

@@ -117,6 +117,23 @@ Two earlier observations are now explained rather than "fixed" in the launcher:
 - `#fff` is the correct light-theme baseline for an unmodified profile, not a
   shell/preload artifact.
 
+## Desktop-only bridges
+
+The preload mirrors the official window names so the UI can use them, and
+`lab shell` records what actually happened in `report.shell.capabilities`:
+
+| surface | bridge | behaviour in the lab |
+|---|---|---|
+| window controls | `navigator.windowControlsOverlay` + `titleBarOverlay{height:40}` | real; `shell-window-controls` asserts available + overlay height |
+| clipboard | Electron `clipboard` in the main process | real write/read round-trip; informational because the OS clipboard is shared and another process may own it |
+| directory picker | `window.__DSH_DIRECTORY_PICKER__.pick()` | bridged and **stubbed**: returns the fixture workspace instead of opening a native dialog |
+| host paths | `window.__DSH_HOST_PATHS__.pathFor(file)` | bridged stub returning `file.path` |
+| notifications | `window.__dshLabShell.notify()` -> `dsh-lab:notify` | recorded and **suppressed**: no OS toast is raised |
+
+`shell-desktop-bridges` reports the stub results; `shell-window-controls` and
+`shell-clipboard` report the real surfaces. Native dialogs and OS toasts are
+deliberately not raised because they cannot be asserted unattended.
+
 ## Not covered
 
 - Window controls, clipboard, native file dialogs, notifications, tray, and

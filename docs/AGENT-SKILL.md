@@ -58,6 +58,13 @@ An agent using this tool should:
     desktop-only attributes such as `data-we-adapter`.
 23. use `npm run ci` as the single entry: unit tests always run, then doctor and
     the integration suite when the official runtime is present.
+24. choose the conversation fixture with `--fixture-variant default|empty|long`.
+    The specs live in `fixtures/web-session/`; every message-producing event
+    needs `surfaceOp: "append"` or the session format rejects it.
+25. read `report.shell.capabilities` for desktop-only surfaces. Window controls
+    and the clipboard round-trip are real; the directory picker is a stub that
+    returns the fixture workspace, and notifications are recorded but
+    suppressed. Never expect a native dialog or an OS toast.
 
 Do not attach large screenshots to a model context. `artifacts/**/screenshots`
 are evidence for humans; machine decisions come from the DOM/token JSON.

@@ -1,0 +1,20 @@
+{
+  "name": "long",
+  "sessionId": "session-00000000-0000-4000-8000-000000000003",
+  "title": "Lab long session",
+  "formatVersion": 4,
+  "turns": [
+    { "user": "Long session turn 1", "assistant": "Reply 1 for the long fixture session.", "tool": { "name": "lab_fixture_echo", "arguments": "{\"turn\":1}", "result": "tool result 1" } },
+    { "user": "Long session turn 2", "assistant": "Reply 2 for the long fixture session." },
+    { "user": "Long session turn 3", "assistant": "Reply 3 for the long fixture session." },
+    { "user": "Long session turn 4", "assistant": "Reply 4 for the long fixture session.", "tool": { "name": "lab_fixture_echo", "arguments": "{\"turn\":4}", "result": "tool result 4" } },
+    { "user": "Long session turn 5", "assistant": "Reply 5 for the long fixture session." },
+    { "user": "Long session turn 6", "assistant": "Reply 6 for the long fixture session." },
+    { "user": "Long session turn 7", "assistant": "Reply 7 for the long fixture session.", "tool": { "name": "lab_fixture_echo", "arguments": "{\"turn\":7}", "result": "tool result 7" } },
+    { "user": "Long session turn 8", "assistant": "Reply 8 for the long fixture session." },
+    { "user": "Long session turn 9", "assistant": "Reply 9 for the long fixture session." },
+    { "user": "Long session turn 10", "assistant": "Reply 10 for the long fixture session.", "tool": { "name": "lab_fixture_echo", "arguments": "{\"turn\":10}", "result": "tool result 10" } },
+    { "user": "Long session turn 11", "assistant": "Reply 11 for the long fixture session." },
+    { "user": "Long session turn 12", "assistant": "Reply 12 for the long fixture session." }
+  ]
+}

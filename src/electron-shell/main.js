@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, session } = require('electron');
+const { app, BrowserWindow, clipboard, ipcMain, protocol, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -169,6 +169,46 @@ function mergeAssertedTokens(snapshot, extra) {
   return { ...snapshot, tokens, tokenCount: Object.keys(tokens).length };
 }
 
+/**
+ * Exercise the desktop-only surfaces the official preload exposes. The
+ * directory picker and notifications are bridged but deliberately stubbed
+ * (no native dialog, no OS toast) so automation never blocks; the clipboard
+ * round-trip is real.
+ */
+async function probeDesktopCapabilities(window, bridge) {
+  const bridged = await window.webContents.executeJavaScript(`(async () => {
+    const directoryPicker = typeof globalThis.__DSH_DIRECTORY_PICKER__?.pick === 'function'
+      ? await globalThis.__DSH_DIRECTORY_PICKER__.pick()
+      : null;
+    const hostPaths = typeof globalThis.__DSH_HOST_PATHS__?.pathFor === 'function'
+      ? globalThis.__DSH_HOST_PATHS__.pathFor({ path: 'C:/lab/sample.txt', name: 'sample.txt' })
+      : null;
+    const notification = typeof globalThis.__dshLabShell?.notify === 'function'
+      ? await globalThis.__dshLabShell.notify('DSH Plugin Effect Lab', 'shell capability probe')
+      : null;
+    return { directoryPicker, hostPaths, notification };
+  })()`);
+  const token = `lab-clipboard-${Date.now()}`;
+  let clipboardResult = { ok: false, tokenLength: token.length, readLength: 0, attempts: 0 };
+  try {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      clipboard.writeText(token);
+      const read = clipboard.readText();
+      clipboardResult = {
+        ok: read === token,
+        tokenLength: token.length,
+        readLength: typeof read === 'string' ? read.length : -1,
+        attempts: attempt,
+      };
+      if (clipboardResult.ok) break;
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+  } catch (error) {
+    clipboardResult = { ok: false, error: String(error) };
+  }
+  return { bridged, clipboard: clipboardResult, bridge };
+}
+
 /** Wait until the slot count stops changing so shell and web probes agree. */
 async function waitForStableShell(window, options = {}) {
   const { stableMs = 1500, timeoutMs = 25_000, intervalMs = 500 } = options;
@@ -268,6 +308,20 @@ app.whenReady().then(async () => {
     pageErrors.push(`boot-failed: ${String(message ?? '').slice(0, 1000)}`);
     return null;
   });
+  const desktopBridge = {
+    directoryPicker: { bridged: true, stubbed: true, fixtureDir: config.fixtureDir ?? null, called: false },
+    notification: { bridged: true, suppressed: true, requested: 0 },
+  };
+  ipcMain.handle('dsh-lab:pick-directory', (event) => {
+    assertAppSender(event);
+    desktopBridge.directoryPicker.called = true;
+    return config.fixtureDir ?? null;
+  });
+  ipcMain.handle('dsh-lab:notify', (event, title, body) => {
+    assertAppSender(event);
+    desktopBridge.notification.requested += 1;
+    return { suppressed: true, title: String(title ?? ''), body: String(body ?? '') };
+  });
   protocol.handle('dsh-app', (request) => {
     const url = new URL(request.url);
     if (url.hostname !== 'app') return Promise.resolve(new Response(null, { status: 404 }));
@@ -308,12 +362,14 @@ app.whenReady().then(async () => {
     await window.loadURL('dsh-app://app/');
     const settle = await waitForStableShell(window);
     const dom = await probeDom(window);
+    const capabilities = await probeDesktopCapabilities(window, desktopBridge);
     const image = await window.webContents.capturePage();
     fs.mkdirSync(path.dirname(config.screenshotFile), { recursive: true });
     fs.writeFileSync(config.screenshotFile, image.toPNG());
     await finish(true, {
       dom,
       settle,
+      capabilities,
       title: window.getTitle(),
       webContents: { url: window.webContents.getURL(), userAgent: window.webContents.getUserAgent() },
       screenshotFile: config.screenshotFile,

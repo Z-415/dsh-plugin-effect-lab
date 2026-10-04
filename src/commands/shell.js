@@ -9,6 +9,7 @@ export async function runShellCommand(options) {
     plugins: options.plugins,
     withPlugins: options.withPlugins,
     fixture: options.fixture,
+    fixtureVariant: options.fixtureVariant,
     online: options.online,
     installTimeoutMs: options.installTimeoutMs,
     assertTokens: options.assertTokens,
@@ -20,7 +21,10 @@ export async function runShellCommand(options) {
   else {
     process.stdout.write(`DSH Plugin Effect Lab shell: ${report.ok ? 'PASS' : 'FAIL'} (${report.runId})\n`);
     process.stdout.write(`artifacts: ${report.artifacts?.runDir ?? report.runId}\n`);
-    for (const check of report.checks) process.stdout.write(`[${check.pass ? 'PASS' : 'FAIL'}] ${check.name}: ${check.detail ?? ''}\n`);
+    for (const check of report.checks) {
+      const label = check.pass ? 'PASS' : check.informational ? 'INFO' : 'FAIL';
+      process.stdout.write(`[${label}] ${check.name}: ${check.detail ?? ''}\n`);
+    }
     const shellProbe = report.shell?.probeSummary;
     if (shellProbe) {
       process.stdout.write(

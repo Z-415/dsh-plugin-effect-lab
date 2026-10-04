@@ -61,7 +61,8 @@ async function discoverCursor(origin, cookie, sessionId) {
     });
     return -1;
   } catch (error) {
-    const match = /past cursor (\d+)/.exec(String(error.message));
+    // An empty session reports "past cursor -1", so the sign must be captured.
+    const match = /past cursor (-?\d+)/.exec(String(error.message));
     if (match) return Number(match[1]);
     throw error;
   }

@@ -52,6 +52,7 @@ export function normalizeProbe(input = {}) {
     themeRoot: input.themeRoot ?? null,
     layers: Array.isArray(input.layers) ? input.layers : [],
     layerSummary: input.layerSummary ?? null,
+    titlebar: input.titlebar ?? null,
     tokens,
     tokenCount: Number.isFinite(input.tokenCount) ? input.tokenCount : Object.keys(tokens).length,
     transport: normalizeTransport(input.transport),
