@@ -4,6 +4,7 @@ Every run writes `artifacts/<run-id>/`:
 
 ```text
 report.md
+report.html
 report.json
 boot.out.log
 boot.err.log
@@ -21,6 +22,12 @@ plugin-validation.json
 fixture.json
 mock-llm.json
 ```
+
+`report.html` is a self-contained page (checks, screenshots embedded as data
+URIs, shell-vs-web diff, plugin findings, cleanup). Double-click it, or open it
+in a browser; pass `--no-html` to skip it. Matrix runs write `matrix.html`
+instead, with classification and conflicts. Screenshots larger than 2 MB are
+listed by name instead of embedded.
 
 `lab shell` writes a shell-specific set into the same run directory:
 

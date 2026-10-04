@@ -339,10 +339,10 @@ app.whenReady().then(async () => {
     height: 900,
     // A fully hidden window does not composite on Windows, so capturePage()
     // returns a blank surface. An opacity-0 visible window renders normally
-    // and stays invisible to the user.
+    // and stays invisible to the user; --show makes it a normal window.
     show: true,
-    opacity: 0,
-    skipTaskbar: true,
+    opacity: config.show ? 1 : 0,
+    skipTaskbar: !config.show,
     titleBarStyle: 'hidden',
     titleBarOverlay: { height: 40, color: '#ffffff', symbolColor: '#000000' },
     webPreferences: {
@@ -366,17 +366,32 @@ app.whenReady().then(async () => {
     const image = await window.webContents.capturePage();
     fs.mkdirSync(path.dirname(config.screenshotFile), { recursive: true });
     fs.writeFileSync(config.screenshotFile, image.toPNG());
-    await finish(true, {
+    const payload = {
       dom,
       settle,
       capabilities,
       title: window.getTitle(),
       webContents: { url: window.webContents.getURL(), userAgent: window.webContents.getUserAgent() },
       screenshotFile: config.screenshotFile,
-    });
+    };
+    if (config.keepOpen) {
+      // Leave the real window open for the user; the runner only cleans up
+      // after the window is closed and the result file is written.
+      window.on('closed', () => {
+        finish(true, payload);
+      });
+      return;
+    }
+    if (config.show && Number(config.showHoldMs) > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Number(config.showHoldMs)));
+    }
+    await finish(true, payload);
   } catch (error) {
     await finish(false, { error: String(error?.stack ?? error) });
   }
 });
 
-setTimeout(() => finish(false, { error: 'shell timeout' }), 120_000);
+setTimeout(
+  () => finish(false, { error: 'shell timeout' }),
+  config.keepOpen ? 35 * 60_000 : 120_000,
+);

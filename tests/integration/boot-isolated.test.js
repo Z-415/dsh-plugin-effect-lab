@@ -25,6 +25,10 @@ test('isolated web boot captures UI, cleans up, and leaves the real home unchang
     assert.equal(report.cleanup.processesLeft, 0);
     assert.equal(report.realHome.diff.ok, true);
     assert.equal(report.browser.dom.slotCount > 0, true);
+    const html = fs.readFileSync(path.join(report.runDir, 'report.html'), 'utf8');
+    assert.equal(html.startsWith('<!doctype html>'), true);
+    assert.equal(html.includes('DSH Plugin Effect Lab'), true);
+    assert.equal((html.match(/data:image\/png;base64,/g) ?? []).length >= 1, true);
     assert.equal(report.ok, true, JSON.stringify(report.checks, null, 2));
   } finally {
     fs.rmSync(artifactsRoot, { recursive: true, force: true });

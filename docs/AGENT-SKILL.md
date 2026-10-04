@@ -65,6 +65,11 @@ An agent using this tool should:
     and the clipboard round-trip are real; the directory picker is a stub that
     returns the fixture workspace, and notifications are recorded but
     suppressed. Never expect a native dialog or an OS toast.
+26. open `report.html` (or `matrix.html`) when a human needs to read a run: it
+    embeds the screenshots and the diffs and needs no server. `--no-html` skips
+    it. Use `lab shell --show` (optionally `--keep-open`) when someone needs to
+    look at or click the real Electron window; that opens a real window on the
+    desktop.
 
 Do not attach large screenshots to a model context. `artifacts/**/screenshots`
 are evidence for humans; machine decisions come from the DOM/token JSON.

@@ -21,6 +21,7 @@ export async function runVerifyCommand(options) {
     bootTimeoutMs: options.bootTimeoutMs,
     browserTimeoutMs: options.browserTimeoutMs,
     strictConsole: options.strictConsole,
+    html: options.html,
   });
   if (options.json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

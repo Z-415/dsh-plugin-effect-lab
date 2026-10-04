@@ -5,6 +5,7 @@ import { classifyMatrixRuns } from './effect-classifier.js';
 import { diffLayers } from './electron-shell/shell-probe.js';
 import { runLab } from './runner.js';
 import { compareScreenshots } from './screenshot-diff.js';
+import { writeHtmlReport } from './html-report.js';
 import { detectSlotConflicts, diffSlots } from './slot-probe.js';
 import { detectEffectConflicts, diffStringMap } from './theme-token-probe.js';
 import { ensureDir, makeRunId } from './util.js';
@@ -156,13 +157,31 @@ export async function runMatrix(options = {}) {
       && conflicts.tokens.length === 0
       && conflicts.layers.length === 0
       && classification.summary['high-conflict'].length === 0,
-    runs: runs.map((run) => ({ id: run.id, ok: run.report.ok, runDir: run.report.runDir })),
+    runs: runs.map((run) => ({
+      id: run.id,
+      ok: run.report.ok,
+      runDir: run.report.runDir,
+      screenshots: run.report.artifacts?.screenshots ?? {},
+    })),
     compared,
     conflicts,
     classification,
     root,
   };
-  fs.writeFileSync(path.join(root, 'matrix.json'), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
-  fs.writeFileSync(path.join(root, 'matrix.md'), renderMatrixMarkdown(result), 'utf8');
+  result.artifacts = {
+    root,
+    matrixJson: path.join(root, 'matrix.json'),
+    matrixMd: path.join(root, 'matrix.md'),
+    ...(options.html === false ? {} : { matrixHtml: path.join(root, 'matrix.html') }),
+  };
+  fs.writeFileSync(result.artifacts.matrixJson, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(result.artifacts.matrixMd, renderMatrixMarkdown(result), 'utf8');
+  if (options.html !== false) {
+    try {
+      writeHtmlReport(root, result, { matrix: true });
+    } catch (error) {
+      result.artifacts.matrixHtmlError = String(error);
+    }
+  }
   return result;
 }

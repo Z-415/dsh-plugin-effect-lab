@@ -11,6 +11,7 @@ export async function runMatrixCommand(options) {
     runtimePath: options.runtimePath,
     browserPath: options.browserPath,
     online: options.online === true,
+    html: options.html,
   });
   if (options.json) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

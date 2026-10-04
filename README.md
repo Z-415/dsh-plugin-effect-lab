@@ -73,6 +73,11 @@ mode also bridges and reports the desktop-only surfaces (window controls,
 clipboard, directory picker, host paths, notifications); the directory picker
 is stubbed so nothing blocks on a native dialog.
 
+Every run also writes a self-contained `report.html` (checks + embedded
+screenshots + diffs) next to `report.md`; `--no-html` skips it. `lab shell
+--show` renders the real Electron window on screen (`--show-hold <ms>`,
+default 6000), and `--keep-open` leaves it open until you close it.
+
 The lab never starts the real `desktop` profile, never reads credentials,
 sessions, or settings, and never installs a plugin outside its own temp home.
 
@@ -91,6 +96,8 @@ node bin/lab.js matrix --config .\fixtures\matrix\effect-conflict.json
 node bin/lab.js matrix --config .\fixtures\matrix\theme-conflict.json --online
 node bin/lab.js shell
 node bin/lab.js shell --plugin dsh-plugin-wallpaper-engine@1.2.0 --online
+node bin/lab.js shell --show                          # real window, 6s hold
+node bin/lab.js shell --keep-open                     # close it yourself
 node bin/lab.js shell --no-compare-web
 node bin/lab.js scan --log .\artifacts\<run>\boot.err.log
 node bin/lab.js clean --dry-run

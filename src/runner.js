@@ -18,6 +18,7 @@ import {
   readFixtureSpec,
 } from './fixture-manager.js';
 import { hasFatal, scanLogs, scanNoise, summarize } from './log-scanner.js';
+import { writeHtmlReport } from './html-report.js';
 import { describeAgentCoverage, scanForCredentials } from './model-coverage.js';
 import { startMockLlmServer } from './mock-llm-server.js';
 import { installProfilePlugins } from './plugin-install.js';
@@ -538,8 +539,18 @@ export async function runLab(options = {}) {
       mockLlm: path.join(runDir, 'mock-llm.json'),
       screenshots: report.browser?.screenshots ?? {},
     };
+    if (options.html !== false) {
+      report.artifacts.reportHtml = path.join(runDir, 'report.html');
+    }
     writeJson(runDir, 'report.json', report);
     writeText(runDir, 'report.md', renderReportMarkdown(report));
+    if (options.html !== false) {
+      try {
+        writeHtmlReport(runDir, report);
+      } catch (error) {
+        errors.push(`html report failed: ${String(error)}`);
+      }
+    }
   }
   return report;
 }

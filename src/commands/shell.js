@@ -14,6 +14,10 @@ export async function runShellCommand(options) {
     installTimeoutMs: options.installTimeoutMs,
     assertTokens: options.assertTokens,
     compareWeb: options.compareWeb,
+    html: options.html,
+    show: options.show,
+    keepOpen: options.keepOpen,
+    showHoldMs: options.showHoldMs,
     browserPath: options.browserPath,
     browserTimeoutMs: options.browserTimeoutMs,
   });

@@ -16,6 +16,7 @@ const VALUE_FLAGS = new Set([
   'assert-body-attr',
   'min-slots',
   'fixture-variant',
+  'show-hold',
   'artifacts',
   'browser',
   'boot-timeout',
@@ -34,6 +35,7 @@ const REPEATABLE = new Set(['plugin', 'with', 'screenshot', 'assert-token', 'ass
 const BOOLEAN_FLAGS = new Set([
   'json', 'offline', 'online', 'no-fixture', 'mock-model', 'strict-console',
   'no-cache', 'no-compare-web', 'dry-run', 'help', 'h',
+  'no-html',
 ]);
 
 /**
@@ -125,6 +127,7 @@ export async function main(argv) {
         browserTimeoutMs: numberFlag(flags, 'browser-timeout'),
         installTimeoutMs: numberFlag(flags, 'install-timeout'),
         strictConsole: flags['strict-console'] === true,
+        html: flags['no-html'] !== true,
       });
     case 'capture':
       return runCaptureCommand({
@@ -142,6 +145,7 @@ export async function main(argv) {
         browserTimeoutMs: numberFlag(flags, 'browser-timeout'),
         installTimeoutMs: numberFlag(flags, 'install-timeout'),
         strictConsole: flags['strict-console'] === true,
+        html: flags['no-html'] !== true,
       });
     case 'scan':
       return runScanCommand({ ...common, logs: flags.log ?? [] });
@@ -157,6 +161,7 @@ export async function main(argv) {
         configFile: flags.config,
         online: flags.online === true,
         artifactsRoot: flags.artifacts,
+        html: flags['no-html'] !== true,
       });
     case 'shell':
       return runShellCommand({
@@ -173,6 +178,10 @@ export async function main(argv) {
         assertTokens: flags['assert-token'] ?? ['--dsw-alias-bg-base'],
         compareWeb: flags['no-compare-web'] !== true,
         browserTimeoutMs: numberFlag(flags, 'browser-timeout'),
+        html: flags['no-html'] !== true,
+        show: flags.show === true || flags['keep-open'] === true,
+        keepOpen: flags['keep-open'] === true,
+        showHoldMs: numberFlag(flags, 'show-hold'),
       });
     default:
       process.stderr.write(`unknown command: ${command}\n\n${helpText()}`);
@@ -191,12 +200,13 @@ Usage:
              [--min-slots <n>]
              [--fixture-variant default|empty|long]
              [--artifacts <dir>] [--browser <exe>] [--no-fixture]
-             [--mock-model] [--route /plugin/health] [--json]
+             [--mock-model] [--route /plugin/health] [--no-html] [--json]
   lab capture [same options as verify]
   lab matrix --config <file.json> [--online] [--json]
   lab shell [--no-cache] [--no-compare-web] [--shell-timeout <ms>]
             [--plugin <spec>] [--with <spec>] [--offline|--online] [--no-fixture]
             [--fixture-variant default|empty|long]
+            [--show] [--keep-open] [--show-hold <ms>] [--no-html]
             [--browser <exe>] [--browser-timeout <ms>] [--json]
   lab scan --log <boot.err.log> [--json]
   lab clean [--dry-run] [--older-than <minutes>] [--json]
@@ -207,6 +217,9 @@ fixture is enabled by default; pass --no-fixture to disable it. --mock-model
 starts a loopback OpenAI-compatible provider for a real streamed tool turn.
 lab shell boots the same isolated Host, opens it once in headless Edge and once
 through a minimal Electron shell, then diffs DOM slots, body attributes, and
---dsw-* tokens. Pass --no-compare-web to skip the Edge baseline.
+--dsw-* tokens. Pass --no-compare-web to skip the Edge baseline. --show makes
+the Electron window visible (--show-hold <ms>, default 6000); --keep-open keeps
+it open until you close it, then cleans up. Every run also writes an HTML
+report next to report.md; pass --no-html to skip it.
 `;
 }

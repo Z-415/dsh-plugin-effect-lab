@@ -4,6 +4,7 @@ import { bootWeb } from '../boot-supervisor.js';
 import { openUi } from '../browser-driver.js';
 import { snapshotLabResidue, verifyNoResidue } from '../cleanup.js';
 import { evaluateDomAssertions } from '../dom-assertions.js';
+import { writeHtmlReport } from '../html-report.js';
 import { defaultArtifactsRoot } from '../config.js';
 import { createIsolatedHome } from '../home-manager.js';
 import { mintAuthCookie } from '../port-and-token.js';
@@ -40,6 +41,7 @@ export async function runShell(options = {}) {
     ok: false,
     mode: 'shell',
     runId,
+    runDir,
     startedAt: nowIso(),
     finishedAt: null,
     runtime: null,
@@ -210,6 +212,9 @@ export async function runShell(options = {}) {
       resultFile,
       screenshotFile,
       fixtureDir: fixtureWorkspace ?? null,
+      show: options.show === true || options.keepOpen === true,
+      keepOpen: options.keepOpen === true,
+      showHoldMs: options.showHoldMs ?? 6000,
       assertTokens: options.assertTokens ?? ['--dsw-alias-bg-base'],
     }, null, 2)}\n`, 'utf8');
 
@@ -218,7 +223,8 @@ export async function runShell(options = {}) {
       env: { DSH_LAB_SHELL_CONFIG: configFile },
     });
     addCheck(checks, 'shell-launched', Boolean(shellProc.pid), `pid ${shellProc.pid}`);
-    const deadline = Date.now() + (options.shellTimeoutMs ?? 150_000);
+    const defaultShellTimeout = options.keepOpen ? 30 * 60_000 : 150_000;
+    const deadline = Date.now() + (options.shellTimeoutMs ?? defaultShellTimeout);
     while (Date.now() < deadline) {
       if (fs.existsSync(resultFile)) break;
       if (shellProc.child.exitCode !== null) break;
@@ -433,10 +439,24 @@ export async function runShell(options = {}) {
       webDom: path.join(runDir, 'dom/web-dom.json'),
       shellDom: path.join(runDir, 'dom/shell-dom.json'),
       shellVsWeb: path.join(runDir, 'dom/shell-vs-web.json'),
+      screenshots: {
+        'web-baseline': path.join(runDir, 'screenshots', 'web-baseline.png'),
+        shell: path.join(runDir, 'screenshots', 'shell.png'),
+      },
     };
+    if (options.html !== false) {
+      report.artifacts.reportHtml = path.join(runDir, 'report.html');
+    }
     writeJson(runDir, 'runtime.json', report.runtime);
     writeJson(runDir, 'report.json', report);
     writeText(runDir, 'report.md', renderReportMarkdown(report));
+    if (options.html !== false) {
+      try {
+        writeHtmlReport(runDir, report);
+      } catch (error) {
+        errors.push(`html report failed: ${String(error)}`);
+      }
+    }
   }
   return report;
 }

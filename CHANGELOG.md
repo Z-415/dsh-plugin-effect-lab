@@ -208,3 +208,22 @@ Final suite: unit 77/77, integration 9/9.
   host paths resolved, notification recorded and suppressed.
 
 Final suite: unit 83/83, integration 11/11.
+
+## 0.1.0 - 2026-10-04 (HTML reports and a visible shell window)
+
+### Added
+
+- `src/html-report.js`: self-contained `report.html` for every run (checks with
+  PASS/FAIL/INFO badges, screenshots embedded as data URIs, shell-vs-web diff,
+  DOM probe, plugin findings, agent coverage, cleanup) and `matrix.html` for
+  matrix runs (classification + conflicts). `--no-html` skips it.
+- `lab shell --show` renders the real Electron window on screen with a hold
+  (default 6000 ms, `--show-hold <ms>`), and `--keep-open` leaves it open until
+  you close it, then writes the result and cleans up.
+
+### Fixed
+
+- The shell report had no `runDir`/`screenshots` entries, so its HTML report
+  silently embedded nothing.
+
+Final suite: unit 87/87, integration 11/11.

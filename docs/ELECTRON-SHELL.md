@@ -96,7 +96,14 @@ keeps client plugins loadable without re-implementing the host's
 node bin/lab.js shell                 # Edge baseline + Electron shell + diff
 node bin/lab.js shell --no-compare-web
 node bin/lab.js shell --plugin dsh-plugin-wallpaper-engine@1.2.0 --online
+node bin/lab.js shell --show          # real window on screen, 6s hold
+node bin/lab.js shell --keep-open      # leave it open; close it to finish
 ```
+
+By default the window renders at `opacity: 0` so automation stays invisible.
+`--show` sets it to a normal window (and holds `--show-hold <ms>`, default
+6000, before closing); `--keep-open` waits until you close it, then writes the
+result and cleans up the isolated home.
 
 `lab shell` writes `artifacts/<run-id>/dom/{web-dom.json,shell-dom.json,shell-vs-web.json}`
 plus `screenshots/{web-baseline.png,shell.png}` and
