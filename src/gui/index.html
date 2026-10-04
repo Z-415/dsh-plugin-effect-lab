@@ -37,7 +37,7 @@
     <h1>DSH Plugin Effect Lab</h1>
     <div class="sub" id="env">正在读取环境…</div>
   </header>
-  <main>
+  <main id="root">
     <div class="group">
       <h2>自定义插件 / 持久 profile</h2>
       <div class="row">
@@ -104,12 +104,13 @@
   const status = document.getElementById('status');
   const hint = document.getElementById('hint');
   const stopBtn = document.getElementById('stop');
-  const buttons = [...document.querySelectorAll('button')].filter((b) => !['stop', 'report', 'artifacts'].includes(b.id));
+  const allButtons = [...document.querySelectorAll('button')].filter((b) => !['stop', 'report', 'artifacts'].includes(b.id));
+  const presetButtons = [...document.querySelectorAll('button[data-args]')];
   const pluginInput = document.getElementById('plugin');
   const profileInput = document.getElementById('profile');
 
   function setBusy(busy, label) {
-    buttons.forEach((b) => { b.disabled = busy; });
+    allButtons.forEach((b) => { b.disabled = busy; });
     stopBtn.disabled = !busy;
     dot.className = 'dot' + (busy ? ' run' : '');
     status.textContent = label || (busy ? '运行中' : '空闲');
@@ -140,16 +141,14 @@
     const profile = profileInput.value.trim();
     return profile ? [...args, '--profile-lab', profile] : args;
   }
-  function requirePlugin() {
-    const spec = pluginInput.value.trim();
-    if (!spec) {
-      append('\n[gui] 先在上面的输入框填一个插件：npm 包名@版本，或本地目录 / tgz 路径\n');
-      return null;
-    }
-    return spec;
+  function pluginField() {
+    return pluginInput.value.trim();
+  }
+  function noteNoPlugin() {
+    append('[gui] 插件输入框是空的：这次不装新插件，直接用当前环境（一次性空环境，或 profile 里已装的插件）。\n');
   }
 
-  for (const button of buttons) {
+  for (const button of presetButtons) {
     button.addEventListener('click', () => {
       const args = button.dataset.args.split('|');
       runWithArgs(args, args.join(' '));
@@ -157,23 +156,29 @@
   }
 
   document.getElementById('runVerifyPlugin').addEventListener('click', () => {
-    const spec = requirePlugin();
-    if (!spec) return;
-    runWithArgs(withProfile(['verify', '--plugin', spec, networkFlag(spec), '--screenshot', 'home', '--screenshot', 'settings']), `verify · ${spec}`);
+    const spec = pluginField();
+    if (!spec) noteNoPlugin();
+    const pluginArgs = spec ? ['--plugin', spec, networkFlag(spec)] : [];
+    runWithArgs(withProfile(['verify', ...pluginArgs, '--screenshot', 'home', '--screenshot', 'settings']), spec ? `verify · ${spec}` : 'verify（基线）');
   });
   document.getElementById('runShellPlugin').addEventListener('click', () => {
-    const spec = requirePlugin();
-    if (!spec) return;
-    runWithArgs(withProfile(['shell', '--no-compare-web', '--plugin', spec, networkFlag(spec), '--keep-open']), `shell keep-open · ${spec}`);
+    const spec = pluginField();
+    if (!spec) noteNoPlugin();
+    const pluginArgs = spec ? ['--plugin', spec, networkFlag(spec)] : [];
+    runWithArgs(withProfile(['shell', '--no-compare-web', ...pluginArgs, '--keep-open']), spec ? `shell keep-open · ${spec}` : 'shell keep-open（当前环境）');
   });
   document.getElementById('runShellPluginTimed').addEventListener('click', () => {
-    const spec = requirePlugin();
-    if (!spec) return;
-    runWithArgs(withProfile(['shell', '--no-compare-web', '--plugin', spec, networkFlag(spec), '--show', '--show-hold', '20000']), `shell 20s · ${spec}`);
+    const spec = pluginField();
+    if (!spec) noteNoPlugin();
+    const pluginArgs = spec ? ['--plugin', spec, networkFlag(spec)] : [];
+    runWithArgs(withProfile(['shell', '--no-compare-web', ...pluginArgs, '--show', '--show-hold', '20000']), spec ? `shell 20s · ${spec}` : 'shell 20s（当前环境）');
   });
   document.getElementById('runMatrixPlugin').addEventListener('click', () => {
-    const spec = requirePlugin();
-    if (!spec) return;
+    const spec = pluginField();
+    if (!spec) {
+      append('[gui] 先在插件输入框填第一个插件，再用「和另一个插件一起验证」。\n');
+      return;
+    }
     const other = window.prompt('要和它一起验证的第二个插件（包名@版本 或本地路径）：');
     if (!other) return;
     runWithArgs(withProfile([
