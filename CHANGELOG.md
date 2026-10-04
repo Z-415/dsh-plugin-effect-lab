@@ -232,8 +232,8 @@ Final suite: unit 87/87, integration 11/11.
 
 ### Added
 
-- `lab gui`: copies the official Electron runtime once into
-  `%LOCALAPPDATA%\dsh-plugin-effect-lab\gui-<version>\` (renamed to
+- `lab gui`: copies the official Electron runtime once into the project's
+  `gui-runtime\gui-<version>\` (renamed to
   `DSH Plugin Effect Lab.exe`) and opens a desktop launcher. `--install-shortcut`
   drops a Desktop shortcut, `--rebuild` re-copies, `--no-open` only builds.
 - `src/gui/{main.js,preload.js,index.html}`: buttons for doctor / verify /
@@ -249,5 +249,14 @@ Final suite: unit 87/87, integration 11/11.
 - Runs looked like a hang because nothing was printed until the end; `verify`,
   `capture`, and `shell` now stream `[lab] ...` progress lines, and
   `--show`/`--keep-open` centre, focus, and keep the window on top.
+- Double-clicking the GUI shortcut crashed with
+  `ERR_INVALID_ARG_TYPE ... Received undefined`: the launcher only accepted a
+  config passed through `DSH_LAB_GUI_CONFIG` by `lab gui`. It now also reads
+  `gui-config.json` next to `main.js` and shows a readable dialog when neither
+  exists.
+- The runtime was built under `%LOCALAPPDATA%`, which a packaged host (the
+  Codex desktop app) redirects into its own MSIX sandbox, so the Desktop
+  shortcut pointed at a path a normal double-click could not use. The default
+  runtime home is now the project's `gui-runtime/` (git-ignored).
 
 Final suite: unit 90/90, integration 11/11.

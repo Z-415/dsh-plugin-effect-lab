@@ -27,10 +27,13 @@ export async function runGuiCommand(options = {}) {
   const gui = await buildGuiRuntime(runtime.installDir, { force: options.rebuild === true });
   const userDataDir = ensureDir(path.join(gui.dir, 'userdata'));
   const configFile = path.join(userDataDir, 'gui-config.json');
-  fs.writeFileSync(configFile, `${JSON.stringify({
+  const config = {
     repo: path.resolve(process.cwd()),
     userDataDir,
-  }, null, 2)}\n`, 'utf8');
+  };
+  fs.writeFileSync(configFile, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+  // Also next to the app, so double-clicking the exe works with no env vars.
+  fs.writeFileSync(path.join(gui.appDir, 'gui-config.json'), `${JSON.stringify(config, null, 2)}\n`, 'utf8');
 
   let shortcut = null;
   if (options.installShortcut === true) {

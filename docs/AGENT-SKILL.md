@@ -72,9 +72,13 @@ An agent using this tool should:
     desktop.
 27. prefer `lab gui` when the user wants to drive the lab with a mouse. It is a
     thin launcher: every button runs the same `bin/lab.js` command, so behavior
-    and safety are identical to the CLI. Its copied runtime lives in
-    `%LOCALAPPDATA%\dsh-plugin-effect-lab\gui-<version>` (override with
-    `DSH_LAB_GUI_HOME`), and the official install is only read.
+    and safety are identical to the CLI. Its copied runtime lives in the
+    project's `gui-runtime\gui-<version>` (override with `DSH_LAB_GUI_HOME`),
+    and the official install is only read. Do not build it under
+    `%LOCALAPPDATA%`: a packaged host such as the Codex desktop app redirects
+    that into its own MSIX sandbox and the Desktop shortcut then fails.
+    The launcher reads `DSH_LAB_GUI_CONFIG`, or `gui-config.json` next to
+    `main.js` for a plain double-click.
 
 Do not attach large screenshots to a model context. `artifacts/**/screenshots`
 are evidence for humans; machine decisions come from the DOM/token JSON.

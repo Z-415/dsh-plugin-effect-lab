@@ -1,4 +1,5 @@
 node_modules/
 artifacts/
+gui-runtime/
 .reference-repos/
 *.log

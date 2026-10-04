@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { COPY_DIRS, COPY_FILES } from '../electron-shell/runtime-builder.js';
@@ -10,11 +9,15 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const GUI_EXE_NAME = 'DSH Plugin Effect Lab.exe';
 export const GUI_APP_FILES = ['main.js', 'preload.js', 'index.html'];
 
-/** Persistent (not temp) home for the copied runtime, under LOCALAPPDATA. */
+/**
+ * Home for the copied runtime. It deliberately lives *inside the project*
+ * rather than under %LOCALAPPDATA%: the lab is often run from a packaged host
+ * (for example the Codex app), where %LOCALAPPDATA% is redirected into that
+ * package's sandbox and a Desktop shortcut to it cannot be opened normally.
+ */
 export function guiRuntimeBase() {
   if (process.env.DSH_LAB_GUI_HOME) return path.resolve(process.env.DSH_LAB_GUI_HOME);
-  const base = process.env.LOCALAPPDATA || process.env.APPDATA || os.homedir();
-  return path.join(base, 'dsh-plugin-effect-lab');
+  return path.resolve(here, '..', '..', 'gui-runtime');
 }
 
 export function guiRuntimeDir(officialInstallDir) {

@@ -9,12 +9,40 @@
  * cannot bypass the lab's isolation rules.
  */
 
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const { spawnSync, spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const config = JSON.parse(fs.readFileSync(process.env.DSH_LAB_GUI_CONFIG, 'utf8'));
+/**
+ * The GUI is launched both by `lab gui` (which sets DSH_LAB_GUI_CONFIG) and by
+ * double-clicking the shortcut / exe (which sets nothing). Fall back to the
+ * config written next to this file at build time, and fail with a readable
+ * dialog instead of an uncaught exception.
+ */
+function loadConfig() {
+  const candidates = [
+    process.env.DSH_LAB_GUI_CONFIG,
+    path.join(__dirname, 'gui-config.json'),
+  ].filter(Boolean);
+  for (const file of candidates) {
+    try {
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  dialog.showErrorBox(
+    'DSH Plugin Effect Lab',
+    'Cannot read the GUI config (gui-config.json).\n\n'
+      + 'Rebuild it from the project:\n    node bin/lab.js gui\n\n'
+      + `Looked in:\n${candidates.join('\n')}`,
+  );
+  process.exit(1);
+  return null;
+}
+
+const config = loadConfig();
 const repo = config.repo;
 const artifactsDir = path.join(repo, 'artifacts');
 const logFile = path.join(config.userDataDir, 'gui.log');

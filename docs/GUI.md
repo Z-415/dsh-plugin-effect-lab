@@ -16,18 +16,34 @@ Or double-click `启动实验台.cmd` in the project root, which runs the same
 command.
 
 The first build copies the official Electron runtime (about 346 MB on
-0.2.0-rc.2) into:
+0.2.0-rc.2) into the project:
 
 ```text
-%LOCALAPPDATA%\dsh-plugin-effect-lab\gui-<electron-version>\
+<project>\gui-runtime\gui-<electron-version>\
   DSH Plugin Effect Lab.exe      <- renamed copy of the official Electron exe
-  resources\app\{main.js,preload.js,index.html}
+  resources\app\{main.js,preload.js,index.html,gui-config.json}
   userdata\gui-config.json
   userdata\gui.log
 ```
 
-The official install (`D:\DeepSeek Harness`) is only read. Set
-`DSH_LAB_GUI_HOME` to relocate the copied runtime.
+`gui-runtime/` is git-ignored. The official install (`D:\DeepSeek Harness`) is
+only read. Set `DSH_LAB_GUI_HOME` to relocate the copied runtime.
+
+## Troubleshooting
+
+**"A JavaScript error occurred in the main process ... Received undefined" on
+double-click.** The launcher needs `gui-config.json`. It reads
+`DSH_LAB_GUI_CONFIG` when started by `lab gui`, and otherwise falls back to the
+copy next to `main.js`. Run `node bin/lab.js gui` once from the project to write
+it, then the shortcut works.
+
+**The shortcut points into an app's private data.** Build the GUI from a normal
+terminal. Inside a packaged host (for example the Codex desktop app),
+`%LOCALAPPDATA%` is redirected into that package's sandbox, so an earlier
+version of this launcher could create the runtime in
+`...\Packages\<app>\LocalCache\Local\...`. The runtime now defaults to the
+project directory precisely to avoid that; `gui-runtime/` must be readable by
+your normal user account.
 
 ## What the buttons do
 
