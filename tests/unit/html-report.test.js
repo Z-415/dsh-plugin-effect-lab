@@ -33,13 +33,13 @@ test('renderHtmlReport renders checks, status, and escapes user text', () => {
   assert.equal(html.includes('class="status fail"'), true);
   assert.equal(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'), true);
   assert.equal(html.includes('<script>alert(1)</script>'), false);
-  assert.equal(html.includes('1 failing check(s), 3 total'), true);
+  assert.equal(html.includes('共 3 项检查，1 项未通过'), true);
 });
 
 test('renderHtmlReport marks informational checks as INFO, not FAIL', () => {
   const html = renderHtmlReport(baseReport);
-  assert.equal(html.includes('<span class="badge info">INFO</span>'), true);
-  assert.equal(html.includes('<span class="badge fail">FAIL</span>'), true);
+  assert.equal(html.includes('<span class="badge info">提示</span>'), true);
+  assert.equal(html.includes('<span class="badge fail">失败</span>'), true);
 });
 
 test('writeHtmlReport embeds screenshots as data URIs', () => {
@@ -65,9 +65,9 @@ test('renderMatrixHtmlReport lists classification and conflicts', () => {
     compared: [{ id: 'theme', classification: 'high-conflict', screenshotDiff: { changedRatio: 0.5 }, tokens: { changed: { '--x': {} }, added: {}, removed: {} }, bodyAttributes: { changed: {}, added: {}, removed: {} }, slots: { added: [] } }],
     conflicts: { tokens: [{ key: '--x', runs: ['theme', 'other'] }], bodyAttributes: [], layers: [], slots: [] },
   });
-  assert.equal(html.includes('Classification'), true);
+  assert.equal(html.includes('分类'), true);
   assert.equal(html.includes('high-conflict'), true);
-  assert.equal(html.includes('Conflicts'), true);
+  assert.equal(html.includes('冲突'), true);
   assert.equal(html.includes('--x'), true);
   assert.equal(html.includes('0.5'), true);
 });

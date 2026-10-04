@@ -28,7 +28,7 @@ test('isolated web boot captures UI, cleans up, and leaves the real home unchang
     assert.equal(report.browser.dom.slotCount > 0, true);
     const html = fs.readFileSync(path.join(report.runDir, 'report.html'), 'utf8');
     assert.equal(html.startsWith('<!doctype html>'), true);
-    assert.equal(html.includes('DSH Plugin Effect Lab'), true);
+    assert.equal(html.includes('DSH 插件效果实验舱'), true);
     assert.equal((html.match(/data:image\/png;base64,/g) ?? []).length >= 1, true);
     // Installing a local-directory plugin must never delete its source tree.
     assert.equal(fs.existsSync(path.join(seederPluginDir(), 'lib', 'index.js')), true, 'fixture source must survive the run');

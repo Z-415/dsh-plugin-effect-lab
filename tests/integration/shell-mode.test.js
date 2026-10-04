@@ -42,7 +42,7 @@ test('electron shell bridges the host stream and matches web DOM/tokens', {
     assert.equal(report.realHome.diff.ok, true);
     const html = fs.readFileSync(path.join(report.runDir, 'report.html'), 'utf8');
     assert.equal((html.match(/data:image\/png;base64,/g) ?? []).length >= 2, true, 'shell report must embed both screenshots');
-    assert.equal(html.includes('Desktop-only') || html.includes('Shell vs web'), true);
+    assert.equal(html.includes('壳 vs web') || html.includes('桌面专属'), true);
   } finally {
     fs.rmSync(artifactsRoot, { recursive: true, force: true });
   }

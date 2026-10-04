@@ -30,10 +30,10 @@ export async function runVerifyCommand(options) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else {
     process.stdout.write(`${winnerLine(report)}\n`);
-    process.stdout.write(`artifacts: ${report.runDir}\n`);
-    if (report.artifacts?.reportHtml) process.stdout.write(`html report: ${report.artifacts.reportHtml}\n`);
+    process.stdout.write(`产物目录: ${report.runDir}\n`);
+    if (report.artifacts?.reportHtml) process.stdout.write(`HTML 报告: ${report.artifacts.reportHtml}\n`);
     for (const check of report.checks) {
-      const label = check.pass ? 'PASS' : check.informational ? 'INFO' : 'FAIL';
+      const label = check.pass ? '通过' : check.informational ? '提示' : '失败';
       process.stdout.write(`[${label}] ${check.name}: ${check.detail ?? ''}\n`);
     }
   }
@@ -42,6 +42,6 @@ export async function runVerifyCommand(options) {
 
 function winnerLine(report) {
   return report.ok
-    ? `DSH Plugin Effect Lab: PASS (${report.runId})`
-    : `DSH Plugin Effect Lab: FAIL (${report.runId})`;
+    ? `DSH 插件效果实验舱: 通过 (${report.runId})`
+    : `DSH 插件效果实验舱: 未通过 (${report.runId})`;
 }

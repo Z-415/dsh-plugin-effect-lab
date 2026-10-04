@@ -20,29 +20,29 @@ function esc(value) {
 }
 
 function badge(pass, informational) {
-  if (pass) return '<span class="badge pass">PASS</span>';
-  if (informational) return '<span class="badge info">INFO</span>';
-  return '<span class="badge fail">FAIL</span>';
+  if (pass) return '<span class="badge pass">通过</span>';
+  if (informational) return '<span class="badge info">提示</span>';
+  return '<span class="badge fail">失败</span>';
 }
 
 function embedImage(file) {
   try {
     const stat = fs.statSync(file);
-    if (stat.size > MAX_EMBED_BYTES) return `<p class="muted">${esc(path.basename(file))} (${Math.round(stat.size / 1024)} kB, too large to embed)</p>`;
+    if (stat.size > MAX_EMBED_BYTES) return `<p class="muted">${esc(path.basename(file))}（${Math.round(stat.size / 1024)} kB，过大未内嵌）</p>`;
     const base64 = fs.readFileSync(file).toString('base64');
     return `<figure><img alt="${esc(path.basename(file))}" src="data:image/png;base64,${base64}"><figcaption>${esc(path.basename(file))} · ${Math.round(stat.size / 1024)} kB</figcaption></figure>`;
   } catch (error) {
-    return `<p class="muted">${esc(path.basename(file))} (unreadable: ${esc(error?.message ?? error)})</p>`;
+    return `<p class="muted">${esc(path.basename(file))}（无法读取：${esc(error?.message ?? error)}）</p>`;
   }
 }
 
 function table(headers, rows) {
-  if (!rows.length) return '<p class="muted">none</p>';
+  if (!rows.length) return '<p class="muted">无</p>';
   const head = headers.map((item) => `<th>${esc(item)}</th>`).join('');
   const body = rows.slice(0, MAX_TABLE_ROWS)
     .map((row) => `<tr>${row.map((cell) => `<td>${esc(cell)}</td>`).join('')}</tr>`)
     .join('');
-  const extra = rows.length > MAX_TABLE_ROWS ? `<p class="muted">… ${rows.length - MAX_TABLE_ROWS} more row(s) in report.json</p>` : '';
+  const extra = rows.length > MAX_TABLE_ROWS ? `<p class="muted">还有 ${rows.length - MAX_TABLE_ROWS} 行，完整内容见 report.json</p>` : '';
   return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>${extra}`;
 }
 
@@ -50,7 +50,7 @@ function checksTable(checks) {
   const rows = checks
     .map((check) => `<tr><td>${badge(check.pass, check.informational)}</td><td>${esc(check.name)}</td><td>${esc(check.detail ?? '')}</td></tr>`)
     .join('');
-  return `<table><thead><tr><th>result</th><th>check</th><th>detail</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table><thead><tr><th>结果</th><th>检查项</th><th>详情</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function diffRows(diff) {
@@ -80,8 +80,8 @@ export function renderHtmlReport(report = {}) {
   }
 
   const parts = [
-    '<!doctype html><html lang="en"><head><meta charset="utf-8">',
-    `<title>DSH Plugin Effect Lab - ${esc(report.runId ?? 'run')}</title>`,
+    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">',
+    `<title>DSH 插件效果实验舱 - ${esc(report.runId ?? 'run')}</title>`,
     `<style>
       :root { color-scheme: light dark; }
       body { font: 14px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; margin: 0; padding: 32px; background: #f7f8fa; color: #16181d; }
@@ -104,60 +104,60 @@ export function renderHtmlReport(report = {}) {
       figcaption { font-size: 12px; color: #6b7280; margin-top: 4px; }
       code { background: #f1f3f5; padding: 1px 4px; border-radius: 4px; }
     </style></head><body>`,
-    '<h1>DSH Plugin Effect Lab</h1>',
+    '<h1>DSH 插件效果实验舱</h1>',
     `<div class="summary">
-       <span class="status ${report.ok ? 'pass' : 'fail'}">${report.ok ? 'PASS' : 'FAIL'}</span>
-       <span>mode <code>${esc(report.mode ?? 'n/a')}</code></span>
-       <span>run <code>${esc(report.runId ?? 'n/a')}</code></span>
-       <span>dsh <code>${esc(report.runtime?.version ?? 'n/a')}</code></span>
+       <span class="status ${report.ok ? 'pass' : 'fail'}">${report.ok ? '通过' : '未通过'}</span>
+       <span>模式 <code>${esc(report.mode ?? 'n/a')}</code></span>
+       <span>运行 <code>${esc(report.runId ?? 'n/a')}</code></span>
+       <span>DSH <code>${esc(report.runtime?.version ?? 'n/a')}</code></span>
        <span>${esc(report.startedAt ?? '')} → ${esc(report.finishedAt ?? '')}</span>
      </div>`,
-    `<p class="muted">${failed.length} failing check(s), ${checks.length} total. Machine-readable detail is in <code>report.json</code>.</p>`,
+    `<p class="muted">共 ${checks.length} 项检查，${failed.length} 项未通过。机器可读详情见 <code>report.json</code>。</p>`,
   ];
 
   if (report.plugins?.length) {
-    parts.push(section('Plugins', table(['name', 'version', 'source', 'fixture', 'blockers'], report.plugins.map((plugin) => [
+    parts.push(section('插件', table(['名称', '版本', '来源', '夹具', '阻塞项'], report.plugins.map((plugin) => [
       plugin.name, plugin.version ?? '', plugin.source ?? '', plugin.fixture === true ? 'yes' : '', plugin.findingSummary?.blockers ?? 0,
     ]))));
   }
 
-  parts.push(section('Checks', checksTable(checks)));
+  parts.push(section('检查项', checksTable(checks)));
 
   if (report.signatureHits?.length) {
-    parts.push(section('Log signatures', table(['severity', 'id', 'root cause', 'fix'], report.signatureHits.map((hit) => [
+    parts.push(section('启动日志特征', table(['级别', '编号', '根因', '建议'], report.signatureHits.map((hit) => [
       hit.severity, hit.id, hit.rootCause ?? '', hit.fix ?? '',
     ]))));
   }
 
   if (screenshotFiles.length) {
-    parts.push(section('Screenshots', screenshotFiles.map(embedImage).join('')));
+    parts.push(section('截图', screenshotFiles.map(embedImage).join('')));
   }
 
   const shell = report.shell;
   if (shell?.shellVsWeb) {
     const diff = shell.shellVsWeb;
-    parts.push(section('Shell vs web', [
-      `<p>slots web=${esc(diff.counts?.slots?.web ?? '')} shell=${esc(diff.counts?.slots?.shell ?? '')};`
-        + ` tokens web=${esc(diff.counts?.tokens?.web ?? '')} shell=${esc(diff.counts?.tokens?.shell ?? '')}</p>`,
-      table(['axis', 'key', 'value'], [
+    parts.push(section('壳 vs web', [
+      `<p>slot 数 web=${esc(diff.counts?.slots?.web ?? '')} shell=${esc(diff.counts?.slots?.shell ?? '')}；`
+        + `token 数 web=${esc(diff.counts?.tokens?.web ?? '')} shell=${esc(diff.counts?.tokens?.shell ?? '')}</p>`,
+      table(['维度', '键', '值'], [
         ...diffRows(diff.tokens).map(([key, value]) => ['token', key, value]),
-        ...diffRows(diff.bodyAttributes).map(([key, value]) => ['body attribute', key, value]),
+        ...diffRows(diff.bodyAttributes).map(([key, value]) => ['body 属性', key, value]),
       ]),
-      `<p class="muted">desktop-only: ${esc((diff.desktopOnly?.hintedBodyAttributes ?? []).join(', ') || 'none')}</p>`,
+      `<p class="muted">桌面专属属性：${esc((diff.desktopOnly?.hintedBodyAttributes ?? []).join(', ') || '无')}</p>`,
     ].join('')));
   }
   if (shell?.screenshotDiff) {
-    parts.push(section('Screenshot diff', table(['field', 'value'], [
-      ['identical', String(shell.screenshotDiff.identical)],
-      ['dimensions match', String(shell.screenshotDiff.dimensionsMatch)],
-      ['changed ratio', String(shell.screenshotDiff.pixels?.changedRatio ?? 'n/a')],
+    parts.push(section('截图差异', table(['字段', '值'], [
+      ['是否完全一致', String(shell.screenshotDiff.identical)],
+      ['尺寸是否一致', String(shell.screenshotDiff.dimensionsMatch)],
+      ['像素变化比例', String(shell.screenshotDiff.pixels?.changedRatio ?? 'n/a')],
     ])));
   }
   if (report.browser?.dom) {
     const dom = report.browser.dom;
-    parts.push(section('DOM probe', [
-      `<p>slots=${esc(dom.slotCount)} tokens=${esc(dom.tokenCount)} slot errors=${esc(dom.slotErrors ?? 0)}</p>`,
-      table(['body attribute', 'value'], Object.entries(dom.bodyAttributes ?? {}).map(([key, value]) => [key, value])),
+    parts.push(section('DOM 探测', [
+      `<p>slot=${esc(dom.slotCount)} token=${esc(dom.tokenCount)} slot 错误=${esc(dom.slotErrors ?? 0)}</p>`,
+      table(['body 属性', '值'], Object.entries(dom.bodyAttributes ?? {}).map(([key, value]) => [key, value])),
     ].join('')));
   }
   if (report.pluginValidation?.entries?.length) {
@@ -167,27 +167,28 @@ export function renderHtmlReport(report = {}) {
         rows.push([entry.resolved?.name ?? 'plugin', finding.severity, finding.id, finding.message]);
       }
     }
-    parts.push(section('Plugin findings', table(['plugin', 'severity', 'id', 'message'], rows)));
+    parts.push(section('插件校验结果', table(['插件', '级别', '编号', '说明'], rows)));
   }
   if (report.agentCoverage) {
-    parts.push(section('Agent coverage', [
-      `<p>mode <code>${esc(report.agentCoverage.mode)}</code> · real model requests: <strong>${report.agentCoverage.realModelRequests === true}</strong></p>`,
-      `<p class="muted">not covered: ${esc((report.agentCoverage.uncovered ?? []).join('; '))}</p>`,
+    parts.push(section('模型 / 代理覆盖', [
+      `<p>模式 <code>${esc(report.agentCoverage.mode)}</code> · 是否发生真实模型请求：<strong>${report.agentCoverage.realModelRequests === true}</strong></p>`,
+      `<p class="muted">未覆盖：${esc((report.agentCoverage.uncovered ?? []).join('；'))}</p>`,
     ].join('')));
   }
   if (report.cleanup) {
-    parts.push(section('Cleanup', table(['field', 'value'], [
-      ['home removed', String(report.cleanup.homeRemoved)],
-      ['ports left', (report.cleanup.portsLeft ?? []).join(', ') || 'none'],
-      ['processes left', String(report.cleanup.processesLeft ?? 0)],
-      ['residue ok', String(report.cleanup.residue?.ok ?? 'n/a')],
+    parts.push(section('清理', table(['字段', '值'], [
+      ['临时 home 已删除', String(report.cleanup.homeRemoved)],
+      ['保留的 lab profile', String(report.cleanup.homeKept ?? false)],
+      ['残留端口', (report.cleanup.portsLeft ?? []).join(', ') || '无'],
+      ['残留进程', String(report.cleanup.processesLeft ?? 0)],
+      ['无残留校验', String(report.cleanup.residue?.ok ?? 'n/a')],
     ])));
   }
   if (report.settings) {
-    parts.push(section('Settings page', `<p>slots added: ${esc((report.settings.added ?? []).join(', ') || 'none')}</p>`));
+    parts.push(section('设置页', `<p>新增 slot：${esc((report.settings.added ?? []).join(', ') || '无')}</p>`));
   }
   if (report.errors?.length) {
-    parts.push(section('Errors', `<pre>${esc(report.errors.join('\n'))}</pre>`));
+    parts.push(section('错误', `<pre>${esc(report.errors.join('\n'))}</pre>`));
   }
 
   parts.push('</body></html>');
@@ -227,8 +228,8 @@ export function renderMatrixHtmlReport(result = {}) {
   });
   return html
     .replace('</body></html>', [
-      section('Classification', table(['run', 'class', 'screenshot changedRatio', 'tokens', 'body attrs', 'slots added'], rows)),
-      section('Conflicts', table(['axis', 'key', 'runs'], conflictRows)),
+      section('分类', table(['运行', '分类', '截图变化比例', 'token 变化', 'body 属性变化', '新增 slot'], rows)),
+      section('冲突', table(['维度', '键', '涉及运行'], conflictRows)),
       '</body></html>',
     ].join('\n'));
 }

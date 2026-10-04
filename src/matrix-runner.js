@@ -21,43 +21,43 @@ export function readMatrixConfig(file) {
 
 function renderMatrixMarkdown(result) {
   const lines = [
-    `# DSH Plugin Effect Lab matrix - ${result.matrixId}`,
+    `# DSH 插件效果实验舱 · 组合矩阵 - ${result.matrixId}`,
     '',
-    `- baseline: ${result.baselineId}`,
-    `- runs: ${result.runs.length}`,
-    `- ok: ${result.ok}`,
+    `- 基线: ${result.baselineId}`,
+    `- 运行数: ${result.runs.length}`,
+    `- 结论: ${result.ok ? '通过' : '未通过'}`,
     '',
-    '## Runs',
+    '## 运行',
     '',
   ];
-  for (const run of result.runs) lines.push(`- [${run.ok ? 'PASS' : 'FAIL'}] ${run.id}: ${run.runDir}`);
-  lines.push('', '## Compared to baseline', '');
+  for (const run of result.runs) lines.push(`- [${run.ok ? '通过' : '失败'}] ${run.id}: ${run.runDir}`);
+  lines.push('', '## 与基线的差异', '');
   for (const run of result.compared) {
     lines.push(`### ${run.id}`);
-    if (run.classification) lines.push(`- classification: ${run.classification}`);
-    lines.push(`- tokens changed: ${Object.keys(run.tokens.changed).length}, added: ${Object.keys(run.tokens.added).length}`);
-    lines.push(`- body attributes changed: ${Object.keys(run.bodyAttributes.changed).length}, added: ${Object.keys(run.bodyAttributes.added).length}`);
-    lines.push(`- layers changed: ${Object.keys(run.layers?.changed ?? {}).length}, added: ${Object.keys(run.layers?.added ?? {}).length}`);
-    lines.push(`- slots added: ${run.slots.added.length}, removed: ${run.slots.removed.length}`);
+    if (run.classification) lines.push(`- 分类: ${run.classification}`);
+    lines.push(`- token 变化: ${Object.keys(run.tokens.changed).length}，新增: ${Object.keys(run.tokens.added).length}`);
+    lines.push(`- body 属性变化: ${Object.keys(run.bodyAttributes.changed).length}，新增: ${Object.keys(run.bodyAttributes.added).length}`);
+    lines.push(`- 层叠变化: ${Object.keys(run.layers?.changed ?? {}).length}，新增: ${Object.keys(run.layers?.added ?? {}).length}`);
+    lines.push(`- slot 新增: ${run.slots.added.length}，缺失: ${run.slots.removed.length}`);
     if (run.screenshotDiff) {
-      lines.push(`- screenshot: identical=${run.screenshotDiff.identical === true} changedRatio=${run.screenshotDiff.changedRatio ?? 'n/a'}`);
+      lines.push(`- 截图: 完全一致=${run.screenshotDiff.identical === true} 像素变化比例=${run.screenshotDiff.changedRatio ?? 'n/a'}`);
     }
     for (const reason of run.classificationReasons ?? []) lines.push(`  - ${reason}`);
   }
-  lines.push('', '## Conflicts', '');
+  lines.push('', '## 冲突', '');
   if (!result.conflicts.tokens.length && !result.conflicts.bodyAttributes.length && !result.conflicts.slots.length && !result.conflicts.layers?.length) {
-    lines.push('- none detected');
+    lines.push('- 未检测到冲突');
   } else {
     for (const conflict of result.conflicts.tokens) lines.push(`- token ${conflict.key}: ${conflict.runs.join(', ')}`);
-    for (const conflict of result.conflicts.bodyAttributes) lines.push(`- body attribute ${conflict.key}: ${conflict.runs.join(', ')}`);
-    for (const conflict of result.conflicts.layers ?? []) lines.push(`- layer ${conflict.key} (z-index): ${conflict.runs.join(', ')}`);
+    for (const conflict of result.conflicts.bodyAttributes) lines.push(`- body 属性 ${conflict.key}: ${conflict.runs.join(', ')}`);
+    for (const conflict of result.conflicts.layers ?? []) lines.push(`- 层叠 ${conflict.key} (z-index): ${conflict.runs.join(', ')}`);
     for (const conflict of result.conflicts.slots) lines.push(`- slot ${conflict.slot}: ${conflict.runs.join(', ')}`);
   }
   if (result.classification) {
-    lines.push('', '## Classification', '');
-    lines.push(`- coexist: ${result.classification.summary.coexist.join(', ') || 'none'}`);
-    lines.push(`- manual-review: ${result.classification.summary['manual-review'].join(', ') || 'none'}`);
-    lines.push(`- high-conflict: ${result.classification.summary['high-conflict'].join(', ') || 'none'}`);
+    lines.push('', '## 分类', '');
+    lines.push(`- 可共存 (coexist): ${result.classification.summary.coexist.join(', ') || '无'}`);
+    lines.push(`- 需人工判断 (manual-review): ${result.classification.summary['manual-review'].join(', ') || '无'}`);
+    lines.push(`- 高冲突 (high-conflict): ${result.classification.summary['high-conflict'].join(', ') || '无'}`);
   }
   return `${lines.join('\n')}\n`;
 }
