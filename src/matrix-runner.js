@@ -4,6 +4,7 @@ import { defaultArtifactsRoot } from './config.js';
 import { classifyMatrixRuns } from './effect-classifier.js';
 import { diffLayers } from './electron-shell/shell-probe.js';
 import { runLab } from './runner.js';
+import { compareScreenshots } from './screenshot-diff.js';
 import { detectSlotConflicts, diffSlots } from './slot-probe.js';
 import { detectEffectConflicts, diffStringMap } from './theme-token-probe.js';
 import { ensureDir, makeRunId } from './util.js';
@@ -37,6 +38,9 @@ function renderMatrixMarkdown(result) {
     lines.push(`- body attributes changed: ${Object.keys(run.bodyAttributes.changed).length}, added: ${Object.keys(run.bodyAttributes.added).length}`);
     lines.push(`- layers changed: ${Object.keys(run.layers?.changed ?? {}).length}, added: ${Object.keys(run.layers?.added ?? {}).length}`);
     lines.push(`- slots added: ${run.slots.added.length}, removed: ${run.slots.removed.length}`);
+    if (run.screenshotDiff) {
+      lines.push(`- screenshot: identical=${run.screenshotDiff.identical === true} changedRatio=${run.screenshotDiff.changedRatio ?? 'n/a'}`);
+    }
     for (const reason of run.classificationReasons ?? []) lines.push(`  - ${reason}`);
   }
   lines.push('', '## Conflicts', '');
@@ -83,9 +87,9 @@ export async function runMatrix(options = {}) {
   }
   if (!runs.length) throw new Error('matrix config has no runs');
   const baseline = runs.find((run) => run.id === config.baselineId) ?? runs[0];
-  const compared = runs
-    .filter((run) => run !== baseline)
-    .map((run) => ({
+  const compared = [];
+  for (const run of runs.filter((candidate) => candidate !== baseline)) {
+    const entry = {
       id: run.id,
       ok: run.report.ok,
       runDir: run.report.runDir,
@@ -93,7 +97,24 @@ export async function runMatrix(options = {}) {
       bodyAttributes: diffStringMap(baseline.dom?.bodyAttributes, run.dom?.bodyAttributes),
       layers: diffLayers(baseline.dom?.layers ?? [], run.dom?.layers ?? []),
       slots: diffSlots(baseline.dom?.slots, run.dom?.slots),
-    }));
+    };
+    const before = baseline.report.artifacts?.screenshots?.home;
+    const after = run.report.artifacts?.screenshots?.home;
+    if (before && after && fs.existsSync(before) && fs.existsSync(after)) {
+      try {
+        const shot = await compareScreenshots({ before, after, browserPath: options.browserPath });
+        entry.screenshotDiff = {
+          identical: shot.identical,
+          dimensionsMatch: shot.dimensionsMatch,
+          changedRatio: shot.pixels?.changedRatio ?? null,
+          changedPixels: shot.pixels?.changedPixels ?? null,
+        };
+      } catch (error) {
+        entry.screenshotDiff = { error: String(error?.message ?? error) };
+      }
+    }
+    compared.push(entry);
+  }
   const conflictRuns = compared.map((run) => ({
     id: run.id,
     tokens: run.tokens,

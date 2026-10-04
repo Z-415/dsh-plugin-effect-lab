@@ -12,6 +12,9 @@ let mainWindow = null;
 app.setName('dsh-lab-electron-shell');
 app.setPath('userData', config.userDataDir);
 app.commandLine.appendSwitch('disable-gpu');
+// Keep capturePage() in CSS pixels so it matches the Edge CDP baseline
+// regardless of the host display scale (e.g. Windows 150%).
+app.commandLine.appendSwitch('force-device-scale-factor', '1');
 
 protocol.registerSchemesAsPrivileged([{
   scheme: 'dsh-app',
@@ -87,6 +90,7 @@ async function forwardWebRequest(request, hostUrl, cookie) {
 }
 
 async function probeDom(window) {
+  const assertedTokens = await readAssertedTokens(window);
   // `__DSH_TRANSPORT__` lives in the page's main world; the preload probe runs
   // in the isolated world, so read it here where it is visible.
   const mainWorldTransport = await window.webContents.executeJavaScript(`(() => {
@@ -102,7 +106,7 @@ async function probeDom(window) {
     'typeof globalThis.__dshLabShell?.collect === "function" ? globalThis.__dshLabShell.collect() : null',
   );
   if (fromPreload && typeof fromPreload === 'object') {
-    return { ...fromPreload, transport: mainWorldTransport, probedBy: 'preload' };
+    return mergeAssertedTokens({ ...fromPreload, transport: mainWorldTransport, probedBy: 'preload' }, assertedTokens);
   }
   const fallback = await window.webContents.executeJavaScript(`(() => {
     const slotNames = [...new Set([...document.querySelectorAll('[data-slot]')].map((el) => el.getAttribute('data-slot')))].sort();
@@ -141,7 +145,28 @@ async function probeDom(window) {
       tokenCount: Object.keys(tokens).length
     });
   })()`);
-  return { ...JSON.parse(fallback), transport: mainWorldTransport, probedBy: 'inline' };
+  return mergeAssertedTokens({ ...JSON.parse(fallback), transport: mainWorldTransport, probedBy: 'inline' }, assertedTokens);
+}
+
+/** Read caller-asserted custom properties, which may live only in inline styles. */
+async function readAssertedTokens(window) {
+  const wanted = Array.isArray(config.assertTokens) ? config.assertTokens : [];
+  if (!wanted.length) return {};
+  return window.webContents.executeJavaScript(`(() => {
+    const root = document.body ?? document.documentElement;
+    const computed = getComputedStyle(root);
+    const out = {};
+    for (const name of ${JSON.stringify(wanted)}) out[name] = computed.getPropertyValue(name).trim();
+    return out;
+  })()`);
+}
+
+function mergeAssertedTokens(snapshot, extra) {
+  const tokens = { ...(snapshot.tokens ?? {}) };
+  for (const [name, value] of Object.entries(extra ?? {})) {
+    if (tokens[name] === undefined) tokens[name] = value;
+  }
+  return { ...snapshot, tokens, tokenCount: Object.keys(tokens).length };
 }
 
 /** Wait until the slot count stops changing so shell and web probes agree. */
@@ -258,7 +283,12 @@ app.whenReady().then(async () => {
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
-    show: false,
+    // A fully hidden window does not composite on Windows, so capturePage()
+    // returns a blank surface. An opacity-0 visible window renders normally
+    // and stays invisible to the user.
+    show: true,
+    opacity: 0,
+    skipTaskbar: true,
     titleBarStyle: 'hidden',
     titleBarOverlay: { height: 40, color: '#ffffff', symbolColor: '#000000' },
     webPreferences: {

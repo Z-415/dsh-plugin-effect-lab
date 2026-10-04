@@ -15,7 +15,8 @@
   },
   "scripts": {
     "test": "node --test tests/unit/*.test.js",
-    "test:e2e": "node --test --test-concurrency=1 tests/integration/*.test.js"
+    "test:e2e": "node --test --test-concurrency=1 tests/integration/*.test.js",
+    "ci": "node scripts/ci.mjs"
   },
   "license": "MIT"
 }

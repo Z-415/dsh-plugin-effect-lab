@@ -1,0 +1,21 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # The integration suite needs the official DeepSeek Harness install and
+    # headless Edge, which only exist on the target machine. CI runs the unit
+    # suite everywhere and skips the integration suite when the runtime is
+    # missing (scripts/ci.mjs prints why).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      # Zero runtime dependencies: no install step is required.
+      - run: npm run ci

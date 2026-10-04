@@ -14,6 +14,8 @@ export { diffResidue, listLabResidue, snapshotLabResidue, verifyNoResidue } from
 export { describeAgentCoverage, scanForCredentials } from './model-coverage.js';
 export { classifyMatrixRuns, changedStringKeys, layerIndex } from './effect-classifier.js';
 export { collectSlotRegistrations, collectToolNames, findDeclarationConflicts, scanPluginDeclarations } from './declaration-scanner.js';
+export { installProfilePlugins } from './plugin-install.js';
+export { compareScreenshots, pngStats } from './screenshot-diff.js';
 export { runShell } from './electron-shell/shell-runner.js';
 export {
   DESKTOP_ATTRIBUTE_HINTS,

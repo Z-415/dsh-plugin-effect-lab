@@ -63,6 +63,14 @@ loopback auth.
   `window.__dshLabShell.collect()` (slots, `--dsw-*` / `--we-*` tokens, body
   and HTML attributes, title-bar geometry, desktop facts).
 - `shell-probe.js` normalizes a snapshot and diffs web mode against shell mode.
+- Plugins are installed into the isolated profile through the same
+  `installProfilePlugins` pipeline as `verify`, so `lab shell --plugin ...`
+  tests the plugin's effect inside the shell, not just the bare baseline.
+- `main.js` pins `force-device-scale-factor=1` and renders an opacity-0 window,
+  so `capturePage()` returns CSS-pixel-sized frames that actually composite
+  (a fully hidden window returns a blank surface on Windows).
+- `compareScreenshots` diffs the web baseline and the shell capture inside
+  headless Edge, returning an overall `changedRatio` and a 64x40 cell grid.
 
 Deviation from the official launcher: this lab serves the **host-rendered**
 `index.html` (which already contains the boot injection rows) instead of
@@ -87,12 +95,20 @@ keeps client plugins loadable without re-implementing the host's
 ```powershell
 node bin/lab.js shell                 # Edge baseline + Electron shell + diff
 node bin/lab.js shell --no-compare-web
+node bin/lab.js shell --plugin dsh-plugin-wallpaper-engine@1.2.0 --online
 ```
 
 `lab shell` writes `artifacts/<run-id>/dom/{web-dom.json,shell-dom.json,shell-vs-web.json}`
-plus `screenshots/{web-baseline.png,shell.png}`. The measured baseline is
+plus `screenshots/{web-baseline.png,shell.png}` and
+`dom/shell-screenshot-diff.json`. The measured baseline is
 identical in both modes: 37 slots, 403 tokens, `--dsw-alias-bg-base: #fff`,
 body attributes `style`, and no `--dsw-*` value change.
+
+For the unmodified profile the two screenshots are pixel-identical
+(`identical: true`, `changedRatio: 0`). With
+`dsh-plugin-wallpaper-engine@1.2.0` the shell reports
+`data-we-adapter: desktop-official` where web mode reports `browser`, and the
+pixel diff is dominated by the plugin's random wallpaper choice.
 
 Two earlier observations are now explained rather than "fixed" in the launcher:
 

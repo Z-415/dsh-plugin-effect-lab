@@ -43,6 +43,7 @@ test('diffProbeSnapshots reports shell-only slots, tokens, and body attributes',
   assert.deepEqual(diff.desktopOnly.bodyAttributes, ['data-dsh-platform']);
   assert.deepEqual(diff.desktopOnly.htmlAttributes, ['data-dsh-shell']);
   assert.deepEqual(diff.desktopOnly.tokens, ['--dsw-desktop-only']);
+  assert.deepEqual(diff.desktopOnly.hintedBodyAttributes, ['data-dsh-platform']);
   assert.deepEqual(diff.transport.shell, { present: true, ownsHost: true, streamBaseUrl: 'http://127.0.0.1:1234' });
   // slots.added(1) + tokens.changed(1) + tokens.added(1) + bodyAttributes.added(1)
   assert.equal(diffMagnitude(diff), 4);
@@ -67,4 +68,14 @@ test('isConnectionLost matches only the stream trust-fence failure', () => {
   assert.equal(isConnectionLost('[connection] connection lost, retry #1'), true);
   assert.equal(isConnectionLost('[connection] generation listener threw'), false);
   assert.equal(isConnectionLost(undefined), false);
+});
+
+test('desktopOnly captures a changed body attribute value, not only added ones', () => {
+  const diff = diffProbeSnapshots(
+    { bodyAttributes: { 'data-we-adapter': 'browser' } },
+    { bodyAttributes: { 'data-we-adapter': 'desktop-official' } },
+  );
+  assert.deepStrictEqual(diff.desktopOnly.bodyAttributes, ['data-we-adapter']);
+  assert.deepStrictEqual(diff.desktopOnly.hintedBodyAttributes, ['data-we-adapter']);
+  assert.equal(diff.bodyAttributes.changed['data-we-adapter'].after, 'desktop-official');
 });

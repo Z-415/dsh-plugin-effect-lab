@@ -31,6 +31,10 @@ export async function runMatrixCommand(options) {
     if (!hasConflicts) {
       process.stdout.write('no conflicts detected\n');
     }
+    for (const run of result.compared) {
+      if (!run.screenshotDiff) continue;
+      process.stdout.write(`[SHOT] ${run.id}: identical=${run.screenshotDiff.identical === true} changedRatio=${run.screenshotDiff.changedRatio ?? 'n/a'}\n`);
+    }
     if (result.classification) {
       const { summary } = result.classification;
       process.stdout.write(`[CLASS] coexist: ${summary.coexist.join(', ') || 'none'}\n`);

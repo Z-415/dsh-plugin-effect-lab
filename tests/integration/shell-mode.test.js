@@ -31,8 +31,40 @@ test('electron shell bridges the host stream and matches web DOM/tokens', {
     assert.deepEqual(report.shell.shellVsWeb.slots.added, []);
     assert.deepEqual(report.shell.shellVsWeb.slots.removed, []);
     assert.equal(report.shell.shellVsWeb.tokens.changed['--dsw-alias-bg-base'], undefined);
+    assert.equal(report.shell.screenshotDiff?.dimensionsMatch, true);
+    assert.equal(
+      report.shell.screenshotDiff?.identical,
+      true,
+      'unmodified profile must be pixel-identical between shell and web',
+    );
     assert.equal(report.cleanup.homeRemoved, true);
     assert.deepEqual(report.cleanup.portsLeft, []);
+    assert.equal(report.realHome.diff.ok, true);
+  } finally {
+    fs.rmSync(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
+test('shell installs a plugin and reports its effect without shell-vs-web drift', {
+  skip: !enabled,
+  timeout: 300_000,
+}, async () => {
+  const artifactsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-shell-plugin-e2e-'));
+  try {
+    const report = await runShell({
+      compareWeb: true,
+      plugins: ['./fixtures/plugins/dup-slot-one'],
+      fixture: true,
+      assertTokens: ['--dsw-alias-bg-base', '--lab-dup-slot'],
+      artifactsRoot,
+    });
+    assert.equal(report.ok, true, JSON.stringify((report.checks ?? []).filter((check) => !check.pass), null, 2));
+    assert.equal(report.plugins.length >= 2, true, 'plugin + fixture seeder must both be reported');
+    assert.equal(report.shell.probe.tokens['--lab-dup-slot'], 'one');
+    assert.equal(report.shell.shellVsWeb.tokens.changed['--lab-dup-slot'], undefined);
+    assert.equal(report.shell.shellVsWeb.slots.added.length, 0);
+    assert.equal(report.cleanup.homeRemoved, true);
+    assert.equal(report.cleanup.residue?.ok, true);
     assert.equal(report.realHome.diff.ok, true);
   } finally {
     fs.rmSync(artifactsRoot, { recursive: true, force: true });

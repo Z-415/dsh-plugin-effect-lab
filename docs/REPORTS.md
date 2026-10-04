@@ -28,6 +28,7 @@ mock-llm.json
 dom/web-dom.json        headless Edge baseline for the same isolated host
 dom/shell-dom.json      Electron renderer probe (preload `__dshLabShell.collect()`)
 dom/shell-vs-web.json   slot / body-attribute / token diff, plus desktop-only keys
+dom/shell-screenshot-diff.json  web-baseline.png vs shell.png pixel diff
 screenshots/web-baseline.png
 screenshots/shell.png
 shell-result.json       raw shell result (DOM, console errors, page errors, settle)
@@ -56,6 +57,10 @@ shell-result.json       raw shell result (DOM, console errors, page errors, sett
 - `cleanup.residue`: `{ ok, checks, advisory, newHomes, portsStillListening }`.
   `isolated-root-removed` and `ports-released` gate `ok`; `no-new-lab-homes` is
   advisory because concurrent lab runs create their own homes.
+- `shell.screenshotDiff`: `{ identical, dimensionsMatch, pixels }` where
+  `pixels.changedRatio` is the fraction of pixels beyond a small threshold and
+  `pixels.cells` is a 64x40 per-cell change map. Matrix runs put the same
+  summary on each compared entry as `screenshotDiff`.
 
 Matrix runs also write `matrix.json` and `matrix.md` under
 `artifacts/<matrix-id>/`, with token, body-attribute, layer z-index, and slot

@@ -125,6 +125,22 @@ without also colliding; the classifier's manual-review path is unit-tested.
 A benign `Failed to load resource: 404` console entry from bloom is recorded as
 a note, not a conflict.
 
+### Screenshot difference
+
+`matrix` also diffs each run's `screenshots/home.png` against the baseline
+inside headless Edge (`artifacts/matrix-20261004T151001Z-32e126/`):
+
+| run | changedRatio |
+|---|---|
+| wallpaper-ui-tweaks | 0.0000 |
+| wallpaper-dream-skin | 0.7765 |
+| wallpaper-bloom | 0.8060 |
+
+`wallpaper-ui-tweaks` is visually identical to wallpaper-only (the PNG bytes
+differ because the wallpaper image is chosen per run, but no pixel crosses the
+threshold). dream-skin and bloom repaint the majority of the frame, matching
+their token conflicts.
+
 ## Bugs found and fixed while running C/D
 
 1. `--assert-token --dsw-alias-bg-base` was rejected by the CLI parser because

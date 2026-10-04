@@ -3,9 +3,12 @@ import path from 'node:path';
 import { bootWeb } from '../boot-supervisor.js';
 import { openUi } from '../browser-driver.js';
 import { snapshotLabResidue, verifyNoResidue } from '../cleanup.js';
+import { evaluateDomAssertions } from '../dom-assertions.js';
 import { defaultArtifactsRoot } from '../config.js';
 import { createIsolatedHome } from '../home-manager.js';
 import { mintAuthCookie } from '../port-and-token.js';
+import { FIXTURE_SESSION_ID, fixtureEnv } from '../fixture-manager.js';
+import { installProfilePlugins } from '../plugin-install.js';
 import { spawnTracked, stopTracked } from '../process-tree.js';
 import { writeMinimalProfile } from '../profile-builder.js';
 import { diffRealHome, snapshotRealHome } from '../real-home-guard.js';
@@ -13,6 +16,7 @@ import { copyIfExists, prepareArtifacts, renderReportMarkdown, writeJson, writeT
 import { locateRuntime, readRuntimeVersion } from '../runtime-locator.js';
 import { ensureDir, makeProfileName, makeRunId, nowIso, sleep, tail } from '../util.js';
 import { buildShellRuntime } from './runtime-builder.js';
+import { compareScreenshots } from '../screenshot-diff.js';
 import {
   diffMagnitude,
   diffProbeSnapshots,
@@ -40,6 +44,8 @@ export async function runShell(options = {}) {
     finishedAt: null,
     runtime: null,
     shell: null,
+    pluginValidation: null,
+    plugins: [],
     checks,
     errors,
     cleanup: { homeRemoved: null, portsLeft: [], processesLeft: 0 },
@@ -54,6 +60,7 @@ export async function runShell(options = {}) {
   let webProbe = null;
   let shellVsWeb = null;
   let residueBefore = null;
+  let shellScreenshotDiff = null;
   try {
     const runtime = locateRuntime(options.runtimePath);
     const version = await readRuntimeVersion(runtime);
@@ -70,6 +77,62 @@ export async function runShell(options = {}) {
     writeMinimalProfile(profileDir, { name: profileName });
     addCheck(checks, 'isolated-home', true, iso.home);
 
+    const fixtureEnabled = options.fixture !== false;
+    const pipeline = await installProfilePlugins({
+      runtime,
+      env: {
+        DSH_HOME: iso.home,
+        ...(iso.agents ? { DSH_AGENTS_HOME: iso.agents } : {}),
+        DSH_TELEMETRY_DISABLED: '1',
+        TEMP: iso.tmp,
+        TMP: iso.tmp,
+      },
+      profileDir,
+      profileName,
+      version: report.runtime.version,
+      plugins: [...(options.plugins ?? []), ...(options.withPlugins ?? [])],
+      fixture: fixtureEnabled,
+      fixtureRoot: iso.root,
+      online: options.online === true,
+      installTimeoutMs: options.installTimeoutMs,
+    });
+    addCheck(
+      checks,
+      'plugin-precheck',
+      pipeline.stage !== 'precheck',
+      pipeline.stage === 'precheck'
+        ? `${pipeline.summary.blockers.length} blocker(s)`
+        : `${pipeline.entries.length} package(s) checked`,
+    );
+    if (pipeline.stage === 'precheck') {
+      report.pluginValidation = pipeline.validation;
+      throw new Error(`plugin precheck failed: ${pipeline.summary.blockers.map((item) => `${item.plugin}:${item.id}`).join(', ')}`);
+    }
+    if (pipeline.install) {
+      writeText(runDir, 'install.log', `$ dsh ${pipeline.installArgs.join(' ')}\n\n${pipeline.install.stdout}\n${pipeline.install.stderr}`);
+      addCheck(
+        checks,
+        'plugin-install',
+        pipeline.stage !== 'install',
+        `exit ${pipeline.install.code}${pipeline.install.timedOut ? ' (timeout)' : ''}`,
+      );
+      if (pipeline.stage === 'install') {
+        throw new Error(`plugin install failed (exit ${pipeline.install.code})\n${tail(`${pipeline.install.stdout}\n${pipeline.install.stderr}`, 4000)}`);
+      }
+      addCheck(
+        checks,
+        'plugin-postcheck',
+        pipeline.summary.ok,
+        pipeline.summary.ok ? 'installed manifests are compatible' : `${pipeline.summary.blockers.length} blocker(s)`,
+      );
+    } else {
+      writeText(runDir, 'install.log', '(no plugins requested)\n');
+      addCheck(checks, 'plugin-install', true, 'no plugins requested');
+    }
+    report.pluginValidation = pipeline.validation;
+    report.plugins = pipeline.pluginList;
+    const fixtureWorkspace = pipeline.fixtureWorkspace;
+
     boot = await bootWeb({
       runtime,
       home: iso.home,
@@ -78,6 +141,9 @@ export async function runShell(options = {}) {
       profileName,
       tmpDir: iso.tmp,
       timeoutMs: options.bootTimeoutMs ?? 90_000,
+      env: fixtureEnabled
+        ? fixtureEnv({ enabled: true, sessionId: FIXTURE_SESSION_ID, cwd: fixtureWorkspace })
+        : fixtureEnv({ enabled: false }),
     });
     addCheck(checks, 'host-boot', Number(boot.port) > 0, `port ${boot.port}`);
     const auth = await mintAuthCookie(boot.url);
@@ -92,6 +158,7 @@ export async function runShell(options = {}) {
           artifactsDir: runDir,
           timeoutMs: options.browserTimeoutMs,
           browserPath: options.browserPath,
+          captureBeyondViewport: false,
         });
         webProbe = normalizeProbe(webBrowser.dom);
         writeJson(runDir, 'dom/web-dom.json', webProbe);
@@ -138,6 +205,7 @@ export async function runShell(options = {}) {
       userDataDir,
       resultFile,
       screenshotFile,
+      assertTokens: options.assertTokens ?? ['--dsw-alias-bg-base'],
     }, null, 2)}\n`, 'utf8');
 
     shellProc = spawnTracked(shell.exe, [], {
@@ -163,6 +231,12 @@ export async function runShell(options = {}) {
         Boolean(shellProbe.tokens['--dsw-alias-bg-base']),
         shellProbe.tokens['--dsw-alias-bg-base'] ?? 'empty',
       );
+      const shellAssertions = evaluateDomAssertions(shellProbe, {
+        tokens: options.assertTokens ?? ['--dsw-alias-bg-base'],
+      });
+      for (const check of shellAssertions.checks) {
+        checks.push({ ...check, name: `shell-${check.name}` });
+      }
 
       const connectionLost = (result.consoleErrors ?? []).filter(isConnectionLost);
       addCheck(
@@ -206,12 +280,37 @@ export async function runShell(options = {}) {
           checks,
           'shell-desktop-only',
           true,
-          `body=[${shellVsWeb.desktopOnly.bodyAttributes.join(', ')}]`
+          `hinted=[${(shellVsWeb.desktopOnly.hintedBodyAttributes ?? []).join(', ')}]`
+            + ` body=[${shellVsWeb.desktopOnly.bodyAttributes.join(', ')}]`
             + ` tokens=[${shellVsWeb.desktopOnly.tokens.slice(0, 12).join(', ')}]`,
           { informational: true },
         );
       }
       writeJson(runDir, 'dom/shell-dom.json', shellProbe);
+
+      const baselineShot = path.join(runDir, 'screenshots', 'web-baseline.png');
+      const shellShot = path.join(runDir, 'screenshots', 'shell.png');
+      if (webProbe && fs.existsSync(baselineShot) && fs.existsSync(shellShot)) {
+        try {
+          shellScreenshotDiff = await compareScreenshots({
+            before: baselineShot,
+            after: shellShot,
+            browserPath: options.browserPath,
+          });
+          writeJson(runDir, 'dom/shell-screenshot-diff.json', shellScreenshotDiff);
+          addCheck(
+            checks,
+            'shell-screenshot-diff',
+            true,
+            `identical=${shellScreenshotDiff.identical}`
+              + ` changedRatio=${(shellScreenshotDiff.pixels?.changedRatio ?? 0).toFixed(4)}`
+              + ` dimensionsMatch=${shellScreenshotDiff.dimensionsMatch}`,
+            { informational: true },
+          );
+        } catch (error) {
+          addCheck(checks, 'shell-screenshot-diff', false, String(error?.message ?? error), { informational: true });
+        }
+      }
     }
     const shellProbeForReport = result?.dom ? normalizeProbe(result.dom) : null;
     report.shell = {
@@ -224,6 +323,7 @@ export async function runShell(options = {}) {
       webSummary: webProbe ? summarizeProbe(webProbe) : null,
       shellVsWeb,
       diffMagnitude: shellVsWeb ? diffMagnitude(shellVsWeb) : null,
+      screenshotDiff: shellScreenshotDiff,
       stdout: tail(shellProc.getOutput().stdout, 4000),
       stderr: tail(shellProc.getOutput().stderr, 4000),
     };

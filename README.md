@@ -62,6 +62,11 @@ injection) is in [docs/PHASE5-RESULTS.md](docs/PHASE5-RESULTS.md).
 The DOM assertion DSL lives in `src/dom-assertions.js` and is driven by
 `--assert-token`, `--assert-slot`, `--assert-body-attr`, and `--min-slots`.
 
+Shell mode installs plugins too (`lab shell --plugin <spec>`), and compares the
+web baseline against the shell with both a DOM/token diff and a pixel diff
+(`dom/shell-screenshot-diff.json`). On an unmodified profile the two
+screenshots are pixel-identical.
+
 The lab never starts the real `desktop` profile, never reads credentials,
 sessions, or settings, and never installs a plugin outside its own temp home.
 
@@ -78,6 +83,7 @@ node bin/lab.js verify --plugin dsh-plugin-wallpaper-engine@1.2.0 --online --rou
 node bin/lab.js matrix --config .\fixtures\matrix\effect-conflict.json
 node bin/lab.js matrix --config .\fixtures\matrix\theme-conflict.json --online
 node bin/lab.js shell
+node bin/lab.js shell --plugin dsh-plugin-wallpaper-engine@1.2.0 --online
 node bin/lab.js shell --no-compare-web
 node bin/lab.js scan --log .\artifacts\<run>\boot.err.log
 node bin/lab.js clean --dry-run
@@ -108,6 +114,7 @@ The Electron shell evaluation is in
 ```powershell
 npm test
 $env:DSH_LAB_E2E='1'; npm run test:e2e
+npm run ci            # unit always; integration only when the runtime exists
 ```
 
 The integration test boots the official runtime in an isolated home, drives

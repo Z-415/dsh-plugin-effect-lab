@@ -133,3 +133,43 @@ Phase 4 (Electron shell) completed.
   residue checks.
 
 Final suite: unit 72/72, integration 8/8 (`docs/PHASE5-RESULTS.md`).
+
+## 0.1.0 - 2026-10-04 (shell plugins, screenshot diff, CI)
+
+### Added
+
+- `src/plugin-install.js`: the precheck -> `dsh plugin add` -> append bundles ->
+  postcheck pipeline shared by `verify` and `shell`. `lab shell` now accepts
+  `--plugin` / `--with` / `--online` / `--no-fixture`.
+- `src/screenshot-diff.js` + `browser-driver.evaluateOnce()`: pixel diff of two
+  PNGs inside headless Edge, returning `changedRatio` and a 64x40 cell grid.
+  Shell runs write `dom/shell-screenshot-diff.json`; matrix runs attach
+  `screenshotDiff` to each compared entry and print `[SHOT]` lines.
+- `scripts/ci.mjs` + `.github/workflows/ci.yml` + `npm run ci`: unit tests
+  always, doctor + integration tests when the official runtime is present.
+
+### Fixed
+
+- A fully hidden Electron window does not composite on Windows, so
+  `capturePage()` returned a near-white frame. The shell window is now visible
+  with `opacity: 0` and `skipTaskbar: true`, and
+  `force-device-scale-factor=1` pins captures to CSS pixels.
+- The preload probe ignored caller-asserted token names, so inline custom
+  properties such as `--lab-dup-slot` were missing from the shell snapshot.
+- The web DOM probe ran before the workspace/session interaction, so the
+  stability test saw 39/37/39 slot drift. The probe now runs after the
+  interactions and matches the captured conversation state.
+- `desktopOnly` only counted attributes absent from web; it now also reports
+  changed values, which surfaced `data-we-adapter: desktop-official` in the
+  shell versus `browser` in web mode.
+
+### Measured
+
+- Unmodified profile: shell and web screenshots are pixel-identical
+  (`identical: true`, `changedRatio: 0`).
+- `wallpaper-engine@1.2.0` in the shell: `--dsw-alias-bg-base: transparent`
+  in both modes, `data-we-adapter: desktop-official` (shell only).
+- Theme matrix screenshot diff: ui-tweaks 0.0000, dream-skin 0.7765,
+  bloom 0.8060.
+
+Final suite: unit 77/77, integration 9/9.

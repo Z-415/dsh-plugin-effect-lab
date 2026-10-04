@@ -15,16 +15,14 @@ import {
   FIXTURE_SESSION_ID,
   FIXTURE_SESSION_TITLE,
   fixtureEnv,
-  seederPluginDir,
 } from './fixture-manager.js';
 import { hasFatal, scanLogs, scanNoise, summarize } from './log-scanner.js';
 import { describeAgentCoverage, scanForCredentials } from './model-coverage.js';
 import { startMockLlmServer } from './mock-llm-server.js';
-import { postcheckPlugins, precheckPlugins, summarizePluginEntries } from './plugin-check.js';
+import { installProfilePlugins } from './plugin-install.js';
 import { mintAuthCookie } from './port-and-token.js';
 import { MOCK_API_KEY_ENV, MOCK_MODEL, MOCK_PROVIDER, writeMockProviderPatch } from './provider-patcher.js';
-import { appendBundles, detectAddedDependencies, writeMinimalProfile } from './profile-builder.js';
-import { runCommand } from './process-tree.js';
+import { writeMinimalProfile } from './profile-builder.js';
 import { diffRealHome, snapshotRealHome } from './real-home-guard.js';
 import {
   createSession,
@@ -44,7 +42,7 @@ import {
 } from './report-writer.js';
 import { locateRuntime, readRuntimeVersion } from './runtime-locator.js';
 import { probeRoutes } from './route-probe.js';
-import { makeProfileName, makeRunId, nowIso, readJson, sleep, tail } from './util.js';
+import { makeProfileName, makeRunId, nowIso, sleep, tail } from './util.js';
 
 function addCheck(checks, name, pass, detail, extra = {}) {
   const check = { name, pass: Boolean(pass), detail, ...extra };
@@ -154,74 +152,56 @@ export async function runLab(options = {}) {
     addCheck(checks, 'profile-minimal', true, path.join(profileDir, 'package.json'));
 
     const env = isolatedEnv(iso);
-    const manifestBefore = readJson(path.join(profileDir, 'package.json'));
     const fixtureEnabled = options.fixture !== false;
-    const fixtureWorkspace = (fixtureEnabled || options.mockModel) ? createFixtureWorkspace(iso.root) : null;
-    const userPlugins = options.plugins ?? [];
-    const installSpecs = fixtureEnabled ? [...userPlugins, seederPluginDir()] : userPlugins;
-    let pluginEntries = precheckPlugins(installSpecs, report.runtime.version);
-    let pluginSummary = summarizePluginEntries(pluginEntries);
-    const resolvedInstallSpecs = pluginEntries.map((entry) => entry.resolved.installSpec);
+    const pluginPipeline = await installProfilePlugins({
+      runtime,
+      env,
+      profileDir,
+      profileName,
+      version: report.runtime.version,
+      plugins: options.plugins ?? [],
+      fixture: fixtureEnabled,
+      fixtureRoot: iso.root,
+      online: options.online === true,
+      installTimeoutMs: options.installTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS,
+    });
+    const fixtureWorkspace = pluginPipeline.fixtureWorkspace
+      ?? (options.mockModel ? createFixtureWorkspace(iso.root) : null);
     addCheck(
       checks,
       'plugin-precheck',
-      pluginSummary.ok,
-      pluginSummary.ok ? `${pluginEntries.length} package(s) checked` : `${pluginSummary.blockers.length} blocker(s)`,
+      pluginPipeline.stage !== 'precheck',
+      pluginPipeline.stage === 'precheck'
+        ? `${pluginPipeline.summary.blockers.length} blocker(s)`
+        : `${pluginPipeline.entries.length} package(s) checked`,
     );
-    if (!pluginSummary.ok) {
-      report.pluginValidation = { stage: 'precheck', entries: pluginEntries, summary: pluginSummary };
-      throw new Error(`plugin precheck failed: ${pluginSummary.blockers.map((item) => `${item.plugin}:${item.id}`).join(', ')}`);
+    if (pluginPipeline.stage === 'precheck') {
+      report.pluginValidation = pluginPipeline.validation;
+      throw new Error(`plugin precheck failed: ${pluginPipeline.summary.blockers.map((item) => `${item.plugin}:${item.id}`).join(', ')}`);
     }
-    if (resolvedInstallSpecs.length) {
-      const args = ['plugin', '--profile', profileName, 'add', ...resolvedInstallSpecs];
-      if (options.online !== true) args.push('--offline');
-      const install = await runCommand(runtime.cmd, args, {
-        cwd: profileDir,
-        env,
-        timeoutMs: options.installTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS,
-      });
-      writeText(runDir, 'install.log', `$ dsh ${args.join(' ')}\n\n${install.stdout}\n${install.stderr}`);
+    if (pluginPipeline.install) {
+      writeText(runDir, 'install.log', `$ dsh ${pluginPipeline.installArgs.join(' ')}\n\n${pluginPipeline.install.stdout}\n${pluginPipeline.install.stderr}`);
       addCheck(
         checks,
         'plugin-install',
-        install.code === 0,
-        `exit ${install.code}${install.timedOut ? ' (timeout)' : ''}`,
+        pluginPipeline.stage !== 'install',
+        `exit ${pluginPipeline.install.code}${pluginPipeline.install.timedOut ? ' (timeout)' : ''}`,
       );
-      if (install.code !== 0) {
-        throw new Error(`plugin install failed (exit ${install.code})\n${tail(`${install.stdout}\n${install.stderr}`, 4000)}`);
+      if (pluginPipeline.stage === 'install') {
+        throw new Error(`plugin install failed (exit ${pluginPipeline.install.code})\n${tail(`${pluginPipeline.install.stdout}\n${pluginPipeline.install.stderr}`, 4000)}`);
       }
-      const manifestAfter = readJson(path.join(profileDir, 'package.json'));
-      const added = detectAddedDependencies(manifestBefore, manifestAfter);
-      appendBundles(profileDir, added);
-      pluginEntries = pluginEntries.map((entry) => {
-        if (entry.resolved.name) return entry;
-        const remaining = added.filter((name) => !pluginEntries.some((other) => other.resolved.name === name));
-        return { ...entry, resolved: { ...entry.resolved, name: remaining[0] ?? entry.resolved.name } };
-      });
-      pluginEntries = postcheckPlugins(pluginEntries, profileDir, report.runtime.version);
-      pluginSummary = summarizePluginEntries(pluginEntries);
       addCheck(
         checks,
         'plugin-postcheck',
-        pluginSummary.ok,
-        pluginSummary.ok ? 'installed manifests are compatible' : `${pluginSummary.blockers.length} blocker(s)`,
+        pluginPipeline.summary.ok,
+        pluginPipeline.summary.ok ? 'installed manifests are compatible' : `${pluginPipeline.summary.blockers.length} blocker(s)`,
       );
-      report.pluginValidation = { stage: 'postcheck', entries: pluginEntries, summary: pluginSummary };
-      report.plugins = pluginEntries.map((entry) => ({
-        name: entry.resolved.name ?? entry.resolved.spec,
-        version: entry.manifest?.version ?? entry.resolved.version ?? null,
-        source: entry.resolved.kind,
-        spec: entry.resolved.spec,
-        fixture: path.resolve(entry.resolved.installSpec ?? '') === path.resolve(seederPluginDir()),
-        findingSummary: {
-          blockers: entry.findings.filter((item) => item.severity === 'blocker').length,
-          warnings: entry.findings.filter((item) => item.severity === 'warn').length,
-        },
-      }));
     } else {
       writeText(runDir, 'install.log', '(no plugins requested)\n');
       addCheck(checks, 'plugin-install', true, 'no plugins requested');
     }
+    report.pluginValidation = pluginPipeline.validation;
+    report.plugins = pluginPipeline.pluginList;
 
     if (options.mockModel) {
       mockServer = await startMockLlmServer({ model: MOCK_MODEL });

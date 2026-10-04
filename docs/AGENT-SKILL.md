@@ -51,6 +51,13 @@ An agent using this tool should:
     `--assert-body-attr` / `--min-slots`; the checks are evaluated by
     `src/dom-assertions.js` and appear as `token:` / `slot:` /
     `body-attribute:` / `min-slots` in the report.
+22. `lab shell --plugin <spec> [--online]` installs plugins with the same
+    pipeline as `verify`. Read `shell.screenshotDiff` (or
+    `dom/shell-screenshot-diff.json`) for the pixel diff; an unmodified profile
+    must be `identical: true`. `shell.desktopOnly.hintedBodyAttributes` lists
+    desktop-only attributes such as `data-we-adapter`.
+23. use `npm run ci` as the single entry: unit tests always run, then doctor and
+    the integration suite when the official runtime is present.
 
 Do not attach large screenshots to a model context. `artifacts/**/screenshots`
 are evidence for humans; machine decisions come from the DOM/token JSON.

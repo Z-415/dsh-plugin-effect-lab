@@ -159,6 +159,12 @@ export async function main(argv) {
         artifactsRoot: flags.artifacts,
         noCache: flags['no-cache'] === true,
         shellTimeoutMs: numberFlag(flags, 'shell-timeout'),
+        plugins: flags.plugin ?? [],
+        withPlugins: flags.with ?? [],
+        fixture: flags['no-fixture'] !== true,
+        online: flags.online === true,
+        installTimeoutMs: numberFlag(flags, 'install-timeout'),
+        assertTokens: flags['assert-token'] ?? ['--dsw-alias-bg-base'],
         compareWeb: flags['no-compare-web'] !== true,
         browserTimeoutMs: numberFlag(flags, 'browser-timeout'),
       });
@@ -182,6 +188,7 @@ Usage:
   lab capture [same options as verify]
   lab matrix --config <file.json> [--online] [--json]
   lab shell [--no-cache] [--no-compare-web] [--shell-timeout <ms>]
+            [--plugin <spec>] [--with <spec>] [--offline|--online] [--no-fixture]
             [--browser <exe>] [--browser-timeout <ms>] [--json]
   lab scan --log <boot.err.log> [--json]
   lab clean [--dry-run] [--older-than <minutes>] [--json]

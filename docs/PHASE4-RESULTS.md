@@ -70,6 +70,30 @@ Shell DOM settle: `{stable:true, slots:37, waitedMs:2153}`.
 5. The preload probe runs in an isolated world, so `__DSH_TRANSPORT__` must be
    read from the main world; `probeDom()` in `main.js` does that explicitly.
 
+## Shell plugin support and pixel diff (follow-up)
+
+`lab shell` now installs plugins through the shared `installProfilePlugins`
+pipeline, and compares `screenshots/web-baseline.png` with
+`screenshots/shell.png` in headless Edge.
+
+| run | result | evidence |
+|---|---|---|
+| unmodified profile | shell and web screenshots pixel-identical (`identical: true`, `changedRatio: 0`) | `artifacts/20261004T150359Z-e14a1f/` |
+| `dup-slot-one` fixture plugin | `shell-token:--lab-dup-slot: one`, 0 shell/web token drift | `artifacts/20261004T145203Z-abf60e/` |
+| `dsh-plugin-wallpaper-engine@1.2.0` | `bg-base: transparent` both modes; `data-we-adapter` = `desktop-official` (shell) vs `browser` (web) | `artifacts/20261004T150204Z-af6507/` |
+
+Two launcher bugs surfaced while making the pixel diff honest:
+
+- a fully hidden `BrowserWindow` does not composite on Windows, so
+  `capturePage()` returned a near-white frame; the shell window is now visible
+  with `opacity: 0` and `skipTaskbar: true`;
+- Windows display scaling made `capturePage()` 1.5x the CSS size;
+  `force-device-scale-factor=1` pins it to the CDP baseline.
+
+The preload probe also ignored caller-asserted tokens, so an inline custom
+property such as `--lab-dup-slot` was missing from the shell snapshot; asserted
+tokens are now read from the main world and merged.
+
 ## Still open (Phase 5 / Definition of Done)
 
 - Acceptance C (duplicate slot id) and D (`wallpaper + dream-skin`,

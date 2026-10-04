@@ -70,7 +70,8 @@ export function normalizeTransport(value) {
   };
 }
 
-function desktopOnlyKeys(reference = {}, candidate = {}) {
+/** Keys present in the shell but empty/absent in web. */
+function desktopAddedKeys(reference = {}, candidate = {}) {
   return Object.keys(candidate)
     .filter((key) => {
       const after = String(candidate[key] ?? '');
@@ -78,6 +79,25 @@ function desktopOnlyKeys(reference = {}, candidate = {}) {
       return String(reference[key] ?? '') === '';
     })
     .sort();
+}
+
+/**
+ * Keys whose shell value differs from web: absent in web, or a different
+ * non-empty value. This catches a real desktop signal such as
+ * `data-we-adapter` flipping from `browser` to `desktop-official`.
+ */
+function desktopDifferingKeys(reference = {}, candidate = {}) {
+  return Object.keys(candidate)
+    .filter((key) => {
+      const after = String(candidate[key] ?? '');
+      if (after === '') return false;
+      return String(reference[key] ?? '') !== after;
+    })
+    .sort();
+}
+
+function hintedKeys(keys) {
+  return keys.filter((key) => DESKTOP_ATTRIBUTE_HINTS.includes(key));
 }
 
 /**
@@ -92,6 +112,7 @@ export function diffProbeSnapshots(referenceInput = {}, candidateInput = {}) {
   const bodyAttributes = diffStringMap(reference.bodyAttributes, candidate.bodyAttributes);
   const htmlAttributes = diffStringMap(reference.htmlAttributes, candidate.htmlAttributes);
   const layers = diffLayers(reference.layers, candidate.layers);
+  const differingBody = desktopDifferingKeys(reference.bodyAttributes, candidate.bodyAttributes);
   return {
     slots: {
       added: candidate.slots.filter((slot) => !slotSet.has(slot)),
@@ -110,9 +131,10 @@ export function diffProbeSnapshots(referenceInput = {}, candidateInput = {}) {
     layerSummary: { web: reference.layerSummary, shell: candidate.layerSummary },
     transport: { web: reference.transport, shell: candidate.transport },
     desktopOnly: {
-      bodyAttributes: desktopOnlyKeys(reference.bodyAttributes, candidate.bodyAttributes),
-      htmlAttributes: desktopOnlyKeys(reference.htmlAttributes, candidate.htmlAttributes),
-      tokens: desktopOnlyKeys(reference.tokens, candidate.tokens),
+      bodyAttributes: differingBody,
+      htmlAttributes: desktopDifferingKeys(reference.htmlAttributes, candidate.htmlAttributes),
+      tokens: desktopAddedKeys(reference.tokens, candidate.tokens),
+      hintedBodyAttributes: hintedKeys(differingBody),
     },
   };
 }

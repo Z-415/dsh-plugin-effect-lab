@@ -316,6 +316,7 @@ export async function openUi(options) {
     timeoutMs = 90_000,
     browserPath,
     viewport = { width: 1440, height: 900 },
+    captureBeyondViewport = true,
   } = options;
   const browser = findBrowser(browserPath);
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-browser-'));
@@ -370,17 +371,16 @@ export async function openUi(options) {
     await client.send('Page.navigate', { url: baseUrl });
     const ui = await waitForUi(client, timeoutMs);
     const settle = options.settle === false ? null : await waitForStableUi(client, options.settleOptions);
-    const dom = await probeDom(client, assertTokens);
     const extra = {};
     for (const [name, expression] of Object.entries(probes)) {
       extra[name] = await evaluate(client, expression);
     }
     const written = {};
-    const capture = async (name) => {
+    const capture = async (name, beyondViewport = captureBeyondViewport) => {
       const shot = await client.send('Page.captureScreenshot', {
         format: 'png',
         fromSurface: true,
-        captureBeyondViewport: true,
+        captureBeyondViewport: beyondViewport,
       });
       const file = path.join(ensureDir(path.join(artifactsDir, 'screenshots')), `${name}.png`);
       fs.writeFileSync(file, Buffer.from(shot.data, 'base64'));
@@ -444,6 +444,9 @@ export async function openUi(options) {
       }
     }
     for (const name of screenshotsSettings) await capture(name);
+    // Probe after the workspace/session/settings interactions so the recorded
+    // DOM matches the captured conversation state instead of a pre-mount plateau.
+    const dom = await probeDom(client, assertTokens);
     for (const [name, expression] of Object.entries(probesAfter)) {
       extraAfter[name] = await evaluate(client, expression);
     }
@@ -482,5 +485,49 @@ export async function openUi(options) {
       // Best-effort cleanup.
     }
     throw error;
+  }
+}
+
+/**
+ * Run one expression in a throwaway headless page and return its value.
+ * Used by the screenshot differ, which needs a real image decoder.
+ */
+export async function evaluateOnce(options = {}) {
+  const { expression, browserPath, timeoutMs = 60_000 } = options;
+  if (!expression) throw new Error('evaluateOnce needs an expression');
+  const browser = findBrowser(browserPath);
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-browser-'));
+  const child = spawn(browser, [
+    '--headless=new',
+    '--disable-gpu',
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-extensions',
+    '--disable-background-networking',
+    `--user-data-dir=${userDataDir}`,
+    '--remote-debugging-port=0',
+    '--window-size=1440,900',
+    'about:blank',
+  ], {
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const tracked = { child, pid: child.pid };
+  let client = null;
+  try {
+    const devtoolsPort = await waitForDevToolsPort(userDataDir, 30_000);
+    const target = await createPageTarget(devtoolsPort, 'about:blank');
+    client = await new CdpClient(target.webSocketDebuggerUrl).connect();
+    await client.send('Runtime.enable');
+    return await evaluate(client, expression, timeoutMs);
+  } finally {
+    client?.close();
+    killTree(tracked.pid);
+    await stopTracked(tracked, { label: 'browser' });
+    try {
+      fs.rmSync(userDataDir, { recursive: true, force: true });
+    } catch {
+      // Best-effort cleanup.
+    }
   }
 }
