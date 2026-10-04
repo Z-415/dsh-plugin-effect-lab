@@ -10,6 +10,7 @@ export async function runVerifyCommand(options) {
     plugins: pluginSpecs,
     fixture: options.fixture,
     fixtureVariant: options.fixtureVariant,
+    profileLab: options.profileLab,
     mockModel: options.mockModel,
     online: options.online,
     screenshots: options.screenshots,

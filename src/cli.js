@@ -2,6 +2,7 @@ import { runCaptureCommand } from './commands/capture.js';
 import { runCleanCommand } from './commands/clean.js';
 import { runDoctor } from './commands/doctor.js';
 import { runGuiCommand } from './commands/gui.js';
+import { runProfileCommand } from './commands/profile.js';
 import { runMatrixCommand } from './commands/matrix.js';
 import { runScanCommand } from './commands/scan.js';
 import { runShellCommand } from './commands/shell.js';
@@ -18,6 +19,7 @@ const VALUE_FLAGS = new Set([
   'min-slots',
   'fixture-variant',
   'show-hold',
+  'profile-lab',
   'artifacts',
   'browser',
   'boot-timeout',
@@ -110,6 +112,9 @@ export async function main(argv) {
     fixture: flags['no-fixture'] !== true,
     fixtureVariant: flags['fixture-variant'] ?? 'default',
   };
+  const persistentOptions = {
+    profileLab: flags['profile-lab'],
+  };
   switch (command) {
     case 'doctor':
       return runDoctor(common);
@@ -119,6 +124,8 @@ export async function main(argv) {
         plugins: flags.plugin ?? [],
         withPlugins: flags.with ?? [],
         ...fixtureOptions,
+        ...persistentOptions,
+        ...persistentOptions,
         mockModel: flags['mock-model'] === true,
         online: flags.online === true,
         screenshots: flags.screenshot ?? ['home'],
@@ -175,6 +182,7 @@ export async function main(argv) {
         withPlugins: flags.with ?? [],
         fixture: flags['no-fixture'] !== true,
         fixtureVariant: flags['fixture-variant'] ?? 'default',
+        profileLab: flags['profile-lab'],
         online: flags.online === true,
         installTimeoutMs: numberFlag(flags, 'install-timeout'),
         assertTokens: flags['assert-token'] ?? ['--dsw-alias-bg-base'],
@@ -192,6 +200,12 @@ export async function main(argv) {
         installShortcut: flags['install-shortcut'] === true,
         open: flags['no-open'] !== true,
       });
+    case 'profile':
+      return runProfileCommand({
+        action: flags._[0] ?? 'list',
+        name: flags._[1],
+        json: flags.json === true,
+      });
     default:
       process.stderr.write(`unknown command: ${command}\n\n${helpText()}`);
       return 2;
@@ -208,6 +222,7 @@ Usage:
              [--assert-slot conversation.view] [--assert-body-attr data-we-wallpaper]
              [--min-slots <n>]
              [--fixture-variant default|empty|long]
+             [--profile-lab <name>]
              [--artifacts <dir>] [--browser <exe>] [--no-fixture]
              [--mock-model] [--route /plugin/health] [--no-html] [--json]
   lab capture [same options as verify]
@@ -215,9 +230,11 @@ Usage:
   lab shell [--no-cache] [--no-compare-web] [--shell-timeout <ms>]
             [--plugin <spec>] [--with <spec>] [--offline|--online] [--no-fixture]
             [--fixture-variant default|empty|long]
+            [--profile-lab <name>]
             [--show] [--keep-open] [--show-hold <ms>] [--no-html]
             [--browser <exe>] [--browser-timeout <ms>] [--json]
   lab gui [--install-shortcut] [--rebuild] [--no-open] [--json]
+  lab profile list|create|remove [name] [--json]
   lab scan --log <boot.err.log> [--json]
   lab clean [--dry-run] [--older-than <minutes>] [--json]
 
@@ -235,5 +252,15 @@ report next to report.md; pass --no-html to skip it.
 lab gui copies the official Electron runtime into LOCALAPPDATA\\dsh-plugin-effect-lab
 (once) and opens a desktop launcher whose buttons run the same commands and
 stream their output. --install-shortcut also drops a Desktop shortcut.
+
+--profile-lab <name> keeps the isolated profile under .lab-profiles/<name>/
+instead of deleting it after the run. Reuse it to keep plugins installed and
+to add plugins one at a time:
+
+  lab shell --profile-lab dev --plugin A@1 --online   # install A into "dev"
+  lab shell --profile-lab dev --plugin B@2 --online   # add B, check A+B
+  lab shell --profile-lab dev --show --keep-open      # reopen with A+B
+  lab profile list                                    # what is installed
+  lab profile remove dev                              # delete the profile
 `;
 }

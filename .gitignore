@@ -1,5 +1,6 @@
 node_modules/
 artifacts/
 gui-runtime/
+.lab-profiles/
 .reference-repos/
 *.log

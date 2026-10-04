@@ -260,3 +260,29 @@ Final suite: unit 87/87, integration 11/11.
   runtime home is now the project's `gui-runtime/` (git-ignored).
 
 Final suite: unit 90/90, integration 11/11.
+
+## 0.1.0 - 2026-10-05 (persistent lab profiles, multi-plugin audit)
+
+### Added
+
+- `--profile-lab <name>`: use a persistent, still-isolated profile under
+  `.lab-profiles/<name>/` instead of a one-shot temp home. Plugins stay
+  installed, so the shell UI can be reopened later without `--plugin`.
+- `lab profile list|create|remove|path`: manage those profiles.
+- `plugin-profile-audit`: after installing, the whole profile is scanned for
+  cross-plugin duplicates (loader id, slot registration id, slot key, tool
+  name). Adding plugin B to a profile that already has A now reports the A+B
+  conflict even though B alone passes precheck.
+- GUI: a "自定义插件 / 持久 profile" panel with a plugin field, a profile field,
+  and buttons for verify / shell (timed and keep-open) / two-plugins-together /
+  profile list.
+- `docs/LAB-PROFILES.md`.
+
+### Changed
+
+- Reusing a lab profile no longer rewrites its `package.json`, and it gets a
+  stable profile name (`lab-<name>`) so installed dependencies survive.
+- `cleanup-home` reports `kept lab profile "<name>"` for persistent runs; the
+  real-home hash check still runs unchanged.
+
+Final suite: unit 96/96, integration 12/12.

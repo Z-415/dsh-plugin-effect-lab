@@ -5,6 +5,7 @@ import { openUi } from '../browser-driver.js';
 import { snapshotLabResidue, verifyNoResidue } from '../cleanup.js';
 import { evaluateDomAssertions } from '../dom-assertions.js';
 import { writeHtmlReport } from '../html-report.js';
+import { openLabProfileHome, recordProfilePlugins } from '../lab-profile.js';
 import { defaultArtifactsRoot } from '../config.js';
 import { createIsolatedHome } from '../home-manager.js';
 import { mintAuthCookie } from '../port-and-token.js';
@@ -46,6 +47,7 @@ export async function runShell(options = {}) {
     startedAt: nowIso(),
     finishedAt: null,
     runtime: null,
+    isolation: null,
     shell: null,
     pluginValidation: null,
     plugins: [],
@@ -75,11 +77,25 @@ export async function runShell(options = {}) {
     residueBefore = snapshotLabResidue();
     addCheck(checks, 'real-home-baseline', true, `${Object.keys(realBefore.files).length} structural files hashed`);
 
-    iso = createIsolatedHome({ withAgents: true });
-    const profileName = makeProfileName();
+    iso = options.profileLab
+      ? openLabProfileHome(options.profileLab)
+      : createIsolatedHome({ withAgents: true });
+    const profileName = iso.persistent ? `lab-${iso.name}` : makeProfileName();
     const profileDir = iso.profileDir(profileName);
-    writeMinimalProfile(profileDir, { name: profileName });
-    addCheck(checks, 'isolated-home', true, iso.home);
+    if (!fs.existsSync(path.join(profileDir, 'package.json'))) {
+      writeMinimalProfile(profileDir, { name: profileName });
+    }
+    report.isolation = {
+      root: iso.root,
+      home: iso.home,
+      ...(iso.persistent ? { persistent: true, labProfile: iso.name } : {}),
+    };
+    addCheck(
+      checks,
+      'isolated-home',
+      true,
+      iso.persistent ? `reused lab profile "${iso.name}": ${iso.home}` : iso.home,
+    );
     progress(`isolated home ${iso.home}`);
 
     const fixtureEnabled = options.fixture !== false;
@@ -140,7 +156,23 @@ export async function runShell(options = {}) {
     }
     report.pluginValidation = pipeline.validation;
     report.plugins = pipeline.pluginList;
+    if (pipeline.profileAudit) {
+      const audit = pipeline.profileAudit;
+      report.profileAudit = { names: audit.names, conflicts: audit.conflicts };
+      addCheck(
+        checks,
+        'plugin-profile-audit',
+        audit.conflicts.length === 0,
+        audit.conflicts.length
+          ? audit.conflicts.map((conflict) => `${conflict.id}:${conflict.key}`).join(', ')
+          : `${audit.names.length} installed package(s), no cross-plugin conflict`,
+      );
+    }
     const fixtureWorkspace = pipeline.fixtureWorkspace;
+    if (options.profileLab && (options.plugins ?? []).length) {
+      recordProfilePlugins(options.profileLab, options.plugins);
+      progress(`lab profile "${options.profileLab}" now records ${(options.plugins ?? []).length} plugin spec(s)`);
+    }
     progress(pipeline.install ? `installed ${pipeline.resolvedSpecs.length} plugin spec(s)` : 'no plugins requested');
 
     boot = await bootWeb({
@@ -408,6 +440,7 @@ export async function runShell(options = {}) {
     if (iso) {
       const cleanup = await iso.dispose();
       report.cleanup.homeRemoved = cleanup.removed;
+      report.cleanup.homeKept = cleanup.kept === true;
     }
     if (realBefore) {
       try {
@@ -418,11 +451,16 @@ export async function runShell(options = {}) {
         addCheck(checks, 'real-home-unchanged', false, String(error));
       }
     }
-    addCheck(checks, 'cleanup-home', report.cleanup.homeRemoved === true, String(report.cleanup.homeRemoved));
+    addCheck(
+      checks,
+      'cleanup-home',
+      report.cleanup.homeRemoved === true || report.cleanup.homeKept === true,
+      report.cleanup.homeKept === true ? `kept lab profile "${options.profileLab}"` : String(report.cleanup.homeRemoved),
+    );
     addCheck(checks, 'cleanup-ports', report.cleanup.portsLeft.length === 0, report.cleanup.portsLeft.join(', ') || 'none');
     try {
       const residue = await verifyNoResidue({
-        isolatedRoot: iso?.root ?? null,
+        isolatedRoot: iso?.persistent ? null : (iso?.root ?? null),
         ports: boot?.port ? [boot.port] : [],
         before: residueBefore,
       });

@@ -1,7 +1,9 @@
 import path from 'node:path';
+import { findDeclarationConflicts, scanPluginDeclarations } from './declaration-scanner.js';
 import { createFixtureWorkspace, seederPluginDir } from './fixture-manager.js';
 import { postcheckPlugins, precheckPlugins, summarizePluginEntries } from './plugin-check.js';
 import { appendBundles, detectAddedDependencies } from './profile-builder.js';
+import { readInstalledManifest } from './plugin-resolver.js';
 import { runCommand } from './process-tree.js';
 import { readJson } from './util.js';
 
@@ -14,6 +16,38 @@ import { readJson } from './util.js';
  * `postcheck` is reported and booting continues (the official CLI already
  * installed the tree, and boot is the authoritative check).
  */
+
+const AUDIT_FIXES = {
+  'duplicate-loader-id': 'Give each plugin a distinct loader/patch id.',
+  'duplicate-slot-registration-id': 'Give each plugin a distinct slot registration id.',
+  'duplicate-tool-name': 'Rename one of the tools; tool names share one namespace.',
+};
+
+/**
+ * Audit every third-party package installed in the profile, not just the specs
+ * of this run. Adding plugin B to a profile that already has A must report an
+ * A+B conflict, which a per-run precheck cannot see.
+ */
+export function auditProfilePlugins(profileDir, version) {
+  const manifest = readJson(path.join(profileDir, 'package.json'));
+  const names = Object.keys(manifest.dependencies ?? {}).filter((name) => !name.startsWith('@deepseek-ai/'));
+  const declarations = [];
+  for (const name of names) {
+    const installed = readInstalledManifest(profileDir, name);
+    if (!installed) continue;
+    try {
+      declarations.push(scanPluginDeclarations(installed.dir, { manifest: installed.manifest, name }));
+    } catch {
+      // A package without scannable declarations simply does not participate.
+    }
+  }
+  return {
+    names,
+    version,
+    conflicts: declarations.length >= 2 ? findDeclarationConflicts(declarations) : [],
+  };
+}
+
 export async function installProfilePlugins(options) {
   const {
     runtime,
@@ -52,6 +86,7 @@ export async function installProfilePlugins(options) {
   const manifestBefore = readJson(path.join(profileDir, 'package.json'));
   let install = null;
   let installArgs = null;
+  let profileAudit = null;
   if (resolvedSpecs.length) {
     const args = ['plugin', '--profile', profileName, 'add', ...resolvedSpecs];
     if (online !== true) args.push('--offline');
@@ -83,6 +118,23 @@ export async function installProfilePlugins(options) {
       return { ...entry, resolved: { ...entry.resolved, name: remaining[0] ?? entry.resolved.name } };
     });
     entries = postcheckPlugins(entries, profileDir, version);
+    // Cross-plugin conflicts against everything already installed.
+    profileAudit = auditProfilePlugins(profileDir, version);
+    for (const entry of entries) {
+      const owner = entry.resolved.name;
+      if (!owner) continue;
+      for (const conflict of profileAudit.conflicts) {
+        if (!conflict.owners.includes(owner)) continue;
+        entry.findings.push({
+          id: conflict.id,
+          namespace: conflict.namespace,
+          severity: conflict.severity,
+          message: `[profile] ${conflict.message}`,
+          fix: AUDIT_FIXES[conflict.id] ?? null,
+          key: conflict.key,
+        });
+      }
+    }
     summary = summarizePluginEntries(entries);
   }
 
@@ -106,6 +158,7 @@ export async function installProfilePlugins(options) {
     })),
     install,
     installArgs,
+    profileAudit,
     fixtureWorkspace,
   };
 }

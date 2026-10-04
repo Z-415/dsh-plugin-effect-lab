@@ -17,6 +17,7 @@ export async function runShellCommand(options) {
     withPlugins: options.withPlugins,
     fixture: options.fixture,
     fixtureVariant: options.fixtureVariant,
+    profileLab: options.profileLab,
     online: options.online,
     installTimeoutMs: options.installTimeoutMs,
     assertTokens: options.assertTokens,

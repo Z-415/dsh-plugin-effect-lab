@@ -27,6 +27,9 @@
   pre { margin: 0; padding: 12px; overflow: auto; flex: 1; color: #d7dee7; font: 12px/1.55 Consolas, "Cascadia Mono", monospace; white-space: pre-wrap; }
   footer { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
   footer .spacer { flex: 1; }
+  input[type="text"] { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); }
+  input[type="text"]:focus { outline: 2px solid #c7d9f5; outline-offset: 1px; }
+  .note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
 </style>
 </head>
 <body>
@@ -35,6 +38,21 @@
     <div class="sub" id="env">正在读取环境…</div>
   </header>
   <main>
+    <div class="group">
+      <h2>自定义插件 / 持久 profile</h2>
+      <div class="row">
+        <input type="text" id="plugin" style="flex:1;min-width:240px" placeholder="插件：dsh-plugin-x@1.2.3 或 C:\path\to\my-plugin">
+        <input type="text" id="profile" style="width:220px" placeholder="profile 名（留空=一次性，跑完删）">
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="runVerifyPlugin">验证这个插件</button>
+        <button id="runShellPlugin" class="primary">在壳窗口打开（自己关）</button>
+        <button id="runShellPluginTimed">在壳窗口打开（20 秒）</button>
+        <button id="runMatrixPlugin">和另一个插件一起验证</button>
+        <button id="runListProfiles">列出 profile</button>
+      </div>
+      <p class="note" id="cmdPreview">填了 profile 名会保留安装结果，下次不带插件也能打开；再填第二个插件即可检验两者的相互影响。</p>
+    </div>
     <div class="group">
       <h2>检查</h2>
       <div class="row">
@@ -86,7 +104,9 @@
   const status = document.getElementById('status');
   const hint = document.getElementById('hint');
   const stopBtn = document.getElementById('stop');
-  const buttons = [...document.querySelectorAll('button[data-args]')];
+  const buttons = [...document.querySelectorAll('button')].filter((b) => !['stop', 'report', 'artifacts'].includes(b.id));
+  const pluginInput = document.getElementById('plugin');
+  const profileInput = document.getElementById('profile');
 
   function setBusy(busy, label) {
     buttons.forEach((b) => { b.disabled = busy; });
@@ -99,19 +119,71 @@
     log.scrollTop = log.scrollHeight;
   }
 
+  async function runWithArgs(args, label) {
+    log.textContent = '';
+    hint.textContent = label || args.join(' ');
+    setBusy(true, '运行中');
+    const result = await window.labGui.run(args);
+    if (result && result.started === false) {
+      append(`\n[gui] ${result.reason}\n`);
+      setBusy(false);
+    }
+  }
+
+  function isLocalSpec(spec) {
+    return /^[a-zA-Z]:[\\/]/.test(spec) || spec.startsWith('.') || spec.startsWith('/') || spec.includes('\\');
+  }
+  function networkFlag(spec) {
+    return isLocalSpec(spec) ? '--offline' : '--online';
+  }
+  function withProfile(args) {
+    const profile = profileInput.value.trim();
+    return profile ? [...args, '--profile-lab', profile] : args;
+  }
+  function requirePlugin() {
+    const spec = pluginInput.value.trim();
+    if (!spec) {
+      append('\n[gui] 先在上面的输入框填一个插件：npm 包名@版本，或本地目录 / tgz 路径\n');
+      return null;
+    }
+    return spec;
+  }
+
   for (const button of buttons) {
-    button.addEventListener('click', async () => {
+    button.addEventListener('click', () => {
       const args = button.dataset.args.split('|');
-      log.textContent = '';
-      hint.textContent = `${args.join(' ')}`;
-      setBusy(true, '运行中');
-      const result = await window.labGui.run(args);
-      if (result && result.started === false) {
-        append(`\n[gui] ${result.reason}\n`);
-        setBusy(false);
-      }
+      runWithArgs(args, args.join(' '));
     });
   }
+
+  document.getElementById('runVerifyPlugin').addEventListener('click', () => {
+    const spec = requirePlugin();
+    if (!spec) return;
+    runWithArgs(withProfile(['verify', '--plugin', spec, networkFlag(spec), '--screenshot', 'home', '--screenshot', 'settings']), `verify · ${spec}`);
+  });
+  document.getElementById('runShellPlugin').addEventListener('click', () => {
+    const spec = requirePlugin();
+    if (!spec) return;
+    runWithArgs(withProfile(['shell', '--no-compare-web', '--plugin', spec, networkFlag(spec), '--keep-open']), `shell keep-open · ${spec}`);
+  });
+  document.getElementById('runShellPluginTimed').addEventListener('click', () => {
+    const spec = requirePlugin();
+    if (!spec) return;
+    runWithArgs(withProfile(['shell', '--no-compare-web', '--plugin', spec, networkFlag(spec), '--show', '--show-hold', '20000']), `shell 20s · ${spec}`);
+  });
+  document.getElementById('runMatrixPlugin').addEventListener('click', () => {
+    const spec = requirePlugin();
+    if (!spec) return;
+    const other = window.prompt('要和它一起验证的第二个插件（包名@版本 或本地路径）：');
+    if (!other) return;
+    runWithArgs(withProfile([
+      'shell', '--no-compare-web',
+      '--plugin', spec, networkFlag(spec),
+      '--with', other, networkFlag(other),
+      '--show', '--show-hold', '20000',
+    ]), `两个插件一起 · ${spec} + ${other}`);
+  });
+  document.getElementById('runListProfiles').addEventListener('click', () => runWithArgs(['profile', 'list'], 'profile list'));
 
   document.getElementById('stop').addEventListener('click', async () => {
     await window.labGui.stop();

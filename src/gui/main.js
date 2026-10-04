@@ -158,6 +158,13 @@ app.whenReady().then(() => {
     },
   });
   window.loadFile(path.join(__dirname, 'index.html'));
+  // Surface renderer-side errors in gui.log so a broken UI is diagnosable.
+  window.webContents.on('console-message', (...args) => {
+    const event = args[0];
+    const level = typeof event?.level === 'string' ? event.level : args[1];
+    const message = typeof event?.message === 'string' ? event.message : args[2];
+    if (level === 'error' || level === 3) appendLog(`[renderer] ${message}\n`);
+  });
   window.on('closed', () => {
     window = null;
   });

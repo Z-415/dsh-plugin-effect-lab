@@ -19,6 +19,7 @@ import {
 } from './fixture-manager.js';
 import { hasFatal, scanLogs, scanNoise, summarize } from './log-scanner.js';
 import { writeHtmlReport } from './html-report.js';
+import { openLabProfileHome, recordProfilePlugins } from './lab-profile.js';
 import { describeAgentCoverage, scanForCredentials } from './model-coverage.js';
 import { startMockLlmServer } from './mock-llm-server.js';
 import { installProfilePlugins } from './plugin-install.js';
@@ -135,9 +136,22 @@ export async function runLab(options = {}) {
       `${Object.keys(realBefore.files).length} structural files hashed; credentials/sessions/settings untouched`,
     );
 
-    iso = createIsolatedHome({ withAgents: true });
-    report.isolation = { root: iso.root, home: iso.home, agents: iso.agents, tmp: iso.tmp };
-    addCheck(checks, 'isolated-home', true, iso.home);
+    iso = options.profileLab
+      ? openLabProfileHome(options.profileLab)
+      : createIsolatedHome({ withAgents: true });
+    report.isolation = {
+      root: iso.root,
+      home: iso.home,
+      agents: iso.agents,
+      tmp: iso.tmp,
+      ...(iso.persistent ? { persistent: true, labProfile: iso.name } : {}),
+    };
+    addCheck(
+      checks,
+      'isolated-home',
+      true,
+      iso.persistent ? `reused lab profile "${iso.name}": ${iso.home}` : iso.home,
+    );
     progress(`isolated home ${iso.home}`);
     const credentials = scanForCredentials(iso.home);
     report.agentCoverage = describeAgentCoverage({ mockModel: options.mockModel === true, credentials });
@@ -211,6 +225,22 @@ export async function runLab(options = {}) {
     }
     report.pluginValidation = pluginPipeline.validation;
     report.plugins = pluginPipeline.pluginList;
+    if (pluginPipeline.profileAudit) {
+      const audit = pluginPipeline.profileAudit;
+      report.profileAudit = { names: audit.names, conflicts: audit.conflicts };
+      addCheck(
+        checks,
+        'plugin-profile-audit',
+        audit.conflicts.length === 0,
+        audit.conflicts.length
+          ? audit.conflicts.map((conflict) => `${conflict.id}:${conflict.key}`).join(', ')
+          : `${audit.names.length} installed package(s), no cross-plugin conflict`,
+      );
+    }
+    if (options.profileLab && (options.plugins ?? []).length) {
+      recordProfilePlugins(options.profileLab, options.plugins);
+      progress(`lab profile "${options.profileLab}" now records ${(options.plugins ?? []).length} plugin spec(s)`);
+    }
     progress(pluginPipeline.install ? `installed ${pluginPipeline.resolvedSpecs.length} plugin spec(s)` : 'no plugins requested');
 
     if (options.mockModel) {
@@ -478,12 +508,18 @@ export async function runLab(options = {}) {
         const homeCleanup = await iso.dispose();
         report.cleanup.homeCleanup = homeCleanup;
         report.cleanup.homeRemoved = homeCleanup.removed;
+        report.cleanup.homeKept = homeCleanup.kept === true;
       } catch (error) {
         errors.push(`isolated home cleanup failed: ${String(error)}`);
         report.cleanup.homeRemoved = false;
       }
     }
-    addCheck(checks, 'cleanup-home', report.cleanup.homeRemoved === true, String(report.cleanup.homeRemoved));
+    addCheck(
+      checks,
+      'cleanup-home',
+      report.cleanup.homeRemoved === true || report.cleanup.homeKept === true,
+      report.cleanup.homeKept === true ? `kept lab profile "${options.profileLab}"` : String(report.cleanup.homeRemoved),
+    );
     addCheck(
       checks,
       'cleanup-ports',
@@ -494,7 +530,7 @@ export async function runLab(options = {}) {
 
     try {
       const residue = await verifyNoResidue({
-        isolatedRoot: iso?.root ?? null,
+        isolatedRoot: iso?.persistent ? null : (iso?.root ?? null),
         ports: boot?.port ? [boot.port] : [],
         before: residueBefore,
       });

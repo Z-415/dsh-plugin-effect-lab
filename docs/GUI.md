@@ -52,6 +52,11 @@ output into the log pane, and never bypasses the lab's isolation rules.
 
 | Group | Button | Command |
 |---|---|---|
+| 自定义插件 / 持久 profile | 验证这个插件 | `verify --plugin <spec> [--profile-lab <name>] …` |
+| 自定义插件 / 持久 profile | 在壳窗口打开（自己关） | `shell --no-compare-web --plugin <spec> --keep-open` |
+| 自定义插件 / 持久 profile | 在壳窗口打开（20 秒） | `shell --no-compare-web --plugin <spec> --show --show-hold 20000` |
+| 自定义插件 / 持久 profile | 和另一个插件一起验证 | `shell --plugin A --with B --show …` |
+| 自定义插件 / 持久 profile | 列出 profile | `profile list` |
 | 检查 | 自检 doctor | `doctor` |
 | 检查 | 快速验证 | `verify` |
 | 检查 | 验证 + 设置页截图 | `verify --screenshot home --screenshot settings` |
@@ -65,6 +70,16 @@ output into the log pane, and never bypasses the lab's isolation rules.
 
 Footer buttons open the newest `report.html` / `matrix.html` in your default
 browser, or the `artifacts/` folder. **中止** kills the running child tree.
+
+The two text fields drive the custom buttons:
+
+- **插件**: `dsh-plugin-x@1.2.3`, or a local directory / `.tgz` path. Local
+  paths automatically use `--offline`; package names use `--online`.
+- **profile 名**: leave empty for a one-shot run (fresh temp home, deleted
+  afterwards). Fill it in to keep the isolated profile under
+  `.lab-profiles/<name>/`, so the plugin stays installed and the shell window
+  can be reopened later without re-installing. See
+  [LAB-PROFILES.md](LAB-PROFILES.md).
 
 ## Requirements
 

@@ -79,6 +79,12 @@ An agent using this tool should:
     that into its own MSIX sandbox and the Desktop shortcut then fails.
     The launcher reads `DSH_LAB_GUI_CONFIG`, or `gui-config.json` next to
     `main.js` for a plain double-click.
+28. use `--profile-lab <name>` when a plugin must stay installed across runs,
+    or when plugins should be added one at a time to study their interaction.
+    The profile lives in `<project>\.lab-profiles\<name>` (git-ignored) and
+    never touches the real `~/.dsh`. Adding a plugin audits the whole profile
+    (`plugin-profile-audit`), which is the only place an A+B-only conflict
+    shows up - a per-run precheck cannot see A. One-shot runs stay the default.
 
 Do not attach large screenshots to a model context. `artifacts/**/screenshots`
 are evidence for humans; machine decisions come from the DOM/token JSON.

@@ -87,6 +87,13 @@ mode also bridges and reports the desktop-only surfaces (window controls,
 clipboard, directory picker, host paths, notifications); the directory picker
 is stubbed so nothing blocks on a native dialog.
 
+`--profile-lab <name>` keeps a reusable, still-isolated profile under
+`.lab-profiles/<name>/`: install a plugin once, reopen the shell UI later
+without `--plugin`, and add a second plugin to see how the two interact. Adding
+a plugin audits the whole profile (`plugin-profile-audit`) so an A+B conflict
+is reported even though B alone would pass. See
+[docs/LAB-PROFILES.md](docs/LAB-PROFILES.md).
+
 Every run also writes a self-contained `report.html` (checks + embedded
 screenshots + diffs) next to `report.md`; `--no-html` skips it. `lab shell
 --show` renders the real Electron window on screen (`--show-hold <ms>`,
@@ -116,6 +123,9 @@ node bin/lab.js shell
 node bin/lab.js shell --plugin dsh-plugin-wallpaper-engine@1.2.0 --online
 node bin/lab.js shell --show                          # real window, 6s hold
 node bin/lab.js shell --keep-open                     # close it yourself
+node bin/lab.js shell --profile-lab dev --plugin dsh-plugin-wallpaper-engine@1.2.0 --online --show --keep-open
+node bin/lab.js shell --profile-lab dev --show --keep-open   # plugins still installed
+node bin/lab.js profile list
 node bin/lab.js shell --no-compare-web
 node bin/lab.js scan --log .\artifacts\<run>\boot.err.log
 node bin/lab.js clean --dry-run
