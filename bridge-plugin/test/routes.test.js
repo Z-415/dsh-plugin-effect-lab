@@ -251,7 +251,7 @@ test('an authorized loopback start returns 202 and runs the controller', async (
     assert.equal(res.status, 202);
     const payload = JSON.parse(String(res.body));
     assert.equal(payload.job.status, 'running');
-    assert.deepEqual(controller.calls, [['start', { plugin: 'C:/plugins/demo', online: true }]]);
+    assert.deepEqual(controller.calls, [['start', { plugin: 'C:/plugins/demo', online: true, profileLab: null }]]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -343,7 +343,7 @@ test('the shell entry requires the control token and launches through the loopba
     { body: JSON.stringify({ plugin: 'p', online: true, holdMs: 20000 }) },
   );
   assert.equal(launched.status, 202);
-  assert.deepEqual(calls, [{ plugin: 'p', online: true, holdMs: 20000 }]);
+  assert.deepEqual(calls, [{ plugin: 'p', online: true, profileLab: null, holdMs: 20000 }]);
   assert.equal(JSON.parse(String(launched.body)).launched.pid, 4242);
 });
 
@@ -369,4 +369,81 @@ test('the shell entry rejects a non-loopback peer and a missing launcher', async
     { body: JSON.stringify({ plugin: 'p' }) },
   );
   assert.equal(missing.status, 503);
+});
+
+test('the profile list requires the token and returns persistent profiles', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-routes-profiles-'));
+  const dev = path.join(root, 'dev');
+  fs.mkdirSync(dev, { recursive: true });
+  fs.writeFileSync(path.join(dev, 'lab-profile.json'), JSON.stringify({
+    name: 'dev',
+    plugins: [{ spec: 'alpha' }],
+  }), 'utf8');
+  try {
+    const handler = createBridgeRouteHandler({
+      getConfig: () => ({ artifactsDir: 'a', routePrefix: '/dsh-lab-bridge', profilesRoot: root }),
+      getToken: () => 'tok-123',
+    });
+    const noToken = await invoke(handler, '/dsh-lab-bridge/profiles');
+    assert.equal(noToken.status, 401);
+
+    const ok = await invoke(
+      handler,
+      '/dsh-lab-bridge/profiles',
+      'GET',
+      { host: '127.0.0.1:1', 'x-dsh-lab-token': 'tok-123' },
+    );
+    assert.equal(ok.status, 200);
+    const payload = JSON.parse(String(ok.body));
+    assert.deepEqual(payload.profiles.map((profile) => profile.name), ['dev']);
+    assert.deepEqual(payload.profiles[0].plugins, ['alpha']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('verify accepts a selected profile and rejects unsafe names', async () => {
+  const controller = makeController();
+  const handler = createBridgeRouteHandler({
+    getConfig: () => ({ artifactsDir: 'a', routePrefix: '/dsh-lab-bridge' }),
+    controller,
+    getToken: () => 'tok-123',
+  });
+  const ok = await invoke(
+    handler,
+    '/dsh-lab-bridge/verify',
+    'POST',
+    { host: '127.0.0.1:1', 'x-dsh-lab-token': 'tok-123' },
+    { body: JSON.stringify({ plugin: 'p', profileLab: 'dev' }) },
+  );
+  assert.equal(ok.status, 202);
+  assert.deepEqual(controller.calls, [['start', { plugin: 'p', online: false, profileLab: 'dev' }]]);
+
+  const bad = await invoke(
+    handler,
+    '/dsh-lab-bridge/verify',
+    'POST',
+    { host: '127.0.0.1:1', 'x-dsh-lab-token': 'tok-123' },
+    { body: JSON.stringify({ plugin: 'p', profileLab: 'desktop' }) },
+  );
+  assert.equal(bad.status, 400);
+  assert.equal(controller.calls.length, 1);
+});
+
+test('the shell entry accepts a selected profile', async () => {
+  const calls = [];
+  const handler = createBridgeRouteHandler({
+    getConfig: () => ({ artifactsDir: 'a', routePrefix: '/dsh-lab-bridge' }),
+    getToken: () => 'tok-123',
+    shellLauncher: async (input) => { calls.push(input); return { pid: 1 }; },
+  });
+  const ok = await invoke(
+    handler,
+    '/dsh-lab-bridge/shell',
+    'POST',
+    { host: '127.0.0.1:1', 'x-dsh-lab-token': 'tok-123' },
+    { body: JSON.stringify({ plugin: 'p', profileLab: 'test1' }) },
+  );
+  assert.equal(ok.status, 202);
+  assert.deepEqual(calls, [{ plugin: 'p', online: false, profileLab: 'test1' }]);
 });

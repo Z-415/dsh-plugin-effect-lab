@@ -31,6 +31,7 @@ window.__ModuleLoader__.load({
     const STATUS_URL = '/dsh-lab-bridge/verify/status';
     const CANCEL_URL = '/dsh-lab-bridge/verify/cancel';
     const SHELL_URL = '/dsh-lab-bridge/shell';
+    const PROFILES_URL = '/dsh-lab-bridge/profiles';
 
     const token = () => (typeof globalThis !== 'undefined' ? globalThis.__DSH_LAB_BRIDGE__?.token ?? null : null);
     const controlFetch = (url, options = {}) => fetch(url, {
@@ -51,6 +52,8 @@ window.__ModuleLoader__.load({
       const [job, setJob] = React.useState(null);
       const [actionError, setActionError] = React.useState(null);
       const [shellMsg, setShellMsg] = React.useState(null);
+      const [profiles, setProfiles] = React.useState([]);
+      const [selectedProfile, setSelectedProfile] = React.useState('');
       const [, setTick] = React.useState(0);
 
       const refreshSummary = React.useCallback(async () => {
@@ -82,14 +85,26 @@ window.__ModuleLoader__.load({
         return payload?.job ?? null;
       }, []);
 
+      const refreshProfiles = React.useCallback(async () => {
+        try {
+          const response = await controlFetch(PROFILES_URL, { headers: { accept: 'application/json' } });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const payload = await response.json();
+          setProfiles(Array.isArray(payload?.profiles) ? payload.profiles : []);
+        } catch {
+          setProfiles([]);
+        }
+      }, []);
+
       React.useEffect(() => {
         let alive = true;
         refreshSummary();
+        refreshProfiles();
         fetchStatus()
           .then((next) => { if (alive) setJob(next); })
           .catch((error) => { if (alive) setActionError(String(error?.message ?? error)); });
         return () => { alive = false; };
-      }, [refreshSummary, fetchStatus]);
+      }, [refreshSummary, refreshProfiles, fetchStatus]);
 
       React.useEffect(() => {
         if (job?.status !== 'running') return undefined;
@@ -129,7 +144,7 @@ window.__ModuleLoader__.load({
           const response = await controlFetch(VERIFY_URL, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ plugin, online }),
+            body: JSON.stringify({ plugin, online, profileLab: selectedProfile }),
           });
           const payload = await response.json().catch(() => ({}));
           if (response.status === 202) {
@@ -165,7 +180,7 @@ window.__ModuleLoader__.load({
           const response = await controlFetch(SHELL_URL, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ plugin: spec.trim(), online }),
+            body: JSON.stringify({ plugin: spec.trim(), online, profileLab: selectedProfile }),
           });
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
@@ -196,6 +211,7 @@ window.__ModuleLoader__.load({
         jobStatus = React.createElement('div', { style: { color: '#1d4ed8' } }, `进行中… 已用 ${elapsed ?? 0}s`);
       } else if (job?.status === 'done' && job.summary) {
         jobStatus = React.createElement('div', null,
+          row('Profile', job.profileLab ?? '一次性（临时）'),
           row('结论', job.summary.ok ? '通过' : '未通过'),
           row('Run', job.summary.runId ?? '未知'),
           row('检查项', `${job.summary.checks?.passed ?? 0}/${job.summary.checks?.total ?? 0} 通过`));
@@ -234,6 +250,19 @@ window.__ModuleLoader__.load({
           React.createElement('label', { style: { display: 'flex', gap: '4px', alignItems: 'center', whiteSpace: 'nowrap' } },
             React.createElement('input', { type: 'checkbox', checked: online, onChange: (event) => setOnline(event.target.checked) }),
             '允许联网'),
+          React.createElement('select', {
+            'aria-label': '验证 profile',
+            value: selectedProfile,
+            onChange: (event) => setSelectedProfile(event.target.value),
+            style: { padding: '6px 8px' },
+          },
+            React.createElement('option', { value: '' }, '一次性（临时）'),
+            ...profiles.map((profile) => React.createElement(
+              'option',
+              { key: profile.name, value: profile.name },
+              `${profile.name}${profile.plugins?.length ? `（${profile.plugins.length} 个插件）` : ''}`,
+            ))),
+          React.createElement('button', { type: 'button', onClick: refreshProfiles }, '刷新 profile'),
           React.createElement('button', { type: 'button', onClick: start, disabled: running }, '开始验证'),
           React.createElement('button', { type: 'button', onClick: openShell }, '打开壳界面'),
           running ? React.createElement('button', { type: 'button', onClick: cancel }, '取消') : null),

@@ -41,6 +41,24 @@ test('buildVerifyArgs switches to --online only when asked', () => {
   assert.equal(args.includes('--profile-lab'), false);
 });
 
+test('buildVerifyArgs passes --profile-lab only when explicitly selected', () => {
+  const without = buildVerifyArgs({ labEntry: 'lab.js', pluginSpec: 'p', artifactsDir: 'a' });
+  assert.equal(without.includes('--profile-lab'), false);
+  const withProfile = buildVerifyArgs({ labEntry: 'lab.js', pluginSpec: 'p', artifactsDir: 'a', profileLab: 'dev' });
+  assert.deepEqual(withProfile.slice(-2), ['--profile-lab', 'dev']);
+});
+
+test('buildVerifyArgs rejects unsafe and reserved profile names', () => {
+  assert.throws(
+    () => buildVerifyArgs({ labEntry: 'lab.js', pluginSpec: 'p', artifactsDir: 'a', profileLab: 'desktop' }),
+    /desktop/,
+  );
+  assert.throws(
+    () => buildVerifyArgs({ labEntry: 'lab.js', pluginSpec: 'p', artifactsDir: 'a', profileLab: '../evil' }),
+    /invalid/,
+  );
+});
+
 function fakeChild({ stdout = '', stderr = '', code = 0, onSpawn } = {}) {
   const child = new EventEmitter();
   child.stdout = new EventEmitter();
@@ -197,6 +215,14 @@ test('buildShellArgs supports a plain timed shell without a plugin', () => {
   assert.equal(args.includes('--plugin'), false);
   assert.deepEqual(args.slice(-2), ['--show-hold', '20000']);
   assert.equal(args.includes('--keep-open'), false);
+});
+
+test('buildShellArgs passes --profile-lab when a persistent profile is selected', () => {
+  const args = buildShellArgs({ labEntry: 'lab.js', profileLab: 'test1' });
+  const at = args.indexOf('--profile-lab');
+  assert.equal(at >= 0, true);
+  assert.equal(args[at + 1], 'test1');
+  assert.throws(() => buildShellArgs({ labEntry: 'lab.js', profileLab: 'desktop' }), /desktop/);
 });
 
 test('spawnLabShell detaches, ignores stdio, and never inherits DSH_HOME', () => {

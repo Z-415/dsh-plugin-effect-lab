@@ -24,7 +24,7 @@ async function readInjectedToken(origin, cookie) {
   return token;
 }
 
-async function withBridgeHost(fn) {
+async function withBridgeHost(fn, options = {}) {
   const runtime = locateRuntime();
   const version = (await readRuntimeVersion(runtime)).version;
   const iso = createIsolatedHome({ withAgents: true });
@@ -56,6 +56,7 @@ async function withBridgeHost(fn) {
       profileDir,
       profileName,
       tmpDir: iso.tmp,
+      env: options.env ?? {},
     });
     const auth = await mintAuthCookie(boot.url);
     assert.equal(auth.status, 303);
@@ -126,4 +127,39 @@ test('the control plane runs a real verification and exposes its report', {
     assert.equal(latestJson.hasReport, true);
     assert.equal(latestJson.runId, job.summary.runId);
   });
+});
+
+test('a selected persistent profile is used and kept', {
+  skip: !enabled,
+  timeout: 300_000,
+}, async () => {
+  const profilesRoot = fs.mkdtempSync(path.join(process.env.TEMP ?? '.', 'dsh-lab-profiles-e2e-'));
+  try {
+    await withBridgeHost(async ({ boot, token }) => {
+      const start = await fetch(`${boot.origin}/dsh-lab-bridge/verify`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-dsh-lab-token': token },
+        body: JSON.stringify({ plugin: 'fixtures/plugins/does-not-exist', profileLab: 'test1' }),
+      });
+      assert.equal(start.status, 202);
+      const started = await start.json();
+      assert.equal(started.job.profileLab, 'test1');
+
+      let job = started.job;
+      const deadline = Date.now() + 60_000;
+      while (Date.now() < deadline && job.status === 'running') {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const status = await fetch(`${boot.origin}/dsh-lab-bridge/verify/status`, {
+          headers: { 'x-dsh-lab-token': token },
+        });
+        assert.equal(status.status, 200);
+        job = (await status.json()).job;
+      }
+      assert.equal(job.status, 'done', JSON.stringify(job));
+      assert.equal(job.profileLab, 'test1');
+      assert.equal(fs.existsSync(path.join(profilesRoot, 'test1', 'lab-profile.json')), true);
+    }, { env: { DSH_LAB_PROFILES: profilesRoot } });
+  } finally {
+    fs.rmSync(profilesRoot, { recursive: true, force: true });
+  }
 });

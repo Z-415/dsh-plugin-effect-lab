@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
 import { readArtifactFile, readLatestReport } from './artifacts-store.js';
+import { listProfiles, normalizeProfileLab } from './lab-profiles.js';
 import { summarizeReport } from './report-summary.js';
 import { BridgeBusyError, publicJobView } from './verify-controller.js';
 
@@ -215,8 +216,15 @@ export function createBridgeRouteHandler({ getConfig, controller = null, getToke
         json(res, 400, { error: 'plugin must be a non-empty spec string (<= 4096 chars)' });
         return;
       }
+      let profileLab = null;
       try {
-        const job = controller.start({ plugin, online: body?.online === true });
+        profileLab = normalizeProfileLab(body?.profileLab);
+      } catch (error) {
+        json(res, 400, { error: String(error?.message ?? error) });
+        return;
+      }
+      try {
+        const job = controller.start({ plugin, online: body?.online === true, profileLab });
         json(res, 202, { job: publicJobView(job) });
       } catch (error) {
         if (error instanceof BridgeBusyError) {
@@ -255,17 +263,30 @@ export function createBridgeRouteHandler({ getConfig, controller = null, getToke
         json(res, 400, { error: 'plugin must be <= 4096 chars' });
         return;
       }
+      let profileLab = null;
+      try {
+        profileLab = normalizeProfileLab(body?.profileLab);
+      } catch (error) {
+        json(res, 400, { error: String(error?.message ?? error) });
+        return;
+      }
       const holdMs = Number(body?.holdMs);
       try {
         const launched = await shellLauncher({
           plugin,
           online: body?.online === true,
+          profileLab,
           ...(Number.isFinite(holdMs) && holdMs > 0 ? { holdMs } : {}),
         });
         json(res, 202, { launched });
       } catch (error) {
         json(res, 500, { error: String(error?.message ?? error) });
       }
+      return;
+    }
+    if (rest === '/profiles' && (method === 'GET' || method === 'HEAD')) {
+      if (!authorizeControl(req, res, getToken)) return;
+      json(res, 200, { profiles: listProfiles(config.profilesRoot) });
       return;
     }
 

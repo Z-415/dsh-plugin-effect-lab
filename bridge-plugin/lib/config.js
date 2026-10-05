@@ -116,6 +116,7 @@ export function resolveBridgeConfig(config = {}, env = process.env, options = {}
     labEntry,
     nodeExe: resolveNodeExecutable(config?.nodePath),
     artifactsDir: resolveArtifactsDir(config, env, labRoot),
+    profilesRoot: path.resolve(nonEmptyString(env.DSH_LAB_PROFILES) ?? path.join(labRoot, '.lab-profiles')),
     timeoutMs: resolveTimeoutMs(config?.timeoutMs),
     routePrefix: '/dsh-lab-bridge',
   };

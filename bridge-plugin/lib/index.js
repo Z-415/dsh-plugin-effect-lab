@@ -44,6 +44,10 @@ function toolDefinition(getConfig) {
         type: 'boolean',
         description: '是否允许联网安装（true → --online）。默认 false → --offline。',
       },
+      profile: {
+        type: 'string',
+        description: '可选的持久 lab profile 名（如 dev/test1，位于实验舱 .lab-profiles 下）。省略则使用一次性临时 profile。',
+      },
     },
     output: {
       schema: {
@@ -107,6 +111,7 @@ function toolDefinition(getConfig) {
         labEntry: config.labEntry,
         pluginSpec,
         online: args?.online === true,
+        profileLab: args?.profile,
         artifactsDir: config.artifactsDir,
         timeoutMs: config.timeoutMs,
         cwd: config.labRoot,
@@ -161,6 +166,7 @@ export function apply(ctx, config = {}) {
           cwd: resolved.labRoot,
           pluginSpec: input.plugin,
           online: input.online,
+          profileLab: input.profileLab,
           holdMs: input.holdMs,
         });
       },

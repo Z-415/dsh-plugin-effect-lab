@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { normalizeProfileLab } from './lab-profiles.js';
 
 /**
  * Command construction and execution for `lab verify --json` and `lab shell`.
@@ -20,7 +21,8 @@ export function sanitizeLabEnv(env = process.env) {
   return next;
 }
 
-export function buildVerifyArgs({ labEntry, pluginSpec, online = false, artifactsDir }) {
+export function buildVerifyArgs({ labEntry, pluginSpec, online = false, artifactsDir, profileLab }) {
+  const profile = normalizeProfileLab(profileLab);
   const args = [
     labEntry,
     'verify',
@@ -30,6 +32,7 @@ export function buildVerifyArgs({ labEntry, pluginSpec, online = false, artifact
     '--json',
     '--artifacts',
     artifactsDir,
+    ...(profile ? ['--profile-lab', profile] : []),
   ];
   return args;
 }
@@ -39,13 +42,15 @@ export function buildVerifyArgs({ labEntry, pluginSpec, online = false, artifact
  * window themselves; a positive holdMs is exposed for a timed window. The
  * plugin spec is optional — an empty spec opens a plain DSH shell.
  */
-export function buildShellArgs({ labEntry, pluginSpec, online = false, holdMs } = {}) {
+export function buildShellArgs({ labEntry, pluginSpec, online = false, holdMs, profileLab } = {}) {
+  const profile = normalizeProfileLab(profileLab);
   const args = [
     labEntry,
     'shell',
     ...(online ? ['--online'] : ['--offline']),
     '--show',
     '--no-compare-web',
+    ...(profile ? ['--profile-lab', profile] : []),
   ];
   if (typeof pluginSpec === 'string' && pluginSpec.trim()) args.push('--plugin', pluginSpec.trim());
   const hold = Number(holdMs);
@@ -64,12 +69,13 @@ export function spawnLabShell(options = {}) {
     labEntry,
     pluginSpec,
     online = false,
+    profileLab,
     holdMs,
     cwd,
     env,
     spawnImpl = spawn,
   } = options;
-  const args = buildShellArgs({ labEntry, pluginSpec, online, holdMs });
+  const args = buildShellArgs({ labEntry, pluginSpec, online, holdMs, profileLab });
   const child = spawnImpl(nodeExe, args, {
     cwd: cwd ?? undefined,
     env: sanitizeLabEnv(env ?? process.env),
@@ -130,6 +136,7 @@ export function runLabVerify(options) {
     pluginSpec,
     online = false,
     artifactsDir,
+    profileLab,
     timeoutMs,
     cwd,
     env,
@@ -137,7 +144,7 @@ export function runLabVerify(options) {
     killTreeImpl = killProcessTree,
     signal,
   } = options;
-  const args = buildVerifyArgs({ labEntry, pluginSpec, online, artifactsDir });
+  const args = buildVerifyArgs({ labEntry, pluginSpec, online, artifactsDir, profileLab });
   if (signal?.aborted) {
     return Promise.resolve({ exitCode: null, timedOut: false, aborted: true, stdout: '', stderr: '', report: null });
   }

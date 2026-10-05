@@ -22,6 +22,7 @@ const BRIDGE_SECTION_PROBE = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const realFetch = window.fetch.bind(window);
   let statusCalls = 0;
+  let capturedVerifyBody = null;
   const runningJob = { id: 'ui-job', status: 'running', plugin: 'fixtures/plugins/dup-slot-one', online: false, startedAt: Date.now(), finishedAt: null, summary: null, error: null };
   const doneSummary = { ok: true, runId: 'b2-client-run', checks: { total: 1, passed: 1, failed: 0 }, hasReport: true, loopbackReportUrl: 'http://127.0.0.1:1/dsh-lab-bridge/latest/report.html' };
   const doneJob = { ...runningJob, status: 'done', finishedAt: Date.now(), summary: doneSummary };
@@ -38,7 +39,11 @@ const BRIDGE_SECTION_PROBE = `(async () => {
     if (url.includes('/dsh-lab-bridge/shell')) {
       return new Response(JSON.stringify({ launched: { pid: 4321, args: ['lab.js', 'shell'] } }), { status: 202, headers: { 'content-type': 'application/json' } });
     }
+    if (url.includes('/dsh-lab-bridge/profiles')) {
+      return new Response(JSON.stringify({ profiles: [{ name: 'dev', plugins: [] }, { name: 'test1', plugins: ['alpha'] }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
     if (url.includes('/dsh-lab-bridge/verify')) {
+      capturedVerifyBody = init && init.body ? JSON.parse(init.body) : null;
       return new Response(JSON.stringify({ job: runningJob }), { status: 202, headers: { 'content-type': 'application/json' } });
     }
     return realFetch(input, init);
@@ -71,6 +76,15 @@ const BRIDGE_SECTION_PROBE = `(async () => {
     input.dispatchEvent(new Event('input', { bubbles: true }));
   }
   await wait(300);
+  const profileSelect = document.querySelector('select[aria-label="验证 profile"]');
+  const selectKey = profileSelect
+    ? Object.getOwnPropertyNames(profileSelect).find((key) => key.startsWith('__reactProps$'))
+    : null;
+  const selectProps = selectKey ? profileSelect[selectKey] : null;
+  if (selectProps && typeof selectProps.onChange === 'function') {
+    selectProps.onChange({ target: { value: 'dev' } });
+  }
+  await wait(200);
   const startButton = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('开始验证'));
   if (startButton) startButton.click();
   await wait(600);
@@ -96,6 +110,8 @@ const BRIDGE_SECTION_PROBE = `(async () => {
     found: true,
     runningSeen,
     shellMessageSeen,
+    profileOptionCount: profileSelect ? profileSelect.options.length : 0,
+    selectedProfile: capturedVerifyBody ? capturedVerifyBody.profileLab : null,
     inputFound: Boolean(input),
     inputValue: input ? input.value : null,
     reactPropsUsed,
@@ -185,6 +201,8 @@ test('the bridge settings section shows the latest summary and previews the repo
     assert.equal(probe.found, true, 'the 实验舱桥接 settings section must be present');
     assert.equal(probe.runningSeen, true, `starting a verification must show the running state: ${JSON.stringify(probe)}`);
     assert.equal(probe.shellMessageSeen, true, 'clicking 打开壳界面 must report the launched shell');
+    assert.equal(probe.profileOptionCount >= 3, true, `the profile dropdown must list the one-off and persistent profiles: ${JSON.stringify(probe)}`);
+    assert.equal(probe.selectedProfile, 'dev', 'the selected persistent profile must reach /verify');
     assert.equal(probe.hasRunId, true, 'the section must show the latest seeded runId');
     assert.equal(probe.hasPreviewButton, true, 'the section must expose the inline preview button');
     assert.equal(probe.bridgeAnchors, 0, 'no anchor may navigate the SPA to the report URL');

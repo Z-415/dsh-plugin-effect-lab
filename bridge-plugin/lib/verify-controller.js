@@ -25,7 +25,7 @@ export function createVerifyController(options = {}) {
   } = options;
   let current = null;
 
-  function start({ plugin, online = false }) {
+  function start({ plugin, online = false, profileLab = null }) {
     if (current?.status === 'running') throw new BridgeBusyError();
     const config = getConfig();
     const controller = new AbortController();
@@ -34,6 +34,7 @@ export function createVerifyController(options = {}) {
       status: 'running',
       plugin,
       online,
+      profileLab,
       startedAt: now(),
       finishedAt: null,
       summary: null,
@@ -47,6 +48,7 @@ export function createVerifyController(options = {}) {
       labEntry: config.labEntry,
       pluginSpec: plugin,
       online,
+      profileLab,
       artifactsDir: config.artifactsDir,
       timeoutMs: config.timeoutMs,
       cwd: config.labRoot,
@@ -91,6 +93,7 @@ export function publicJobView(job) {
     status: job.status,
     plugin: job.plugin,
     online: job.online,
+    profileLab: job.profileLab ?? null,
     startedAt: job.startedAt,
     finishedAt: job.finishedAt,
     summary: job.summary,
