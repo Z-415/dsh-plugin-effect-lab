@@ -462,6 +462,29 @@ Final suite: unit 160/160, integration 15/15.
 
 Final suite: unit 167/167, integration 15/15.
 
+## 0.1.0 - 2026-10-05 (host probe retries)
+
+### Added
+
+- `fetchWithRetry()` / `isRetryableNetworkError()` in `src/net-utils.js`:
+  retries connection-level failures (`fetch failed`, `ECONNRESET`,
+  `ECONNREFUSED`, ...) with a fresh per-attempt `AbortSignal.timeout()`, and
+  deliberately does **not** retry timeouts or HTTP error statuses.
+  `mintAuthCookie()` and `httpProbe()` use it (2 retries, 250 ms backoff),
+  which removes the occasional `run: TypeError: fetch failed` that the
+  stability run hit right after boot.
+- A token-mint failure is now a failed `token-mint` check plus a
+  `failureContext` entry instead of aborting the whole run, so the boot tail
+  and console errors are still captured.
+
+### Changed
+
+- `rpc()` (the mock-model session RPC) is intentionally left without retries:
+  it is a POST with side effects, and a blind retry could double-apply a
+  mutation.
+
+Final suite: unit 174/174, integration 15/15.
+
 ## 0.1.0 - 2026-10-05 (leaner GUI, profile dropdown)
 
 ### Changed

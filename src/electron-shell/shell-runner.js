@@ -203,8 +203,19 @@ export async function runShell(options = {}) {
     });
     addCheck(checks, 'host-boot', Number(boot.port) > 0, `port ${boot.port}`);
     progress(`isolated host booted on port ${boot.port}`);
-    const auth = await mintAuthCookie(boot.url);
-    addCheck(checks, 'host-token', Boolean(auth.cookie), `status ${auth.status}`);
+    let auth = { status: 0, cookie: '', error: null };
+    try {
+      auth = await mintAuthCookie(boot.url);
+    } catch (error) {
+      auth = { status: 0, cookie: '', error: String(error?.message ?? error) };
+      errors.push(`token mint failed: ${auth.error}`);
+    }
+    addCheck(
+      checks,
+      'host-token',
+      Boolean(auth.cookie),
+      auth.error ? `mint failed: ${auth.error}` : `status ${auth.status}`,
+    );
 
     if (options.compareWeb !== false) {
       progress('capturing web baseline in headless Edge');

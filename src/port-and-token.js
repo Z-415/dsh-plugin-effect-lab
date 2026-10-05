@@ -1,3 +1,5 @@
+import { fetchWithRetry } from './net-utils.js';
+
 const WEB_URL_RE = /dsh web:\s*(http:\/\/127\.0\.0\.1:(\d+)\/\?token=([A-Za-z0-9_-]+))/;
 
 /** Parse the official readiness line from captured boot output. */
@@ -14,11 +16,8 @@ export function parseWebUrl(text) {
 
 /** Mint the dsh-auth cookie by requesting the tokenized launch URL once. */
 export async function mintAuthCookie(url, options = {}) {
-  const { timeoutMs = 20_000 } = options;
-  const response = await fetch(url, {
-    redirect: 'manual',
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  const { timeoutMs = 20_000, retries = 2 } = options;
+  const response = await fetchWithRetry(url, { redirect: 'manual' }, { timeoutMs, retries });
   const setCookies = typeof response.headers.getSetCookie === 'function'
     ? response.headers.getSetCookie()
     : [response.headers.get('set-cookie')].filter(Boolean);
@@ -33,17 +32,16 @@ export async function mintAuthCookie(url, options = {}) {
 
 /** Minimal HTTP fetch that never follows redirects. */
 export async function httpProbe(url, options = {}) {
-  const { cookie, timeoutMs = 20_000, method = 'GET' } = options;
+  const { cookie, timeoutMs = 20_000, method = 'GET', retries = 2 } = options;
   const headers = {};
   if (cookie) headers.cookie = cookie;
   const started = Date.now();
   try {
-    const response = await fetch(url, {
-      method,
-      headers,
-      redirect: 'manual',
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    const response = await fetchWithRetry(
+      url,
+      { method, headers, redirect: 'manual' },
+      { timeoutMs, retries },
+    );
     const body = await response.text().catch(() => '');
     return {
       ok: true,

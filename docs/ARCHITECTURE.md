@@ -81,3 +81,8 @@ library covers seven categories (`boot`, `plugin`, `client`, `profile`, `env`,
 `runtime`, `crash`); `docs/FAILURE-SIGNATURES.md` lists them and
 `lab scan --list` prints them at runtime. The Node `DEP0180` `fs.Stats`
 warning seen on 0.2.0-rc.2 is explicitly noise.
+
+The host is probed with `fetchWithRetry()`, which retries connection-level
+failures only (never timeouts or HTTP error statuses). A token-mint failure is
+a failed `token-mint` check plus a `failureContext` entry, not an abort, so a
+run that cannot authenticate still produces boot and console evidence.

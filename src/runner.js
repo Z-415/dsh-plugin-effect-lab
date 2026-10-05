@@ -275,12 +275,18 @@ export async function runLab(options = {}) {
     report.noise = scanNoise(`${bootOutput.stdout}\n${bootOutput.stderr}`);
     addCheck(checks, 'boot-signatures', !hasFatal(report.signatureHits), summarize(report.signatureHits));
 
-    const auth = await mintAuthCookie(boot.url);
+    let auth = { status: 0, cookie: '', error: null };
+    try {
+      auth = await mintAuthCookie(boot.url);
+    } catch (error) {
+      auth = { status: 0, cookie: '', error: String(error?.message ?? error) };
+      errors.push(`token mint failed: ${auth.error}`);
+    }
     addCheck(
       checks,
       'token-mint',
       auth.status === 303 && Boolean(auth.cookie),
-      `status ${auth.status}, cookie ${auth.cookie ? 'present' : 'missing'}`,
+      auth.error ? `mint failed: ${auth.error}` : `status ${auth.status}, cookie ${auth.cookie ? 'present' : 'missing'}`,
     );
 
     const routes = await probeRoutes({ origin: boot.origin, cookie: auth.cookie, routes: options.routes ?? [] });
