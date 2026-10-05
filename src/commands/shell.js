@@ -10,6 +10,13 @@ export async function runShellCommand(options) {
   if (progress && options.nativeDesktop) {
     progress('--native-desktop: the shell will use the real folder dialog and a real OS notification.');
   }
+  if (progress && options.probeNativeDialog) {
+    if (options.nativeDesktop && (options.show || options.keepOpen)) {
+      progress('--probe-native-dialog: a real folder dialog will open; pick a folder or cancel to continue the run.');
+    } else {
+      progress('--probe-native-dialog ignored: it needs --native-desktop plus --show/--keep-open.');
+    }
+  }
   const report = await runShell({
     onProgress: progress,
     runtimePath: options.runtimePath,
@@ -29,6 +36,7 @@ export async function runShellCommand(options) {
     show: options.show,
     keepOpen: options.keepOpen,
     nativeDesktop: options.nativeDesktop,
+    probeNativeDialog: options.probeNativeDialog,
     showHoldMs: options.showHoldMs,
     browserPath: options.browserPath,
     browserTimeoutMs: options.browserTimeoutMs,

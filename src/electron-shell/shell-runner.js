@@ -41,9 +41,11 @@ export async function runShell(options = {}) {
   const runDir = prepareArtifacts(artifactsRoot, runId);
   const checks = [];
   const errors = [];
-  const desktop = resolveDesktopMode(options.nativeDesktop, {
-    show: options.show === true || options.keepOpen === true,
-  });
+  const showWindow = options.show === true || options.keepOpen === true;
+  const desktop = resolveDesktopMode(options.nativeDesktop, { show: showWindow });
+  const probeDialogRequested = options.probeNativeDialog === true;
+  const probeDialog = probeDialogRequested && desktop.mode === 'native' && showWindow;
+  desktop.probeNativeDialog = probeDialog;
   const report = {
     ok: false,
     mode: 'shell',
@@ -274,8 +276,9 @@ export async function runShell(options = {}) {
       desktopMode: desktop.mode,
       // Do not accept an early DOM plateau below the web baseline's slot count.
       minSlots: webProbe?.slotCount ?? 0,
-      // A native folder dialog is modal, so the automated probe must not open it.
-      autoProbeDirectoryPicker: desktop.mode !== 'native',
+      // A native folder dialog is modal, so the probe only opens it when the
+      // human explicitly asked for it with --probe-native-dialog.
+      autoProbeDirectoryPicker: desktop.mode !== 'native' ? true : probeDialog,
       assertTokens: options.assertTokens ?? ['--dsw-alias-bg-base'],
     }, null, 2)}\n`, 'utf8');
 
@@ -377,6 +380,17 @@ export async function runShell(options = {}) {
           : `stub: recorded ${notificationFacts?.requested ?? 0}, suppressed (no OS toast)`,
         { informational: desktop.mode !== 'native' },
       );
+      if (probeDialogRequested) {
+        const pickerFacts = capabilities?.bridge?.directoryPicker ?? null;
+        addCheck(
+          checks,
+          'shell-native-dialog',
+          probeDialog && pickerFacts?.called === true && !pickerFacts?.error,
+          probeDialog
+            ? `real folder dialog answered: canceled=${pickerFacts?.canceled ?? 'n/a'} value=${pickerFacts?.value ?? 'null'}`
+            : '--probe-native-dialog needs --native-desktop and --show/--keep-open',
+        );
+      }
 
       if (webProbe) {
         shellVsWeb = diffProbeSnapshots(webProbe, shellProbe);

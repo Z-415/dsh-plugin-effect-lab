@@ -55,6 +55,19 @@ const CLICK_ALL = `(() => {
   return JSON.stringify({ thrown, calls: window.__calls, errors: window.__rendererErrors });
 })()`;
 
+const CLICK_DESKTOP = `(() => {
+  document.getElementById('nativeDesktop').checked = true;
+  document.getElementById('probeDialog').checked = true;
+  window.__calls = [];
+  // The previous pass left every button disabled (setBusy until onDone).
+  for (const id of ['shellKeepOpen', 'shellCompare']) {
+    const button = document.getElementById(id);
+    button.disabled = false;
+    button.click();
+  }
+  return JSON.stringify({ calls: window.__calls, errors: window.__rendererErrors });
+})()`;
+
 test('every GUI button dispatches a lab command without a renderer error', {
   skip: !enabled,
   timeout: 180_000,
@@ -67,9 +80,10 @@ test('every GUI button dispatches a lab command without a renderer error', {
       baseUrl: pathToFileURL(page.file).href,
       screenshots: [],
       artifactsDir,
-      probes: { clickAll: CLICK_ALL },
+      probes: { clickAll: CLICK_ALL, desktop: CLICK_DESKTOP },
     });
     const result = JSON.parse(ui.extra.clickAll);
+    const desktop = JSON.parse(ui.extra.desktop);
     assert.deepEqual(result.errors, [], `renderer errors: ${JSON.stringify(result.errors)}`);
     assert.deepEqual(result.thrown, [], `click handlers threw: ${JSON.stringify(result.thrown)}`);
     assert.equal(result.calls.length > 0, true, 'no button dispatched a command');
@@ -82,6 +96,18 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(result.calls.some((args) => args[0] === 'verify'), true);
     assert.equal(result.calls.some((args) => args[0] === 'shell'), true);
     assert.equal(result.calls.some((args) => args[0] === 'profile'), true, JSON.stringify(result.calls));
+    assert.equal(result.calls.some((args) => args[0] === 'scan'), true, 'the signature-library button must dispatch scan');
+
+    // With both desktop checkboxes ticked, the shell buttons must pass the new flags.
+    assert.equal(desktop.calls.length, 2, JSON.stringify(desktop.calls));
+    for (const args of desktop.calls) {
+      assert.equal(args.includes('--native-desktop'), true, JSON.stringify(args));
+      assert.equal(args.includes('--probe-native-dialog'), true, JSON.stringify(args));
+    }
+    const keepOpen = desktop.calls.find((args) => args.includes('--keep-open'));
+    assert.deepEqual(keepOpen.slice(0, 2), ['shell', '--no-compare-web']);
+    const compare = desktop.calls.find((args) => args[0] === 'shell' && !args.includes('--keep-open'));
+    assert.equal(compare.includes('--show'), true, 'the dialog probe needs a visible window');
   } finally {
     if (ui) await ui.close();
     fs.rmSync(page.dir, { recursive: true, force: true });

@@ -391,3 +391,28 @@ Final suite: unit 120/120, integration 15/15.
   clean-boot negative test and a "ids are unique, fields present" library test.
 
 Final suite: unit 145/145, integration 15/15.
+
+## 0.1.0 - 2026-10-05 (mouse-driven entries for the new features)
+
+### Added
+
+- GUI launcher buttons for the three new capabilities: **卸载 profile 里的这个
+  插件** (`profile remove-plugin`, uses the profile + plugin fields),
+  **查看失败签名库** (`scan --list`), and two checkboxes in the Electron shell
+  group — **原生桌面（真实文件夹对话框 + 系统通知）** and **启动时弹出文件夹
+  对话框**.
+- `lab shell --probe-native-dialog`: opens the real folder dialog during the
+  run, waits for the user to pick a folder or cancel, and records the answer in
+  the `shell-native-dialog` check. It needs `--native-desktop` plus
+  `--show`/`--keep-open`; asking for it without those fails the check with the
+  reason instead of opening a modal nobody can answer.
+- `tests/integration/gui-page.test.js` now ticks both desktop checkboxes and
+  asserts the shell commands carry `--native-desktop` / `--probe-native-dialog`
+  (and that the dialog probe forces `--show`).
+
+### Changed
+
+- `docs/GUI.md` documents the new buttons and both desktop modes, including how
+  to uninstall a single plugin without touching the others.
+
+Final suite: unit 145/145, integration 15/15.

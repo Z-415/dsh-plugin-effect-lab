@@ -30,6 +30,8 @@
   input[type="text"] { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); }
   input[type="text"]:focus { outline: 2px solid #c7d9f5; outline-offset: 1px; }
   .note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+  label.chk { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-size: 12px; }
+  label.chk input { margin: 0; }
 </style>
 </head>
 <body>
@@ -50,8 +52,9 @@
         <button id="runShellPluginTimed">在壳窗口打开（20 秒）</button>
         <button id="runMatrixPlugin">和另一个插件一起验证</button>
         <button id="runListProfiles">列出 profile</button>
+        <button id="runRemovePlugin">卸载 profile 里的这个插件</button>
       </div>
-      <p class="note" id="cmdPreview">填了 profile 名会保留安装结果，下次不带插件也能打开；再填第二个插件即可检验两者的相互影响。</p>
+      <p class="note" id="cmdPreview">填了 profile 名会保留安装结果，下次不带插件也能打开；再填第二个插件即可检验两者的相互影响。要卸载单个插件：profile 名 + 插件名都填好，再点「卸载 profile 里的这个插件」（不用填版本号也行）。</p>
     </div>
     <div class="group">
       <h2>检查</h2>
@@ -61,15 +64,21 @@
         <button data-args="verify|--screenshot|home|--screenshot|settings">验证 + 设置页截图</button>
         <button data-args="verify|--fixture-variant|empty">空会话</button>
         <button data-args="verify|--fixture-variant|long">长会话（12 轮）</button>
+        <button data-args="scan|--list">查看失败签名库</button>
       </div>
     </div>
     <div class="group">
       <h2>Electron 壳</h2>
       <div class="row">
-        <button data-args="shell|--no-compare-web|--show|--show-hold|20000">打开壳窗口（20 秒）</button>
-        <button data-args="shell|--no-compare-web|--keep-open">打开壳窗口（自己关）</button>
-        <button data-args="shell">壳 vs web 对比</button>
+        <button id="shellTimed">打开壳窗口（20 秒）</button>
+        <button id="shellKeepOpen">打开壳窗口（自己关）</button>
+        <button id="shellCompare">壳 vs web 对比</button>
       </div>
+      <div class="row" style="margin-top:8px">
+        <label class="chk"><input type="checkbox" id="nativeDesktop"> 原生桌面：真实文件夹对话框 + 系统通知</label>
+        <label class="chk"><input type="checkbox" id="probeDialog"> 启动时弹出文件夹对话框（需勾选左边）</label>
+      </div>
+      <p class="note">不勾选＝确定性桩：目录选择返回夹具路径、通知只记录不弹。勾「原生桌面」后会弹真实系统通知；再勾右边才会打开真实的选择目录对话框，窗口会等你选一个目录或点取消，然后继续跑完。</p>
     </div>
     <div class="group">
       <h2>插件与主题</h2>
@@ -108,6 +117,8 @@
   const presetButtons = [...document.querySelectorAll('button[data-args]')];
   const pluginInput = document.getElementById('plugin');
   const profileInput = document.getElementById('profile');
+  const nativeDesktop = document.getElementById('nativeDesktop');
+  const probeDialog = document.getElementById('probeDialog');
 
   function setBusy(busy, label) {
     allButtons.forEach((b) => { b.disabled = busy; });
@@ -141,6 +152,19 @@
     const profile = profileInput.value.trim();
     return profile ? [...args, '--profile-lab', profile] : args;
   }
+  function desktopFlags() {
+    if (!nativeDesktop.checked) return [];
+    const flags = ['--native-desktop'];
+    if (probeDialog.checked) flags.push('--probe-native-dialog');
+    return flags;
+  }
+  function withDesktop(args) {
+    const flags = desktopFlags();
+    const needsShow = flags.includes('--probe-native-dialog')
+      && !args.includes('--show') && !args.includes('--keep-open');
+    const base = needsShow ? [...args, '--show', '--show-hold', '20000'] : [...args];
+    return [...base, ...flags];
+  }
   function pluginField() {
     return pluginInput.value.trim();
   }
@@ -165,13 +189,13 @@
     const spec = pluginField();
     if (!spec) noteNoPlugin();
     const pluginArgs = spec ? ['--plugin', spec, networkFlag(spec)] : [];
-    runWithArgs(withProfile(['shell', '--no-compare-web', ...pluginArgs, '--keep-open']), spec ? `shell keep-open · ${spec}` : 'shell keep-open（当前环境）');
+    runWithArgs(withDesktop(withProfile(['shell', '--no-compare-web', ...pluginArgs, '--keep-open'])), spec ? `shell keep-open · ${spec}` : 'shell keep-open（当前环境）');
   });
   document.getElementById('runShellPluginTimed').addEventListener('click', () => {
     const spec = pluginField();
     if (!spec) noteNoPlugin();
     const pluginArgs = spec ? ['--plugin', spec, networkFlag(spec)] : [];
-    runWithArgs(withProfile(['shell', '--no-compare-web', ...pluginArgs, '--show', '--show-hold', '20000']), spec ? `shell 20s · ${spec}` : 'shell 20s（当前环境）');
+    runWithArgs(withDesktop(withProfile(['shell', '--no-compare-web', ...pluginArgs, '--show', '--show-hold', '20000'])), spec ? `shell 20s · ${spec}` : 'shell 20s（当前环境）');
   });
   document.getElementById('runMatrixPlugin').addEventListener('click', () => {
     const spec = pluginField();
@@ -189,6 +213,28 @@
     ]), `两个插件一起 · ${spec} + ${other}`);
   });
   document.getElementById('runListProfiles').addEventListener('click', () => runWithArgs(['profile', 'list'], 'profile list'));
+  document.getElementById('shellTimed').addEventListener('click', () => {
+    runWithArgs(withDesktop(['shell', '--no-compare-web', '--show', '--show-hold', '20000']), '壳窗口 20 秒');
+  });
+  document.getElementById('shellKeepOpen').addEventListener('click', () => {
+    runWithArgs(withDesktop(['shell', '--no-compare-web', '--keep-open']), '壳窗口（自己关）');
+  });
+  document.getElementById('shellCompare').addEventListener('click', () => {
+    runWithArgs(withDesktop(['shell']), '壳 vs web 对比');
+  });
+  document.getElementById('runRemovePlugin').addEventListener('click', () => {
+    const profile = profileInput.value.trim();
+    const spec = pluginField();
+    if (!profile) {
+      append('[gui] 先在「profile 名」输入框填名字，再点卸载。\n');
+      return;
+    }
+    if (!spec) {
+      append('[gui] 先在「插件」输入框填要卸载的插件名或 spec（不带版本号也行）。\n');
+      return;
+    }
+    runWithArgs(['profile', 'remove-plugin', profile, spec], `profile remove-plugin · ${profile} / ${spec}`);
+  });
 
   document.getElementById('stop').addEventListener('click', async () => {
     await window.labGui.stop();

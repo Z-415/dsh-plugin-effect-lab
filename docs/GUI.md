@@ -57,13 +57,15 @@ output into the log pane, and never bypasses the lab's isolation rules.
 | 自定义插件 / 持久 profile | 在壳窗口打开（20 秒） | `shell --no-compare-web --plugin <spec> --show --show-hold 20000` |
 | 自定义插件 / 持久 profile | 和另一个插件一起验证 | `shell --plugin A --with B --show …` |
 | 自定义插件 / 持久 profile | 列出 profile | `profile list` |
+| 自定义插件 / 持久 profile | 卸载 profile 里的这个插件 | `profile remove-plugin <name> <spec>` |
 | 检查 | 自检 doctor | `doctor` |
 | 检查 | 快速验证 | `verify` |
 | 检查 | 验证 + 设置页截图 | `verify --screenshot home --screenshot settings` |
 | 检查 | 空会话 / 长会话 | `verify --fixture-variant empty\|long` |
-| Electron 壳 | 打开壳窗口（20 秒） | `shell --no-compare-web --show --show-hold 20000` |
-| Electron 壳 | 打开壳窗口（自己关） | `shell --no-compare-web --keep-open` |
-| Electron 壳 | 壳 vs web 对比 | `shell` |
+| 检查 | 查看失败签名库 | `scan --list` |
+| Electron 壳 | 打开壳窗口（20 秒） | `shell --no-compare-web --show --show-hold 20000 [--native-desktop] [--probe-native-dialog]` |
+| Electron 壳 | 打开壳窗口（自己关） | `shell --no-compare-web --keep-open [--native-desktop] [--probe-native-dialog]` |
+| Electron 壳 | 壳 vs web 对比 | `shell [--native-desktop] [--probe-native-dialog]` |
 | 插件与主题 | 验证 wallpaper 插件 | `verify --plugin dsh-plugin-wallpaper-engine@1.2.0 --online` |
 | 插件与主题 | 主题冲突矩阵 | `matrix --config fixtures/matrix/theme-conflict.json --online` |
 | 插件与主题 | 效果探针矩阵 | `matrix --config fixtures/matrix/effect-conflict.json` |
@@ -80,6 +82,31 @@ The two text fields drive the custom buttons:
   `.lab-profiles/<name>/`, so the plugin stays installed and the shell window
   can be reopened later without re-installing. See
   [LAB-PROFILES.md](LAB-PROFILES.md).
+
+## 卸载单个插件（鼠标操作）
+
+1. **profile 名** 填要操作的持久 profile（例如 `dev`）。
+2. **插件** 填要卸载的插件名或 spec（`dsh-ui-tweaks`、`dsh-ui-tweaks@0.20.0`、
+   或当初装的本地路径都行）。
+3. 点 **卸载 profile 里的这个插件**。
+
+只会卸掉这一个插件，profile 和其余插件保留；日志会打印
+`removed …` 和 `still installed …`。没匹配到会提示 `unmatched` 并以退出码 1 结束。
+不想动真实在用的 profile，可以先点「验证这个插件」并填一个新的 profile 名来造一个。
+
+## 原生桌面开关（Electron 壳）
+
+「Electron 壳」这一组有两个复选框，作用于上面三个壳按钮：
+
+| 勾选 | 效果 |
+|---|---|
+| 都不勾（默认） | 确定性桩：目录选择返回夹具路径、通知只记录不弹系统提示，适合反复跑 |
+| 原生桌面：真实文件夹对话框 + 系统通知 | 走真实 Electron `dialog` / `Notification`；系统通知会自动弹出并断言 |
+| 再勾「启动时弹出文件夹对话框」 | 运行过程中真的弹出选择目录对话框，窗口会等你选一个目录或点**取消**，然后继续跑完 |
+
+注意：真实对话框是模态的，会自动把窗口显示出来。选完（或取消）才会继续；若长时间不点，
+整轮会在壳的超时时间（默认 120 秒）后结束。报告里会看到 `shell-native-dialog` 一行，
+写明你选了什么或是否取消。
 
 ## Requirements
 
