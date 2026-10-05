@@ -67,7 +67,10 @@ shell-result.json       raw shell result (DOM, console errors, page errors, sett
 - `shell`: Electron result, normalized probes, `shellVsWeb` diff, and
   `diffMagnitude`. `shell.transport` records the renderer
   `__DSH_TRANSPORT__` bridge; `shell.result.consoleErrors` must not contain
-  `[connection] connection lost`.
+  `[connection] connection lost`. `shell.result.tray` records the tray
+  (`{ created, skipped, tooltip, menuItems, error }`, `shell-tray` check) and
+  `shell.result.bootGlobals` records which host-injected globals reached the
+  renderer (`shell-boot-globals` check).
 - `agentCoverage`: `fixture-only` or `loopback-mock-model`, always with
   `realModelRequests: false`, plus the covered/uncovered surface list.
 - `settings`: with `--screenshot settings`, `{ totalSlots, added }` lists the

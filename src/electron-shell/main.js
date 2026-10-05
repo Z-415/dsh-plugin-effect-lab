@@ -1,4 +1,6 @@
-const { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, protocol, session } = require('electron');
+const {
+  app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, protocol, session, Tray,
+} = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createDesktopBridge } = require('./desktop-bridge.cjs');
@@ -9,6 +11,67 @@ const consoleErrors = [];
 const pageErrors = [];
 let finished = false;
 let mainWindow = null;
+let tray = null;
+
+/** 16x16 opaque dot, so the minimal shell ships no asset files. */
+const TRAY_ICON_PNG = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAHElEQVR4nGNgGDRAP//Cf1LwqAGjBgxXAwYMAADtRF1gVZC2EwAAAABJRU5ErkJggg==';
+
+/** The globals the host's index injections are expected to leave behind. */
+const BOOT_GLOBAL_NAMES = [
+  '__DSH_BOOT__',
+  '__DSH_BOOT_READY__',
+  '__DSH_TRANSPORT__',
+  '__DSH_CONTACT_CONFIG__',
+  '__DSH_SHORTCUTS_CONFIG__',
+  '__DSH_DOCUMENT_PREVIEW_CONFIG__',
+  '__DSH_MODELS_ONBOARDING__',
+  '__DSH_CONNECTION_RECOVERY__',
+];
+/** Only these gate the check; the rest depend on host configuration. */
+const REQUIRED_BOOT_GLOBALS = ['__DSH_BOOT__', '__DSH_BOOT_READY__', '__DSH_TRANSPORT__'];
+
+/**
+ * The official app always has a tray; the lab creates one only for a visible
+ * run so automated runs stay invisible and quiet.
+ */
+function createTrayFacts(window) {
+  const facts = { created: false, skipped: false, tooltip: null, menuItems: [], error: null };
+  try {
+    tray = new Tray(nativeImage.createFromBuffer(Buffer.from(TRAY_ICON_PNG, 'base64')));
+    facts.created = true;
+    facts.tooltip = 'DSH Plugin Effect Lab (lab shell)';
+    tray.setToolTip(facts.tooltip);
+    facts.menuItems = ['显示窗口', '退出'];
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: '显示窗口', click: () => { if (!window.isDestroyed()) { window.show(); window.focus(); } } },
+      { type: 'separator' },
+      { label: '退出', click: () => { if (!window.isDestroyed()) window.close(); } },
+    ]));
+    tray.on('click', () => { if (!window.isDestroyed()) { window.show(); window.focus(); } });
+    return facts;
+  } catch (error) {
+    facts.error = String(error?.message ?? error);
+    return facts;
+  }
+}
+
+/**
+ * Which of the host's index-injected globals actually reached the renderer.
+ * The host inlines its injection rows into the served index, so the effects are
+ * present even though the lab does not transport typed rows over IPC.
+ */
+async function probeBootGlobals(window) {
+  const booleans = await window.webContents.executeJavaScript(`(() => {
+    const out = {};
+    for (const name of ${JSON.stringify(BOOT_GLOBAL_NAMES)}) out[name] = typeof globalThis[name] !== 'undefined';
+    return out;
+  })()`);
+  return {
+    present: Object.entries(booleans).filter(([, value]) => value).map(([name]) => name),
+    missing: Object.entries(booleans).filter(([, value]) => !value).map(([name]) => name),
+    requiredPresent: REQUIRED_BOOT_GLOBALS.every((name) => booleans[name] === true),
+  };
+}
 
 app.setName('dsh-lab-electron-shell');
 app.setPath('userData', config.userDataDir);
@@ -363,6 +426,14 @@ async function finish(ok, extra = {}) {
   } catch (error) {
     console.error('shell result write failed', error);
   }
+  if (tray) {
+    try {
+      tray.destroy();
+    } catch {
+      // Best-effort: the process is about to exit anyway.
+    }
+    tray = null;
+  }
   setTimeout(() => app.exit(ok ? 0 : 1), 50);
 }
 
@@ -429,6 +500,9 @@ app.whenReady().then(async () => {
     },
   });
   mainWindow = window;
+  const trayFacts = (config.show || config.keepOpen)
+    ? createTrayFacts(window)
+    : { created: false, skipped: true, reason: 'hidden run (pass --show or --keep-open)', tooltip: null, menuItems: [] };
   installWebSocketFence();
   if (config.show) {
     // Make the deliberately-visible window findable: front, centred, on top.
@@ -449,6 +523,7 @@ app.whenReady().then(async () => {
     const settle = await waitForStableShell(window, { minSlots: Number(config.minSlots) || 0 });
     const dom = await probeDom(window);
     const capabilities = await probeDesktopCapabilities(window, desktopBridge);
+    const bootGlobals = await probeBootGlobals(window);
     const frame = await captureWindowFrame(window);
     if (frame.image) {
       fs.mkdirSync(path.dirname(config.screenshotFile), { recursive: true });
@@ -459,6 +534,8 @@ app.whenReady().then(async () => {
       settle,
       capabilities,
       capture: { attempts: frame.attempts, unpainted: frame.unpainted, error: frame.error ?? null },
+      bootGlobals,
+      tray: trayFacts,
       title: window.getTitle(),
       webContents: { url: window.webContents.getURL(), userAgent: window.webContents.getUserAgent() },
       screenshotFile: config.screenshotFile,

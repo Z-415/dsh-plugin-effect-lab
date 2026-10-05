@@ -514,6 +514,36 @@ Final suite: unit 174/174, integration 15/15.
 
 Final suite: unit 182/182, integration 15/15.
 
+## 0.1.0 - 2026-10-05 (desktop shell: tray and boot-injection evidence)
+
+### Added
+
+- A real Electron `Tray` for visible shell runs (`--show` / `--keep-open`): an
+  in-memory 16x16 icon (no asset file), tooltip, and a `显示窗口` / `退出` menu.
+  Hidden runs skip it so automation stays invisible. The report carries
+  `shell.tray` plus the `shell-tray` check, and `shell-mode.test.js` asserts the
+  hidden-run shape (`skipped` + reason is informational, not a failure).
+- `shell-boot-globals`: probes the host's index-injected globals
+  (`__DSH_BOOT__`, `__DSH_BOOT_READY__`, `__DSH_TRANSPORT__` are required, plus
+  `__DSH_CONTACT_CONFIG__`, `__DSH_SHORTCUTS_CONFIG__`,
+  `__DSH_DOCUMENT_PREVIEW_CONFIG__`, `__DSH_MODELS_ONBOARDING__`,
+  `__DSH_CONNECTION_RECOVERY__`) and reports `present=n/total`. A verified run
+  shows `present=8/8` — evidence that the boot injections reached the shell.
+- `docs/ELECTRON-SHELL.md` documents the reverse-engineered boot contract: the
+  row kinds (`global | script | script-src | script-preload | style | html`),
+  the host's IPC `{ type: 'ready', url, injections }` message from
+  `ctx.webServer.collectIndexInjections()`, and why the lab uses the
+  server-rendered index instead. The tray and the `__DSH_FILE_UPLOAD__`
+  difference are documented there too.
+
+### Changed
+
+- `docs/VERSION-POLICY.md`'s version-specific assumption list gained the desktop
+  handshake (`dsh.cmd` → `--expose-internals .../dsh-desktop-host/lib/cli.js`)
+  and the injected global names.
+
+Final suite: unit 182/182, integration 15/15.
+
 ## 0.1.0 - 2026-10-05 (matrix back in the GUI, collapsed)
 
 ### Added

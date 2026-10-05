@@ -37,6 +37,12 @@ test('electron shell bridges the host stream and matches web DOM/tokens', {
       true,
       'unmodified profile must be pixel-identical between shell and web',
     );
+    const trayCheck = (report.checks ?? []).find((check) => check.name === 'shell-tray');
+    assert.ok(trayCheck, 'the report must include a shell-tray check');
+    assert.equal(trayCheck.informational, true, `a hidden run has no tray: ${JSON.stringify(trayCheck)}`);
+    const globalsCheck = (report.checks ?? []).find((check) => check.name === 'shell-boot-globals');
+    assert.ok(globalsCheck, 'the report must include a shell-boot-globals check');
+    assert.equal(globalsCheck.pass, true, `boot injections must reach the shell: ${JSON.stringify(globalsCheck)}`);
     assert.equal(report.cleanup.homeRemoved, true);
     assert.deepEqual(report.cleanup.portsLeft, []);
     assert.equal(report.realHome.diff.ok, true);

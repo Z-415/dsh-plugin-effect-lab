@@ -93,6 +93,17 @@ update that changes one of them needs a code change *and* a re-verified suite:
 - the desktop-only body-attribute hints (`DESKTOP_ATTRIBUTE_HINTS`);
 - the session fixture's `surfaceOp: "append"` requirement
   (`fixtures/web-session/*.json`);
+- the host's desktop handshake: `dsh.cmd` runs
+  `DeepSeek Harness.exe --expose-internals .../dsh-desktop-host/lib/cli.js ...`
+  and the host sends `{ type: 'ready', url, injections }` over its IPC channel,
+  with `injections: ctx.webServer.collectIndexInjections()`; the frontend
+  applies rows of kind `global | script | script-src | script-preload | style |
+  html` (`docs/ELECTRON-SHELL.md` has the exact contract, and
+  `shell-boot-globals` probes its effects);
+- the injected global names the frontend reads (`__DSH_BOOT__`,
+  `__DSH_BOOT_READY__`, `__DSH_CONTACT_CONFIG__`, `__DSH_SHORTCUTS_CONFIG__`,
+  `__DSH_DOCUMENT_PREVIEW_CONFIG__`, `__DSH_MODELS_ONBOARDING__`,
+  `__DSH_CONNECTION_RECOVERY__`);
 - the Electron major copied for the shell and GUI runtimes: it comes from the
   official install's `version` file, so it follows the install automatically.
 

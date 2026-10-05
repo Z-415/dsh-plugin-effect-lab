@@ -417,6 +417,30 @@ export async function runShell(options = {}) {
             : '--probe-native-dialog needs --native-desktop and --show/--keep-open',
         );
       }
+      if (result.tray) {
+        addCheck(
+          checks,
+          'shell-tray',
+          result.tray.created === true,
+          result.tray.created
+            ? `tray created (tooltip=${result.tray.tooltip}; menu=[${(result.tray.menuItems ?? []).join(', ')}])`
+            : result.tray.skipped
+              ? `skipped: ${result.tray.reason}`
+              : `not created: ${result.tray.error ?? 'unknown'}`,
+          { informational: result.tray.skipped === true },
+        );
+      }
+      if (result.bootGlobals) {
+        const present = result.bootGlobals.present ?? [];
+        const missing = result.bootGlobals.missing ?? [];
+        addCheck(
+          checks,
+          'shell-boot-globals',
+          result.bootGlobals.requiredPresent === true,
+          `present=${present.length}/${present.length + missing.length} [${present.join(', ')}]`
+            + `${missing.length ? ` missing=[${missing.join(', ')}]` : ''}`,
+        );
+      }
 
       if (webProbe) {
         shellVsWeb = diffProbeSnapshots(webProbe, shellProbe);

@@ -181,11 +181,73 @@ sets to the web baseline's count. `shell-dom-stable` reports that settle.
 antialiasing). `shell-screenshot-diff` is a real check on `visuallyIdentical`,
 so a stale or genuinely divergent frame fails the run.
 
+## Tray
+
+The official app keeps a tray icon. `lab shell` creates a real Electron `Tray`
+for a **visible** run (`--show` / `--keep-open`): a 16x16 icon built in memory
+(no asset file), tooltip `DSH Plugin Effect Lab (lab shell)`, and a menu with
+`显示窗口` / `退出` (the exit item closes the window, which is what finishes a
+`--keep-open` run). A hidden run skips it and reports
+`shell-tray: skipped: hidden run (pass --show or --keep-open)`, so automation
+stays invisible. `report.shell` carries
+`tray = { created, skipped, tooltip, menuItems, error }`.
+
+## Boot injections
+
+The official frontend applies the host's boot rows itself. Reverse-engineered
+from the packaged `index-*.js`:
+
+```js
+const boot = globalThis.dshDesktopBoot;        // our preload exposes this
+if (boot !== undefined) {
+  boot.ready().then(({ injections, streamBaseUrl }) => {
+    globalThis.__DSH_TRANSPORT__ = { ownsHost: true, streamBaseUrl };
+    for (const row of injections) switch (row.kind) {
+      case 'global':         globalThis[row.name] = row.value; break;
+      case 'script':         /* inline <script> text, head | body */ break;
+      case 'script-src':     /* external <script src> */ break;
+      case 'script-preload': /* nothing to do */ break;
+      case 'style':          /* inline <style> */ break;
+      case 'html':           /* insertAdjacentHTML, head | body */ break;
+      default: throw new Error(`web boot: unknown index injection row ${JSON.stringify(row)}`);
+    }
+  });
+}
+```
+
+The rows come from the host: its CLI sends
+`{ type: 'ready', url, injections }` over the **IPC channel of the forked host
+process**, with `injections: ctx.webServer.collectIndexInjections()`
+("the typed rows plugins contribute to the boot").
+
+The lab does not fork the host, so it never sees that IPC message. Instead it
+serves the index the host renders for the **web** path, which already has the
+same rows inlined server-side. The **effects** are therefore present in the
+shell; the **typed-row transport** is not exercised. `shell-boot-globals`
+asserts the effects: it probes `__DSH_BOOT__`, `__DSH_BOOT_READY__`,
+`__DSH_TRANSPORT__` (required) plus `__DSH_CONTACT_CONFIG__`,
+`__DSH_SHORTCUTS_CONFIG__`, `__DSH_DOCUMENT_PREVIEW_CONFIG__`,
+`__DSH_MODELS_ONBOARDING__`, `__DSH_CONNECTION_RECOVERY__` (host-dependent) and
+reports `present=n/total`. A verified run shows `present=8/8`.
+
+To exercise the transport instead, the lab would have to spawn the host with an
+`ipc` stdio channel, which means bypassing `dsh.cmd`: that launcher runs
+`DeepSeek Harness.exe --expose-internals .../dsh-desktop-host/lib/cli.js ...`,
+and an IPC channel handed to `cmd.exe` never reaches the Node process. That is
+version-coupled, so it is deliberately not done; see
+`docs/VERSION-POLICY.md` for the assumption list.
+
 ## Not covered
 
-- Tray and update UI are not reproduced; they need their own assertions.
-- The lab does not inject real host boot rows over IPC, so a plugin that relies
-  on desktop-only injection rows would need the packaged-dist path.
+- The official **update UI** is not reproduced. The lab ships no updater, and
+  faking one would be misleading; a plugin that depends on the updater surface
+  is out of scope.
+- Boot rows reach the document through the server-rendered index, not through
+  the desktop IPC channel (see above).
+- `window.__DSH_FILE_UPLOAD__` is a *page-provided upload carrier hook* the
+  frontend reads (it lets blob/stream request bodies use the page's fetch
+  instead of a short-lived Worker), not a main-process bridge. The lab does not
+  set it, so uploads fall back to the client runtime's Worker path.
 - Desktop-only DOM attributes: the minimal launcher exposes desktop facts on
   `window` instead of adding body attributes, so `shell-desktop-only` is
   expected to report empty until a desktop-only attribute is actually added.
