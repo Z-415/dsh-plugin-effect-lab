@@ -20,6 +20,26 @@ const bridgeDir = path.resolve('bridge-plugin');
  */
 const BRIDGE_SECTION_PROBE = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const realFetch = window.fetch.bind(window);
+  let statusCalls = 0;
+  const runningJob = { id: 'ui-job', status: 'running', plugin: 'fixtures/plugins/dup-slot-one', online: false, startedAt: Date.now(), finishedAt: null, summary: null, error: null };
+  const doneSummary = { ok: true, runId: 'b2-client-run', checks: { total: 1, passed: 1, failed: 0 }, hasReport: true, loopbackReportUrl: 'http://127.0.0.1:1/dsh-lab-bridge/latest/report.html' };
+  const doneJob = { ...runningJob, status: 'done', finishedAt: Date.now(), summary: doneSummary };
+  window.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (url.includes('/dsh-lab-bridge/verify/status')) {
+      statusCalls += 1;
+      const job = statusCalls === 1 ? null : (statusCalls === 2 ? runningJob : doneJob);
+      return new Response(JSON.stringify({ job }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (url.includes('/dsh-lab-bridge/verify/cancel')) {
+      return new Response(JSON.stringify({ job: doneJob }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (url.includes('/dsh-lab-bridge/verify')) {
+      return new Response(JSON.stringify({ job: runningJob }), { status: 202, headers: { 'content-type': 'application/json' } });
+    }
+    return realFetch(input, init);
+  };
   const nav = [...document.querySelectorAll('[data-slot="settings.section"]')]
     .find((el) => el.textContent.includes('实验舱桥接'))
     ?? [...document.querySelectorAll('button, [role="button"], a')].find((el) => el.textContent.includes('实验舱桥接'));
@@ -29,20 +49,53 @@ const BRIDGE_SECTION_PROBE = `(async () => {
   const locationBefore = window.location.href;
   const bridgeAnchors = [...document.querySelectorAll('a')]
     .filter((el) => (el.getAttribute('href') ?? '').includes('/dsh-lab-bridge')).length;
+  const input = document.querySelector('input[placeholder^="插件规格"]') ?? document.querySelector('input[type="text"]');
+  const reactPropsKey = input
+    ? Object.getOwnPropertyNames(input).find((key) => key.startsWith('__reactProps$'))
+    : null;
+  const reactProps = reactPropsKey ? input[reactPropsKey] : null;
+  const nextValue = 'fixtures/plugins/dup-slot-one';
+  let reactPropsUsed = false;
+  if (reactProps && typeof reactProps.onInput === 'function') {
+    reactProps.onInput({ target: { value: nextValue } });
+    reactPropsUsed = true;
+  } else if (reactProps && typeof reactProps.onChange === 'function') {
+    reactProps.onChange({ target: { value: nextValue } });
+    reactPropsUsed = true;
+  } else {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(input, nextValue);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  await wait(300);
+  const startButton = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('开始验证'));
+  if (startButton) startButton.click();
+  await wait(600);
+  const runningSeen = document.body.innerText.includes('进行中');
+  await wait(3400);
+  const textAfterDone = document.body.innerText;
   let openedUrl = null;
   const originalOpen = window.open;
   window.open = (url, target, features) => { openedUrl = url; return { url, target, features }; };
   const externalButton = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('在浏览器打开'));
   if (externalButton) externalButton.click();
   window.open = originalOpen;
-  const textAfterNav = document.body.innerText;
   const previewButton = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('内嵌查看报告'));
   if (previewButton) previewButton.click();
   await wait(2000);
   const iframe = document.querySelector('iframe[title="实验舱报告"]');
+  window.fetch = realFetch;
   return JSON.stringify({
     found: true,
-    hasRunId: textAfterNav.includes('b2-client-run'),
+    runningSeen,
+    inputFound: Boolean(input),
+    inputValue: input ? input.value : null,
+    reactPropsUsed,
+    startFound: Boolean(startButton),
+    startDisabled: startButton ? startButton.disabled : null,
+    tokenPresent: Boolean(globalThis.__DSH_LAB_BRIDGE__ && globalThis.__DSH_LAB_BRIDGE__.token),
+    bodySample: document.body.innerText.slice(0, 800),
+    hasRunId: textAfterDone.includes('b2-client-run'),
     hasPreviewButton: Boolean(previewButton),
     hasExternalButton: Boolean(externalButton),
     openedUrl,
@@ -122,6 +175,7 @@ test('the bridge settings section shows the latest summary and previews the repo
     });
     const probe = JSON.parse(ui.extraAfter.bridgeSection);
     assert.equal(probe.found, true, 'the 实验舱桥接 settings section must be present');
+    assert.equal(probe.runningSeen, true, `starting a verification must show the running state: ${JSON.stringify(probe)}`);
     assert.equal(probe.hasRunId, true, 'the section must show the latest seeded runId');
     assert.equal(probe.hasPreviewButton, true, 'the section must expose the inline preview button');
     assert.equal(probe.bridgeAnchors, 0, 'no anchor may navigate the SPA to the report URL');
