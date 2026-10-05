@@ -43,11 +43,13 @@ export function reapBrowserProcesses(userDataDir, options = {}) {
  */
 export async function removeDirWithRetry(dir, options = {}) {
   const {
-    attempts = 6,
-    delayMs = 300,
+    attempts = 12,
+    delayMs = 500,
+    initialDelayMs = 0,
     rm = fs.rmSync,
     exists = fs.existsSync,
   } = options;
+  if (initialDelayMs > 0) await sleep(initialDelayMs);
   let lastError = null;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
@@ -64,6 +66,39 @@ export async function removeDirWithRetry(dir, options = {}) {
     attempts,
     error: lastError ? String(lastError) : null,
   };
+}
+
+/**
+ * Stop a tracked headless browser and delete its scratch dir. The Edge
+ * launcher often exits before its broker, so `stopTracked` can be a no-op and
+ * the broker has to be reaped by its `--user-data-dir`. Reap and retry in
+ * rounds, because the broker's children can spawn slightly after the tracked
+ * pid exits and hold the dir open under load.
+ */
+async function cleanupBrowserScratch(tracked, userDataDir, options = {}) {
+  const { killTrackedPid = false } = options;
+  let stopped;
+  try {
+    if (killTrackedPid) killTree(tracked.pid);
+    stopped = await stopTracked(tracked, { label: 'browser' });
+  } catch (error) {
+    stopped = { alreadyExited: false, forced: false, detail: `stop failed: ${String(error)}` };
+  }
+  let matched = 0;
+  let supported = true;
+  let removal = { removed: false, dir: userDataDir, attempts: 0, error: null };
+  for (let round = 0; round < 4; round += 1) {
+    const reaped = reapBrowserProcesses(userDataDir);
+    supported = reaped.supported;
+    matched += reaped.matched;
+    removal = await removeDirWithRetry(userDataDir, {
+      attempts: 4,
+      delayMs: 400,
+      initialDelayMs: 300,
+    });
+    if (removal.removed) break;
+  }
+  return { ...stopped, reaped: { supported, matched }, removed: removal };
 }
 
 export function findBrowser(explicitPath) {
@@ -590,17 +625,12 @@ export async function openUi(options) {
           // Older builds may refuse; reapBrowserProcesses is the guarantee.
         }
         client?.close();
-        const stopped = await stopTracked(tracked, { label: 'browser' });
-        const reaped = reapBrowserProcesses(userDataDir);
-        const removed = await removeDirWithRetry(userDataDir);
-        return { ...stopped, reaped, removed };
+        return cleanupBrowserScratch(tracked, userDataDir);
       },
     };
   } catch (error) {
     client?.close();
-    killTree(tracked.pid);
-    reapBrowserProcesses(userDataDir);
-    await removeDirWithRetry(userDataDir);
+    await cleanupBrowserScratch(tracked, userDataDir, { killTrackedPid: true });
     throw error;
   }
 }
@@ -645,9 +675,6 @@ export async function evaluateOnce(options = {}) {
       // Best-effort graceful close before the forced reap.
     }
     client?.close();
-    killTree(tracked.pid);
-    await stopTracked(tracked, { label: 'browser' });
-    reapBrowserProcesses(userDataDir);
-    await removeDirWithRetry(userDataDir);
+    await cleanupBrowserScratch(tracked, userDataDir, { killTrackedPid: true });
   }
 }
