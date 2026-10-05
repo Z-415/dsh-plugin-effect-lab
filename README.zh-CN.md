@@ -1,162 +1,186 @@
 # DSH 插件效果实验舱
 
-面向官方 DeepSeek Harness 桌面版运行时 `0.2.0-rc.2` 的插件兼容性与效果隔离验证工具。
+一个隔离的实验舱，用来搞清楚 **DeepSeek Harness（DSH）插件到底做了什么**、以及
+**多个插件放在一起会怎样** —— 全程不碰你真实的 `~/.dsh`。
 
 [English](README.md) | **简体中文**
 
-> 接手继续开发请看 [docs/HANDOFF-20261005.md](docs/HANDOFF-20261005.md)
-> 官方 DSH 升级后怎么适配请看 [docs/VERSION-POLICY.md](docs/VERSION-POLICY.md)
-> （状态、命令、代码地图、踩过的坑、检查清单）。
+## 它解决什么问题
 
-## 桌面 GUI
+光看源码很难判断一个 DSH 插件：装得上不代表启动得起来，可能加载了却看不出任何效果，
+可能和别的插件抢同一个 CSS token，也可能在桌面壳和网页里的表现不一样。这个实验舱会在
+一次性的 `DSH_HOME` 里启动官方 runtime、把插件装进去、用无头 Edge 驱动真实界面，把
+"到底变了什么"写成报告，然后把整个临时环境删掉。
+
+它能回答的问题：
+
+| 问题 | 怎么做 |
+|---|---|
+| 这个插件加载了吗？有效果吗？ | `lab verify --plugin <spec>` —— 截图 + DOM / token / body 属性探针 |
+| 两个插件会冲突吗？ | `lab matrix --config <文件>`，或把两者装进持久 profile 后看 `plugin-profile-audit` |
+| 桌面壳和网页表现一致吗？ | `lab shell` —— DOM / token 差异 + 像素差异 |
+| 宿主为什么起不来？ | 失败签名库 + `lab scan`，再看 HTML 报告 |
+| 会不会弄脏我真实的 DSH？ | 每次运行都隔离；真实 profile 文件在前后做哈希比对 |
+
+目前覆盖的能力：隔离启动 / 截图 / 清理、插件来源解析与 manifest 校验、固定会话夹具、
+Electron 壳保真对比、主题与 slot 冲突矩阵、持久 lab profile、无需联网即可跑通真实流式
+工具回合的回环 mock 模型、失败签名库，以及桌面 GUI 启动器。
+
+## 环境要求
+
+- Windows。实验舱通过 CDP 驱动 Edge，并用 `taskkill` 回收进程树。
+- Node.js >= 22（开发环境为 Node 24）。
+- 已安装官方 DeepSeek Harness 桌面版。默认 runtime 路径是
+  `D:\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd`，可用 `--runtime <dsh.cmd>` 覆盖。
+- 无需安装任何依赖：不下载 Playwright/Puppeteer，不需要打包工具，没有 npm 依赖。
+  壳模式复用 DSH 自带的 Electron 运行时。
+
+## 快速开始
 
 ```powershell
-node bin/lab.js gui                     # 首次构建，然后打开启动器
-node bin/lab.js gui --install-shortcut  # 同时在桌面创建快捷方式
+node bin/lab.js gui     # 打开桌面启动器（首次构建，之后复用）
+node bin/lab.js doctor  # 环境自检，必须 PASS
 ```
 
-也可以双击 `启动实验台.cmd`。启动器是一个普通 Windows 窗口，按钮包括
-自检 / 快速验证 / 设置页 / 空会话 / 长会话 / 壳窗口 / 插件 / 主题矩阵 / 清理，
-带一个实时日志面板，以及"在浏览器打开最新 report.html / artifacts 目录"的按钮。
-它复用官方 Electron 运行时（不需要打包工具、不引入额外依赖），每个按钮执行的都是
-CLI 里同一条 `lab.js` 命令。详见 [docs/GUI.md](docs/GUI.md)。
+也可以直接双击 `启动实验台.cmd`。启动器执行的就是 CLI 里同一条命令，输出会流式显示在
+日志面板里。
 
-第 1 阶段是最小闭环：
+## 常用工作流
 
-1. 定位官方 `D:\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd`；
-2. 在系统临时目录下创建短生命周期的隔离 `DSH_HOME`；
-3. 写入官方自带的最小 `web` profile（空依赖，加 `@deepseek-ai/dsh-base` 与
-   `@deepseek-ai/dsh-web-app`）；
-4. 启动 `dsh web --no-open --port 0`，解析真实端口与启动 token；
-5. 用 CDP 在无头 Edge 中打开界面并保存截图；
-6. 采集启动日志、控制台错误、页面错误与宿主路由状态；
-7. 结束进程树、确认端口已释放、删除临时 home；
-8. 对比运行前后真实 profile 结构文件的 SHA-256。
-
-第 2 阶段增加：
-
-- npm、本地目录、tarball、GitHub 四种插件来源解析；
-- engines、peers、bundle patch、client 声明与已知不兼容 API 的 manifest 校验；
-- 包含 user、assistant、tool 事件的官方固定会话夹具；
-- 真实的 client 半区效果探针与 token / body 属性冲突检测；
-- 面向插件组合的 JSON 矩阵运行器。
-
-第 3 阶段增加：
-
-- 回环的 OpenAI 兼容 mock provider（`--mock-model`）；
-- 一个真实的流式 agent 回合，带脚本化 tool call 与 `tool/result`；
-- 该回合不访问外网、不需要真实 API key。
-- 显式的插件路由探测 `--route /plugin/health`；
-- 已验证的隔离运行：`dsh-plugin-wallpaper-engine@1.2.0`，以及
-  `dsh-plugin-wallpaper-engine@1.2.0 + dsh-ui-tweaks@0.20.0`。
-
-第 4 阶段增加：
-
-- 最小 Electron 启动器：把官方 Electron 运行时（只读来源）复制进临时 app 目录；
-- 桌面启动桥（`dshDesktopBoot` -> `__DSH_TRANSPORT__`），让打包后的前端连到隔离宿主；
-- `ws://127.0.0.1/*` 头部栅栏：把渲染进程的启动 cookie 转发给宿主的 Remote-stream socket；
-- 壳与 web 的 DOM / body 属性 / `--dsw-*` token 差异，外加桌面专属属性检测。
-
-第 4 阶段的实测结果在 [docs/PHASE4-RESULTS.md](docs/PHASE4-RESULTS.md)。
-
-验收 C（重复 slot id）与 D（主题冲突）已实现并实测：[docs/ACCEPTANCE-C-D-RESULTS.md](docs/ACCEPTANCE-C-D-RESULTS.md)。
-重复 id 会按命名空间（`loader` / `slot-registration` / `slot-key` / `tool`）报告，
-`matrix` 把主题组合分类为 `high-conflict` / `manual-review` / `coexist`。
-
-验收 E（无模型模式）与 F（无残留）见 [docs/ACCEPTANCE-E-F-RESULTS.md](docs/ACCEPTANCE-E-F-RESULTS.md)。
-每次运行都会记录 `agentCoverage`、扫描隔离 home 中是否存在凭据，并给出
-`cleanup-no-residue` 检查。
-
-第 5 阶段稳定性（长路径、进程泄漏、端口竞争、故障注入）见
-[docs/PHASE5-RESULTS.md](docs/PHASE5-RESULTS.md)。
-DOM 断言 DSL 位于 `src/dom-assertions.js`，由 `--assert-token`、`--assert-slot`、
-`--assert-body-attr`、`--min-slots` 驱动。
-
-壳模式也会安装插件（`lab shell --plugin <spec>`），并对 web 基线与壳做 DOM/token
-差异和像素差异对比（`dom/shell-screenshot-diff.json`）。在未修改的 profile 上，
-两张截图像素级一致。
-
-会话夹具是提交入库的数据（`fixtures/web-session/`），有 `default`、`empty`、`long`
-三种变体，用 `--fixture-variant` 选择。壳模式还会桥接并报告桌面专属能力（窗口控件、
-剪贴板、目录选择器、宿主路径、通知）；目录选择器默认走桩，不会卡在原生对话框上。
-
-`--profile-lab <name>` 会在 `.lab-profiles/<name>/` 下保留一个可复用但仍隔离的
-profile：装一次插件，之后不带 `--plugin` 也能重开壳界面，再加第二个插件观察两者如何
-相互影响。追加插件时会审计整个 profile（`plugin-profile-audit`），因此即使 B 单独能过，
-A+B 的冲突也会被报出来。详见 [docs/LAB-PROFILES.md](docs/LAB-PROFILES.md)。
-
-每次运行还会在 `report.md` 旁边写一份自包含的 `report.html`（检查项 + 内嵌截图 +
-差异）；`--no-html` 可跳过。`lab shell --show` 会在屏幕上渲染真实 Electron 窗口
-（`--show-hold <ms>`，默认 6000），`--keep-open` 则保持打开直到你手动关闭。运行过程
-会流式输出 `[lab] ...` 进度行，长时间步骤不会看起来像卡死；配合 `--keep-open` 时，
-只有你关闭窗口后运行才结束（Ctrl+C 中止，并把临时 home 留给 `lab clean`）。
-
-这个实验舱从不启动真实的 `desktop` profile，从不读取凭据、sessions 或 settings，
-也从不在自己的临时 home 之外安装插件。
-
-## 用法
+### 1. 验证一个插件
 
 ```powershell
-node bin/lab.js gui
-node bin/lab.js doctor
-node bin/lab.js verify
-node bin/lab.js verify --screenshot home --screenshot settings
-node bin/lab.js verify --fixture-variant long
-node bin/lab.js capture --screenshot home
-node bin/lab.js verify --mock-model
-node bin/lab.js verify --assert-slot conversation.composer --assert-body-attr style --min-slots 30
-node bin/lab.js verify --plugin dsh-plugin-wallpaper-engine@1.2.0 --online --route /wallpaper-engine/inventory
-node bin/lab.js matrix --config .\fixtures\matrix\effect-conflict.json
-node bin/lab.js matrix --config .\fixtures\matrix\theme-conflict.json --online
-node bin/lab.js runtimes                       # 本机拥有的官方 DSH 版本
-node bin/lab.js matrix --config .\fixtures\matrix\effect-conflict.json --runtime-matrix
-node bin/lab.js shell
-node bin/lab.js shell --plugin dsh-plugin-wallpaper-engine@1.2.0 --online
-node bin/lab.js shell --show                          # 真实窗口，停留 6 秒
-node bin/lab.js shell --keep-open                     # 由你自己关闭
-node bin/lab.js shell --native-desktop --show         # 真实文件夹对话框 + 系统通知
-node bin/lab.js shell --profile-lab dev --plugin dsh-plugin-wallpaper-engine@1.2.0 --online --show --keep-open
-node bin/lab.js shell --profile-lab dev --show --keep-open   # 插件仍然装着
-node bin/lab.js profile list
-node bin/lab.js profile remove-plugin dev dsh-ui-tweaks@0.20.0
-node bin/lab.js shell --no-compare-web
-node bin/lab.js scan --log .\artifacts\<run>\boot.err.log
-node bin/lab.js scan --list                            # 失败签名库
-node bin/lab.js scan --latest                          # 重扫最近一次运行的启动日志
-node bin/lab.js scan --log .\artifacts\<run>\boot.err.log --explain   # 命中点上下文
-node bin/lab.js clean --dry-run                        # 残留目录 + 游离 lab 进程
-```
+# 本地目录或 tarball —— 不需要联网
+node bin/lab.js verify --plugin .\my-plugin --offline
 
-所有会启动真实 runtime 的命令都需要允许派生子进程并结束它们。若沙箱禁止 `taskkill`，
-宿主进程会继续存活、命令不会结束；请在这类沙箱之外运行这些命令。显式传入的
-`--runtime` 或 `--browser` 路径具有最高优先级：路径不存在时命令会失败，而不是悄悄
-回退到默认值。
-
-插件安装是显式选项，registry/GitHub 来源需要 `--online`：
-
-```powershell
-node bin/lab.js verify --plugin .\my-plugin.tgz --offline
+# npm 或 GitHub 规格 —— 需要 registry 访问
 node bin/lab.js verify --plugin dsh-plugin-wallpaper-engine@1.2.0 --online
 ```
 
-夹具与矩阵示例见 [docs/FIXTURES.md](docs/FIXTURES.md)。
-回环 provider 见 [docs/MOCK-MODEL.md](docs/MOCK-MODEL.md)。
-第 3 阶段实测结果见 [docs/PHASE3-RESULTS.md](docs/PHASE3-RESULTS.md)。
-Electron 壳的评估见 [docs/ELECTRON-SHELL.md](docs/ELECTRON-SHELL.md)。
+运行会启动隔离宿主、把插件装进隔离 profile、打开界面、截图，并记录 `data-slot` 节点、
+`--dsw-*` token 与 body 属性，最后清理干净。结果看 `artifacts/<run>/report.html`。
+
+需要"通过 / 不通过"的判定时，加上断言：
+
+```powershell
+node bin/lab.js verify --plugin .\my-plugin --offline `
+  --assert-slot conversation.composer --assert-body-attr style --min-slots 30
+```
+
+### 2. 对比桌面壳与网页
+
+```powershell
+node bin/lab.js shell
+node bin/lab.js shell --plugin dsh-plugin-wallpaper-engine@1.2.0 --online
+node bin/lab.js shell --show                    # 真实 Electron 窗口，停留 6 秒
+node bin/lab.js shell --native-desktop --show   # 真实文件夹对话框 + 系统通知
+```
+
+在未修改的 profile 上，壳与网页的截图像素级一致；报告会列出壳引入的 DOM、token 与
+body 属性差异。
+
+### 3. 测试多个插件放在一起
+
+```powershell
+node bin/lab.js matrix --config .\fixtures\matrix\theme-conflict.json --online
+```
+
+`matrix` 会逐个组合运行，并分类为 `coexist` / `manual-review` / `high-conflict`，
+同时指出两个插件具体在抢哪些 token 或 slot。
+
+### 4. 保留一个 profile，逐个加插件
+
+```powershell
+node bin/lab.js shell --profile-lab dev --plugin dsh-plugin-wallpaper-engine@1.2.0 --online --show --keep-open
+node bin/lab.js shell --profile-lab dev --plugin dsh-ui-tweaks@0.20.0 --online   # 审计 A+B
+node bin/lab.js shell --profile-lab dev --show --keep-open                       # 不带 --plugin 重开
+node bin/lab.js profile list
+node bin/lab.js profile remove-plugin dev dsh-ui-tweaks@0.20.0
+```
+
+profile 单独保存在 `.lab-profiles/<name>/` 下，不会进你真实的 `~/.dsh`。追加第二个
+插件时会审计整个 profile，所以即使 B 单独能过，A+B 的冲突也会被报出来。
+
+### 5. 不用真实模型跑一个真实回合
+
+```powershell
+node bin/lab.js verify --mock-model
+```
+
+回环的 OpenAI 兼容 provider 会流式返回一个脚本化 tool call 和 `tool/result` 事件，
+从而在无外网、无 API key 的情况下跑通完整回合。
+
+### 6. 定位失败原因
+
+```powershell
+node bin/lab.js scan --latest
+node bin/lab.js scan --log .\artifacts\<run>\boot.err.log --explain
+node bin/lab.js scan --list   # 浏览失败签名库
+```
+
+### 7. 清理
+
+```powershell
+node bin/lab.js clean --dry-run   # 先看有哪些残留临时目录和游离 lab 进程
+node bin/lab.js clean             # 再删除
+```
+
+## 命令速查
+
+| 命令 | 作用 |
+|---|---|
+| `lab gui` | 桌面启动器窗口（`--install-shortcut` 同时在桌面创建快捷方式） |
+| `lab doctor` | 自检：runtime、Node、临时 home、浏览器、真实 home 保护 |
+| `lab verify` | 完整的隔离插件验证：启动、探针、截图、清理、报告 |
+| `lab capture` | 同一条流水线，偏重截图 |
+| `lab shell` | Electron 壳保真：与网页基线做 DOM / token 与像素差异 |
+| `lab matrix` | 按 JSON 列表跑插件组合并分类冲突 |
+| `lab runtimes` | 列出本机已安装的官方 DSH 版本及支持状态 |
+| `lab profile` | 管理持久 lab profile：`list` / `create` / `remove` / `remove-plugin` / `path` |
+| `lab scan` | 用失败签名库扫描启动日志与控制台日志 |
+| `lab clean` | 删除残留的 lab 临时目录与游离 lab 进程 |
+
+所有命令都支持 `--json`；`verify`、`capture`、`shell`、`matrix` 还支持 `--no-html`。
+完整选项见 `node bin/lab.js --help`。
+
+## 报告与产物
+
+每次运行会在 `artifacts/<run-id>/` 下写入：
+
+- `report.html` —— 自包含（截图已内嵌），中文
+- `report.md` / `report.json` —— 同样的检查项，Markdown 与机器可读两种形式
+- `boot.out.log` / `boot.err.log`、`install.log`、`cleanup.json`
+- `screenshots/`，以及 DOM、差异数据（如 `dom/dom.json`）
+
+`report.html` 可以单独打开或分享，不依赖运行目录里的其他文件。
+
+## 安全边界
+
+- 从不启动真实的 `desktop` profile，从不读取凭据、sessions 或 settings。
+- 从不修改官方安装目录 —— 对实验舱来说 `app.asar` 是只读的。
+- 每次运行都使用 `dsh-lab-*` 临时 home，跑完删除；真实 profile 的结构文件在前后做哈希
+  比对，必须保持不变。
+- 这**不是**安全沙箱。恶意插件依然以你的用户权限运行，测试不可信插件前请先读
+  [docs/SAFETY.md](docs/SAFETY.md)。
 
 ## 测试
 
 ```powershell
 npm test
-$env:DSH_LAB_E2E='1'; npm run test:e2e
-npm run ci            # 单元必跑；只有官方 runtime 存在时才跑集成
+$env:DSH_LAB_E2E='1'; npm run test:e2e   # 会启动真实 runtime，需在普通终端运行
+npm run ci
 ```
 
 集成测试会在隔离 home 中启动官方 runtime、驱动无头 Edge，并断言清理结果与真实 home
-的哈希不变。`test:e2e` 以 `--test-concurrency=1` 运行测试文件，覆盖隔离启动、回环
-mock 回合、Electron 壳、故障注入、双运行端口竞争，以及三次重复的稳定性用例。
+的哈希不变。它必须运行在能派生子进程并结束它们的环境里：若沙箱禁止 `taskkill`，宿主
+进程会继续存活，命令不会结束。
 
-## 安全
+## 更多文档
 
-运行任何第三方插件前请先读 [docs/SAFETY.md](docs/SAFETY.md)。本工具不是安全沙箱，
-而是一个隔离与证据采集框架。
+- [docs/HANDOFF-20261005.md](docs/HANDOFF-20261005.md) —— 状态、代码地图、踩过的坑、检查清单
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) —— 隔离模型与运行生命周期
+- [docs/GUI.md](docs/GUI.md) —— 桌面启动器
+- [docs/LAB-PROFILES.md](docs/LAB-PROFILES.md) —— 持久 profile
+- [docs/ELECTRON-SHELL.md](docs/ELECTRON-SHELL.md) —— 壳保真模式
+- [docs/FIXTURES.md](docs/FIXTURES.md) / [docs/MOCK-MODEL.md](docs/MOCK-MODEL.md) —— 夹具与回环 provider
+- [docs/VERSION-POLICY.md](docs/VERSION-POLICY.md) —— 官方 DSH 升级后的适配流程

@@ -1,184 +1,193 @@
 # DSH Plugin Effect Lab
 
-Isolated plugin compatibility and effect verification for the official
-DeepSeek Harness Desktop runtime `0.2.0-rc.2`.
+An isolated lab for finding out **what a DeepSeek Harness (DSH) plugin actually does**
+and **how several plugins behave together** — without touching your real `~/.dsh`.
 
 [简体中文](README.zh-CN.md) | **English**
 
-> 接手继续开发请看 [docs/HANDOFF-20261005.md](docs/HANDOFF-20261005.md)
-> 官方 DSH 升级后怎么适配请看 [docs/VERSION-POLICY.md](docs/VERSION-POLICY.md)
-> （状态、命令、代码地图、踩过的坑、检查清单）。
+## Why this exists
 
-## Desktop GUI
+A DSH plugin is hard to judge from its source: it can install cleanly and still fail at
+boot, load without visibly doing anything, fight another plugin over the same CSS token,
+or behave differently in the Desktop shell than in the web UI. This lab boots the official
+runtime inside a throwaway `DSH_HOME`, installs the plugin there, drives the real UI in
+headless Edge, and writes down exactly what changed — then deletes the whole thing.
+
+What you can use it for:
+
+| Question | How |
+|---|---|
+| Does this plugin load, and does it have a visible effect? | `lab verify --plugin <spec>` — screenshots + DOM / token / body-attribute probes |
+| Do two plugins conflict? | `lab matrix --config <file>`, or install both into a persistent profile and read `plugin-profile-audit` |
+| Does the Desktop shell match the web UI? | `lab shell` — DOM / token diff plus a pixel diff |
+| Why did the host fail to start? | the failure signature library and `lab scan`, plus the HTML report |
+| Will this dirty my real DSH install? | every run is isolated; real profile files are hashed before and after |
+
+What is covered today: isolated boot / capture / cleanup, plugin resolution and manifest
+validation, fixed conversation fixtures, Electron-shell fidelity, theme and slot conflict
+matrices, persistent lab profiles, a loopback mock model that runs a real streamed tool
+turn with no network, a failure signature library, and a desktop GUI launcher.
+
+## Requirements
+
+- Windows. The lab drives Edge over CDP and uses `taskkill` to reap process trees.
+- Node.js >= 22 (developed on Node 24).
+- The official DeepSeek Harness Desktop installation. The default runtime is
+  `D:\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd`; pass `--runtime <dsh.cmd>`
+  to override it.
+- Nothing to install: no Playwright/Puppeteer download, no packaging tool, no npm
+  dependencies. Shell mode reuses the Electron runtime that ships with DSH.
+
+## Quick start
 
 ```powershell
-node bin/lab.js gui                     # build once, then open the launcher
-node bin/lab.js gui --install-shortcut  # also put a shortcut on the Desktop
+node bin/lab.js gui     # open the desktop launcher (builds once, then reuses it)
+node bin/lab.js doctor  # environment self-check; must be PASS
 ```
 
-Or double-click `启动实验台.cmd`. The launcher is a normal Windows window with
-buttons for 自检 / 快速验证 / 设置页 / 空会话 / 长会话 / 壳窗口 / 插件 / 主题矩阵 /
-清理, a live log pane, and buttons to open the newest `report.html` or the
-`artifacts/` folder in your browser. It reuses the official Electron runtime
-(no packaging tool, no extra dependency) and every button runs the same
-`lab.js` command the CLI does. See [docs/GUI.md](docs/GUI.md).
+You can also double-click `启动实验台.cmd`. The launcher runs the same commands as the
+CLI and streams their output into a live log pane.
 
-Phase 1 is the minimum closed loop:
+## Common workflows
 
-1. locate the official `D:\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd`;
-2. create a short-lived isolated `DSH_HOME` under the OS temp directory;
-3. write the shipped minimal `web` profile (empty dependencies plus
-   `@deepseek-ai/dsh-base` and `@deepseek-ai/dsh-web-app`);
-4. boot `dsh web --no-open --port 0` and parse the real port and launch token;
-5. open the UI in headless Edge over CDP and save a screenshot;
-6. capture boot logs, console errors, page errors, and host route status;
-7. stop the process tree, verify the port is free, and delete the temp home;
-8. compare SHA-256 hashes of real structural profile files before and after.
-
-Phase 2 adds:
-
-- plugin source resolution for npm, local directory, tarball, and GitHub specs;
-- manifest checks for engines, peers, bundle patches, client declarations, and
-  known incompatible APIs;
-- an official fixed session fixture with user, assistant, and tool events;
-- real client-half effect probes and token/body-attribute conflict detection;
-- a JSON matrix runner for plugin combinations.
-
-Phase 3 adds:
-
-- a loopback OpenAI-compatible mock provider (`--mock-model`);
-- a real streamed agent turn with a scripted tool call and `tool/result`;
-- no external network and no real API key for that turn.
-- explicit plugin route probing with `--route /plugin/health`;
-- verified isolated runs for `dsh-plugin-wallpaper-engine@1.2.0` and
-  `dsh-plugin-wallpaper-engine@1.2.0 + dsh-ui-tweaks@0.20.0`.
-
-Phase 4 adds:
-
-- a minimal Electron launcher that copies the official Electron runtime
-  (read-only source) into a temp app dir;
-- the desktop boot bridge (`dshDesktopBoot` -> `__DSH_TRANSPORT__`) so the
-  packaged frontend talks to the isolated host;
-- the `ws://127.0.0.1/*` header fence that forwards the renderer's launch
-  cookie to the host Remote-stream socket;
-- a shell-vs-web DOM / body-attribute / `--dsw-*` token diff, plus desktop-only
-  attribute detection.
-
-Measured Phase 4 results are in [docs/PHASE4-RESULTS.md](docs/PHASE4-RESULTS.md).
-
-Acceptance C (duplicate slot id) and D (theme conflicts) are implemented and
-measured: [docs/ACCEPTANCE-C-D-RESULTS.md](docs/ACCEPTANCE-C-D-RESULTS.md).
-Duplicate ids are reported by namespace (`loader` / `slot-registration` /
-`slot-key` / `tool`), and `matrix` classifies theme combinations as
-`high-conflict` / `manual-review` / `coexist`.
-
-Acceptance E (no-model mode) and F (no residue) are in
-[docs/ACCEPTANCE-E-F-RESULTS.md](docs/ACCEPTANCE-E-F-RESULTS.md). Every run
-records `agentCoverage`, scans the isolated home for credentials, and emits a
-`cleanup-no-residue` check.
-
-Phase 5 stabilization (long paths, process leaks, port races, failure
-injection) is in [docs/PHASE5-RESULTS.md](docs/PHASE5-RESULTS.md).
-The DOM assertion DSL lives in `src/dom-assertions.js` and is driven by
-`--assert-token`, `--assert-slot`, `--assert-body-attr`, and `--min-slots`.
-
-Shell mode installs plugins too (`lab shell --plugin <spec>`), and compares the
-web baseline against the shell with both a DOM/token diff and a pixel diff
-(`dom/shell-screenshot-diff.json`). On an unmodified profile the two
-screenshots are pixel-identical.
-
-Conversation fixtures are committed data (`fixtures/web-session/`) with
-`default`, `empty`, and `long` variants selected by `--fixture-variant`. Shell
-mode also bridges and reports the desktop-only surfaces (window controls,
-clipboard, directory picker, host paths, notifications); the directory picker
-is stubbed so nothing blocks on a native dialog.
-
-`--profile-lab <name>` keeps a reusable, still-isolated profile under
-`.lab-profiles/<name>/`: install a plugin once, reopen the shell UI later
-without `--plugin`, and add a second plugin to see how the two interact. Adding
-a plugin audits the whole profile (`plugin-profile-audit`) so an A+B conflict
-is reported even though B alone would pass. See
-[docs/LAB-PROFILES.md](docs/LAB-PROFILES.md).
-
-Every run also writes a self-contained `report.html` (checks + embedded
-screenshots + diffs) next to `report.md`; `--no-html` skips it. `lab shell
---show` renders the real Electron window on screen (`--show-hold <ms>`,
-default 6000), and `--keep-open` leaves it open until you close it. Runs stream
-`[lab] ...` progress lines, so a long step never looks like a hang; with
-`--keep-open` the run finishes only after you close the window (Ctrl+C aborts
-and leaves the temp home for `lab clean`).
-
-The lab never starts the real `desktop` profile, never reads credentials,
-sessions, or settings, and never installs a plugin outside its own temp home.
-
-## Usage
+### 1. Verify a plugin
 
 ```powershell
-node bin/lab.js gui
-node bin/lab.js doctor
-node bin/lab.js verify
-node bin/lab.js verify --screenshot home --screenshot settings
-node bin/lab.js verify --fixture-variant long
-node bin/lab.js capture --screenshot home
-node bin/lab.js verify --mock-model
-node bin/lab.js verify --assert-slot conversation.composer --assert-body-attr style --min-slots 30
-node bin/lab.js verify --plugin dsh-plugin-wallpaper-engine@1.2.0 --online --route /wallpaper-engine/inventory
-node bin/lab.js matrix --config .\fixtures\matrix\effect-conflict.json
-node bin/lab.js matrix --config .\fixtures\matrix\theme-conflict.json --online
-node bin/lab.js runtimes                       # official DSH versions this machine has
-node bin/lab.js matrix --config .\fixtures\matrix\effect-conflict.json --runtime-matrix
-node bin/lab.js shell
-node bin/lab.js shell --plugin dsh-plugin-wallpaper-engine@1.2.0 --online
-node bin/lab.js shell --show                          # real window, 6s hold
-node bin/lab.js shell --keep-open                     # close it yourself
-node bin/lab.js shell --native-desktop --show         # real folder dialog + OS toast
-node bin/lab.js shell --profile-lab dev --plugin dsh-plugin-wallpaper-engine@1.2.0 --online --show --keep-open
-node bin/lab.js shell --profile-lab dev --show --keep-open   # plugins still installed
-node bin/lab.js profile list
-node bin/lab.js profile remove-plugin dev dsh-ui-tweaks@0.20.0
-node bin/lab.js shell --no-compare-web
-node bin/lab.js scan --log .\artifacts\<run>\boot.err.log
-node bin/lab.js scan --list                            # the failure signature library
-node bin/lab.js scan --latest                          # rescan the newest run's boot logs
-node bin/lab.js scan --log .\artifacts\<run>\boot.err.log --explain   # lines around each hit
-node bin/lab.js clean --dry-run                        # leftover dirs + orphan lab processes
-```
+# a local directory or tarball — no network needed
+node bin/lab.js verify --plugin .\my-plugin --offline
 
-All commands that boot the real runtime need permission to spawn and terminate
-child processes. A sandbox that denies `taskkill` will leave the host alive and
-the command will not finish; run those commands outside such a sandbox.
-An explicit `--runtime` or `--browser` path is authoritative: if it does not
-exist the command fails instead of silently using the default.
-
-Plugin installs are opt-in and require `--online` for registry/GitHub sources:
-
-```powershell
-node bin/lab.js verify --plugin .\my-plugin.tgz --offline
+# an npm or GitHub spec — needs registry access
 node bin/lab.js verify --plugin dsh-plugin-wallpaper-engine@1.2.0 --online
 ```
 
-Fixtures and matrix examples are described in
-[docs/FIXTURES.md](docs/FIXTURES.md).
-The loopback provider is described in [docs/MOCK-MODEL.md](docs/MOCK-MODEL.md).
-Phase 3 measured results are in [docs/PHASE3-RESULTS.md](docs/PHASE3-RESULTS.md).
-The Electron shell evaluation is in
-[docs/ELECTRON-SHELL.md](docs/ELECTRON-SHELL.md).
+The run boots the isolated host, installs the plugin into an isolated profile, opens the
+UI, captures screenshots, records `data-slot` nodes, `--dsw-*` tokens and body attributes,
+then cleans up. Open `artifacts/<run>/report.html` to see the result.
+
+Add assertions when you want a pass/fail gate:
+
+```powershell
+node bin/lab.js verify --plugin .\my-plugin --offline `
+  --assert-slot conversation.composer --assert-body-attr style --min-slots 30
+```
+
+### 2. Compare the Desktop shell with the web UI
+
+```powershell
+node bin/lab.js shell
+node bin/lab.js shell --plugin dsh-plugin-wallpaper-engine@1.2.0 --online
+node bin/lab.js shell --show                    # render the real Electron window for 6s
+node bin/lab.js shell --native-desktop --show   # real folder dialog + OS notification
+```
+
+On an unmodified profile the shell and web screenshots are pixel-identical; the report
+lists any DOM, token, or body-attribute differences the shell introduces.
+
+### 3. Test several plugins together
+
+```powershell
+node bin/lab.js matrix --config .\fixtures\matrix\theme-conflict.json --online
+```
+
+`matrix` runs each combination and classifies it as `coexist`, `manual-review`, or
+`high-conflict`, naming the exact tokens or slots the plugins fight over.
+
+### 4. Keep a profile and add plugins one at a time
+
+```powershell
+node bin/lab.js shell --profile-lab dev --plugin dsh-plugin-wallpaper-engine@1.2.0 --online --show --keep-open
+node bin/lab.js shell --profile-lab dev --plugin dsh-ui-tweaks@0.20.0 --online   # audits A+B
+node bin/lab.js shell --profile-lab dev --show --keep-open                       # reopen, no --plugin
+node bin/lab.js profile list
+node bin/lab.js profile remove-plugin dev dsh-ui-tweaks@0.20.0
+```
+
+The profile stays isolated under `.lab-profiles/<name>/`, never in your real `~/.dsh`.
+Adding a second plugin audits the whole profile, so an A+B conflict is reported even when
+B alone passes.
+
+### 5. Run a real agent turn without a real model
+
+```powershell
+node bin/lab.js verify --mock-model
+```
+
+A loopback OpenAI-compatible provider streams a scripted tool call and a `tool/result`
+event, exercising the full turn loop with no network and no API key.
+
+### 6. Diagnose a failure
+
+```powershell
+node bin/lab.js scan --latest
+node bin/lab.js scan --log .\artifacts\<run>\boot.err.log --explain
+node bin/lab.js scan --list   # browse the failure signature library
+```
+
+### 7. Clean up
+
+```powershell
+node bin/lab.js clean --dry-run   # show leftover temp dirs and orphan lab processes
+node bin/lab.js clean             # remove them
+```
+
+## Command reference
+
+| Command | What it does |
+|---|---|
+| `lab gui` | Desktop launcher window (`--install-shortcut` also adds a Desktop shortcut) |
+| `lab doctor` | Self-check: runtime, Node, temp home, browser, real-home guard |
+| `lab verify` | Full isolated plugin verification: boot, probes, screenshots, cleanup, report |
+| `lab capture` | The same pipeline, tuned for screenshots |
+| `lab shell` | Electron-shell fidelity: DOM / token and pixel diff against the web baseline |
+| `lab matrix` | Run a JSON list of plugin combinations and classify conflicts |
+| `lab runtimes` | List installed official DSH versions and their support status |
+| `lab profile` | Manage persistent lab profiles: `list` / `create` / `remove` / `remove-plugin` / `path` |
+| `lab scan` | Scan boot and console logs against the failure signature library |
+| `lab clean` | Remove leftover lab temp dirs and orphan lab processes |
+
+Every command accepts `--json`; `verify`, `capture`, `shell`, and `matrix` also accept
+`--no-html`. Run `node bin/lab.js --help` for the full option list.
+
+## Reports and artifacts
+
+Each run writes `artifacts/<run-id>/` containing:
+
+- `report.html` — self-contained (screenshots embedded), in Chinese
+- `report.md` / `report.json` — the same checks in Markdown and machine-readable form
+- `boot.out.log` / `boot.err.log`, `install.log`, `cleanup.json`
+- `screenshots/`, plus DOM and diff data such as `dom/dom.json`
+
+The HTML report can be opened or shared on its own, without the rest of the run
+directory.
+
+## Safety
+
+- Never starts the real `desktop` profile; never reads credentials, sessions, or settings.
+- Never modifies the official installation — `app.asar` is read-only to the lab.
+- Every run uses a `dsh-lab-*` temp home that is deleted afterwards; the real profile's
+  structural files are hashed before and after and must be unchanged.
+- This is **not** a security sandbox. A malicious plugin still runs with your user
+  privileges, so read [docs/SAFETY.md](docs/SAFETY.md) before testing untrusted plugins.
 
 ## Tests
 
 ```powershell
 npm test
-$env:DSH_LAB_E2E='1'; npm run test:e2e
-npm run ci            # unit always; integration only when the runtime exists
+$env:DSH_LAB_E2E='1'; npm run test:e2e   # boots the real runtime; run it in a normal terminal
+npm run ci
 ```
 
-The integration test boots the official runtime in an isolated home, drives
-headless Edge, and asserts cleanup plus real-home hash invariance.
-`test:e2e` runs files with `--test-concurrency=1` and covers isolated boot,
-the loopback mock turn, the Electron shell, failure injection, a two-run port
-race, and a three-times stability repeat.
+The integration suite boots the official runtime in an isolated home, drives headless
+Edge, and asserts cleanup plus real-home hash invariance. It must run where child
+processes can be spawned and killed: a sandbox that denies `taskkill` will leave the host
+alive and the command will not finish.
 
-## Safety
+## More documentation
 
-Read [docs/SAFETY.md](docs/SAFETY.md) before running any third-party plugin.
-This tool is not a security sandbox; it is an isolation and evidence harness.
+- [docs/HANDOFF-20261005.md](docs/HANDOFF-20261005.md) — status, code map, pitfalls, checklist
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — isolation model and run lifecycle
+- [docs/GUI.md](docs/GUI.md) — the desktop launcher
+- [docs/LAB-PROFILES.md](docs/LAB-PROFILES.md) — persistent profiles
+- [docs/ELECTRON-SHELL.md](docs/ELECTRON-SHELL.md) — shell fidelity mode
+- [docs/FIXTURES.md](docs/FIXTURES.md) / [docs/MOCK-MODEL.md](docs/MOCK-MODEL.md) — fixtures and the loopback provider
+- [docs/VERSION-POLICY.md](docs/VERSION-POLICY.md) — adapting to a new official DSH runtime
