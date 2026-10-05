@@ -34,7 +34,6 @@ test('exit code 1 with a valid report is summarized, not discarded', () => {
   assert.deepEqual(summary.failedChecks, [{ name: 'boot-signatures', detail: 'fatal plugin crash' }]);
   assert.deepEqual(summary.keywords.sort(), ['dep0180', 'plugin-crash']);
   assert.equal(summary.reportHtml, 'C:/artifacts/run-42/report.html');
-  assert.equal(summary.reportUrl, '/dsh-lab-bridge/latest/report.html');
 });
 
 test('informational failures do not count as failed checks', () => {

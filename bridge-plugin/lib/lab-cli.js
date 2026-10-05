@@ -1,29 +1,24 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { normalizeProfileLab } from './lab-profiles.js';
 
 /**
- * Command construction and execution for `lab verify --json` and `lab shell`.
+ * `lab verify --json` support for the agent-facing lab_verify_plugin tool.
  *
- * The command is deliberately always `--offline` unless the caller explicitly
- * asks for online, and it never passes `--profile-lab`. The lab therefore keeps
- * its own temporary isolated DSH_HOME.
+ * The command is always --offline unless the caller explicitly asks for online;
+ * it never passes --profile-lab, so the lab always uses a one-off temporary
+ * isolated home. `sanitizeLabEnv` also strips the host's real DSH home and the
+ * Electron-as-Node switch.
  */
 
-/**
- * Never hand the lab the host's real DSH_HOME/DSH_AGENTS_HOME: the lab must
- * create its own temporary isolated home. DSH_LAB_HOME is left alone because
- * the bridge itself uses it for path discovery, not the lab.
- */
 export function sanitizeLabEnv(env = process.env) {
   const next = { ...env };
+  delete next.ELECTRON_RUN_AS_NODE;
   delete next.DSH_HOME;
   delete next.DSH_AGENTS_HOME;
   return next;
 }
 
-export function buildVerifyArgs({ labEntry, pluginSpec, online = false, artifactsDir, profileLab }) {
-  const profile = normalizeProfileLab(profileLab);
-  const args = [
+export function buildVerifyArgs({ labEntry, pluginSpec, online = false, artifactsDir }) {
+  return [
     labEntry,
     'verify',
     '--plugin',
@@ -32,59 +27,7 @@ export function buildVerifyArgs({ labEntry, pluginSpec, online = false, artifact
     '--json',
     '--artifacts',
     artifactsDir,
-    ...(profile ? ['--profile-lab', profile] : []),
   ];
-  return args;
-}
-
-/**
- * `lab shell --show` in an isolated home. `--keep-open` lets the user close the
- * window themselves; a positive holdMs is exposed for a timed window. The
- * plugin spec is optional — an empty spec opens a plain DSH shell.
- */
-export function buildShellArgs({ labEntry, pluginSpec, online = false, holdMs, profileLab } = {}) {
-  const profile = normalizeProfileLab(profileLab);
-  const args = [
-    labEntry,
-    'shell',
-    ...(online ? ['--online'] : ['--offline']),
-    '--show',
-    '--no-compare-web',
-    ...(profile ? ['--profile-lab', profile] : []),
-  ];
-  if (typeof pluginSpec === 'string' && pluginSpec.trim()) args.push('--plugin', pluginSpec.trim());
-  const hold = Number(holdMs);
-  if (Number.isFinite(hold) && hold > 0) args.push('--show-hold', String(Math.trunc(hold)));
-  else args.push('--keep-open');
-  return args;
-}
-
-/**
- * Launch the lab's Electron shell window detached from the host process. The
- * shell keeps its own temporary isolated home and cleans up when it closes.
- */
-export function spawnLabShell(options = {}) {
-  const {
-    nodeExe,
-    labEntry,
-    pluginSpec,
-    online = false,
-    profileLab,
-    holdMs,
-    cwd,
-    env,
-    spawnImpl = spawn,
-  } = options;
-  const args = buildShellArgs({ labEntry, pluginSpec, online, holdMs, profileLab });
-  const child = spawnImpl(nodeExe, args, {
-    cwd: cwd ?? undefined,
-    env: sanitizeLabEnv(env ?? process.env),
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: false,
-  });
-  try { child.unref?.(); } catch { /* best effort */ }
-  return { pid: child.pid ?? null, args };
 }
 
 /**
@@ -126,8 +69,6 @@ function parseJsonOutput(stdout) {
  * Run `node <lab>/bin/lab.js verify ...` and resolve with the raw outcome.
  * A non-zero exit code is NOT an error: the lab returns 1 for a valid report
  * whose checks failed, so stdout is always parsed first.
- *
- * @returns {Promise<{ exitCode: number|null, timedOut: boolean, stdout: string, stderr: string, report: object|null }>}
  */
 export function runLabVerify(options) {
   const {
@@ -136,7 +77,6 @@ export function runLabVerify(options) {
     pluginSpec,
     online = false,
     artifactsDir,
-    profileLab,
     timeoutMs,
     cwd,
     env,
@@ -144,7 +84,7 @@ export function runLabVerify(options) {
     killTreeImpl = killProcessTree,
     signal,
   } = options;
-  const args = buildVerifyArgs({ labEntry, pluginSpec, online, artifactsDir, profileLab });
+  const args = buildVerifyArgs({ labEntry, pluginSpec, online, artifactsDir });
   if (signal?.aborted) {
     return Promise.resolve({ exitCode: null, timedOut: false, aborted: true, stdout: '', stderr: '', report: null });
   }
@@ -164,7 +104,7 @@ export function runLabVerify(options) {
         windowsHide: true,
       });
     } catch (error) {
-      resolve({ exitCode: null, timedOut: false, stdout: '', stderr: String(error?.message ?? error), report: null, spawnError: true });
+      resolve({ exitCode: null, timedOut: false, aborted: false, stdout: '', stderr: String(error?.message ?? error), report: null, spawnError: true });
       return;
     }
     const onAbort = () => {
@@ -192,7 +132,6 @@ export function runLabVerify(options) {
       } catch {
         try { child.kill(); } catch { /* best effort */ }
       }
-      // Fallback when the tree kill cannot be observed closing.
       killTimer = setTimeout(() => finish(child.exitCode ?? null), 2000);
     }, timeoutMs);
     child.stdout?.on('data', (chunk) => { stdout += chunk; });

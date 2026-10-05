@@ -44,7 +44,6 @@ export function summarizeReport({ report, exitCode, timedOut = false, stderr = '
     runDir: report.runDir ?? artifacts.runDir ?? null,
     reportHtml: artifacts.reportHtml ?? null,
     reportJson: artifacts.reportJson ?? null,
-    reportUrl: '/dsh-lab-bridge/latest/report.html',
   };
 }
 

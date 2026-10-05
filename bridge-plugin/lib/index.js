@@ -3,22 +3,18 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { resolveBridgeConfig } from './config.js';
-import { runLabVerify, spawnLabShell } from './lab-cli.js';
+import { runLabVerify } from './lab-cli.js';
 import { summarizeReport } from './report-summary.js';
 import { createBridgeRouteHandler } from './routes.js';
-import { createVerifyController } from './verify-controller.js';
 import { createGuiLauncher } from './launch.js';
 
 /**
  * dsh-plugin-effect-lab-bridge — host half.
  *
- * The bridge is installed in the DSH profile; the lab is not. The only way it
- * reaches the lab is by spawning `node <lab>/bin/lab.js verify ... --json` when
- * the `lab_verify_plugin` tool is actually called. Nothing is spawned, resolved,
- * or read at plugin startup.
- *
- * `webServer` and `tools` are hard dependencies so the Loader waits for both
- * services before running apply().
+ * The DSH plugin is a launcher: its UI is a single button that starts the lab's
+ * own Electron GUI as an external, detached process. The lab itself is not in
+ * the DSH profile and is never imported; the only host work is the fixed
+ * `bin/lab.js gui` spawn plus the agent-facing lab_verify_plugin tool.
  */
 
 export const name = 'dsh-plugin-effect-lab-bridge';
@@ -33,8 +29,8 @@ function toolDefinition(getConfig) {
     name: 'lab_verify_plugin',
     description:
       '调用外部的 DSH 插件效果实验舱，在它自己的临时隔离 DSH_HOME 里安装并验证一个插件，返回摘要报告。'
-      + '实验舱本体不安装进当前 profile；本工具只 spawn `node <lab>/bin/lab.js verify --plugin <spec> --json`。'
-      + '默认 --offline（本地目录/tarball 无需联网）。报告会通过同源路由 /dsh-lab-bridge/latest/report.html 呈现。',
+      + '实验舱本体不安装进当前 profile；本工具只 spawn `node <lab>/bin/lab.js verify --plugin <spec> --json`，'
+      + '默认 --offline，报告写在实验舱的 artifacts 目录，可用实验舱 GUI 查看。',
     parameters: {
       plugin: {
         type: 'string',
@@ -45,22 +41,18 @@ function toolDefinition(getConfig) {
         type: 'boolean',
         description: '是否允许联网安装（true → --online）。默认 false → --offline。',
       },
-      profile: {
-        type: 'string',
-        description: '可选的持久 lab profile 名（如 dev/test1，位于实验舱 .lab-profiles 下）。省略则使用一次性临时 profile。',
-      },
     },
     output: {
       schema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          ok: { type: 'boolean', required: true, description: '实验舱报告结论是否通过。' },
-          parsed: { type: 'boolean', required: true, description: 'stdout 是否解析出 report JSON。' },
-          timedOut: { type: 'boolean', required: true, description: '是否触发了硬超时。' },
-          exitCode: { type: 'json', description: 'lab 进程退出码；退出码 1 也可能是有效报告。' },
-          error: { type: 'string', description: '未解析出报告时的错误说明。' },
-          stderrTail: { type: 'string', description: '失败时的 stderr 末尾。' },
+          ok: { type: 'boolean', required: true },
+          parsed: { type: 'boolean', required: true },
+          timedOut: { type: 'boolean', required: true },
+          exitCode: { type: 'json' },
+          error: { type: 'string' },
+          stderrTail: { type: 'string' },
           runId: { type: 'json' },
           mode: { type: 'json' },
           startedAt: { type: 'json' },
@@ -89,7 +81,6 @@ function toolDefinition(getConfig) {
           runDir: { type: 'json' },
           reportHtml: { type: 'json' },
           reportJson: { type: 'json' },
-          reportUrl: { type: 'string' },
         },
       },
       render: (_args, value) => [
@@ -98,7 +89,7 @@ function toolDefinition(getConfig) {
           text: value.parsed
             ? `实验舱结论：${value.ok ? '通过' : '未通过'} (run ${value.runId ?? '未知'})；`
               + `检查 ${value.checks?.passed ?? 0}/${value.checks?.total ?? 0} 通过；`
-              + `报告：${value.reportUrl ?? '/dsh-lab-bridge/latest/report.html'}`
+              + `报告文件：${value.reportHtml ?? value.runDir ?? '见实验舱 artifacts'}`
             : `实验舱报告解析失败：${value.error ?? '未知错误'}`,
         },
       ],
@@ -112,7 +103,6 @@ function toolDefinition(getConfig) {
         labEntry: config.labEntry,
         pluginSpec,
         online: args?.online === true,
-        profileLab: args?.profile,
         artifactsDir: config.artifactsDir,
         timeoutMs: config.timeoutMs,
         cwd: config.labRoot,
@@ -130,23 +120,19 @@ export function apply(ctx, config = {}) {
     return cached;
   };
 
-  // Per-host-process control token. It reaches the renderer through the
-  // standard index-injection channel (the desktop host forwards
-  // collectIndexInjections() over IPC), so the client can authenticate the
-  // control routes without a separate handshake.
-  const controlToken = randomBytes(32).toString('base64url');
+  // Per-host launch nonce, injected through the standard index-injection row.
+  const launchNonce = randomBytes(32).toString('base64url');
   if (typeof ctx.on === 'function') {
     const off = ctx.on('webserver/index-inject', (table) => {
       table.push({
         kind: 'global',
         name: '__DSH_LAB_BRIDGE__',
-        value: { token: controlToken },
+        value: { token: launchNonce },
       });
     });
     if (typeof off === 'function') disposers.push(off);
   }
 
-  const controller = createVerifyController({ getConfig });
   const launcher = createGuiLauncher({ getConfig });
 
   const webServer = ctx.webServer;
@@ -158,21 +144,8 @@ export function apply(ctx, config = {}) {
     path: BRIDGE_ROUTE_PREFIX,
     handler: createBridgeRouteHandler({
       getConfig,
-      controller,
-      getToken: () => controlToken,
+      getToken: () => launchNonce,
       launcher,
-      shellLauncher: (input) => {
-        const resolved = getConfig();
-        return spawnLabShell({
-          nodeExe: resolved.nodeExe,
-          labEntry: resolved.labEntry,
-          cwd: resolved.labRoot,
-          pluginSpec: input.plugin,
-          online: input.online,
-          profileLab: input.profileLab,
-          holdMs: input.holdMs,
-        });
-      },
     }),
   }));
 

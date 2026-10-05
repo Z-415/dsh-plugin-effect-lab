@@ -30,8 +30,9 @@
     "lib/client.js",
     "lib/config.js",
     "lib/lab-cli.js",
+    "lib/launch.js",
+    "lib/node-locator.js",
     "lib/report-summary.js",
-    "lib/artifacts-store.js",
     "lib/routes.js",
     "cordis.patch.yml",
     "README.md"

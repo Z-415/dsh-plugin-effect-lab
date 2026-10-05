@@ -1,14 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import {
-  buildShellArgs,
-  buildVerifyArgs,
-  killProcessTree,
-  runLabVerify,
-  sanitizeLabEnv,
-  spawnLabShell,
-} from '../lib/lab-cli.js';
+import { buildVerifyArgs, killProcessTree, runLabVerify, sanitizeLabEnv } from '../lib/lab-cli.js';
 
 test('buildVerifyArgs is offline by default and never passes --profile-lab', () => {
   const args = buildVerifyArgs({
@@ -41,25 +34,7 @@ test('buildVerifyArgs switches to --online only when asked', () => {
   assert.equal(args.includes('--profile-lab'), false);
 });
 
-test('buildVerifyArgs passes --profile-lab only when explicitly selected', () => {
-  const without = buildVerifyArgs({ labEntry: 'lab.js', pluginSpec: 'p', artifactsDir: 'a' });
-  assert.equal(without.includes('--profile-lab'), false);
-  const withProfile = buildVerifyArgs({ labEntry: 'lab.js', pluginSpec: 'p', artifactsDir: 'a', profileLab: 'dev' });
-  assert.deepEqual(withProfile.slice(-2), ['--profile-lab', 'dev']);
-});
-
-test('buildVerifyArgs rejects unsafe and reserved profile names', () => {
-  assert.throws(
-    () => buildVerifyArgs({ labEntry: 'lab.js', pluginSpec: 'p', artifactsDir: 'a', profileLab: 'desktop' }),
-    /desktop/,
-  );
-  assert.throws(
-    () => buildVerifyArgs({ labEntry: 'lab.js', pluginSpec: 'p', artifactsDir: 'a', profileLab: '../evil' }),
-    /invalid/,
-  );
-});
-
-function fakeChild({ stdout = '', stderr = '', code = 0, onSpawn } = {}) {
+function fakeChild({ stdout = '', stderr = '', code = 0 } = {}) {
   const child = new EventEmitter();
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
@@ -67,7 +42,6 @@ function fakeChild({ stdout = '', stderr = '', code = 0, onSpawn } = {}) {
   child.kill = () => { child.killed = true; };
   child.exitCode = code;
   queueMicrotask(() => {
-    onSpawn?.(child);
     if (stdout) child.stdout.emit('data', Buffer.from(stdout));
     if (stderr) child.stderr.emit('data', Buffer.from(stderr));
     if (code !== null) child.emit('close', code);
@@ -123,26 +97,47 @@ test('a hung child is killed and reported as timed out', async () => {
   assert.equal(killedPid, 4242);
 });
 
-test('killProcessTree uses taskkill /T /F on win32', () => {
-  const calls = [];
-  const result = killProcessTree({ pid: 9876 }, {
-    platform: 'win32',
-    spawnSyncImpl: (file, args, options) => {
-      calls.push({ file, args, options });
-      return { status: 0, stdout: 'SUCCESS', stderr: '' };
-    },
+test('a spawn failure resolves instead of throwing', async () => {
+  const outcome = await runLabVerify({
+    nodeExe: 'node',
+    labEntry: 'lab.js',
+    pluginSpec: 'p',
+    artifactsDir: 'a',
+    timeoutMs: 1000,
+    spawnImpl: () => { throw new Error('spawn EPERM'); },
   });
-  assert.equal(result.killed, true);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].file, 'taskkill');
-  assert.deepEqual(calls[0].args, ['/PID', '9876', '/T', '/F']);
+  assert.equal(outcome.report, null);
+  assert.equal(outcome.spawnError, true);
+  assert.match(outcome.stderr, /spawn EPERM/);
 });
 
-test('killProcessTree falls back to SIGKILL off win32', () => {
-  let signal = null;
-  const result = killProcessTree({ pid: 1, kill: (value) => { signal = value; } }, { platform: 'linux' });
-  assert.equal(result.killed, true);
-  assert.equal(signal, 'SIGKILL');
+test('sanitizeLabEnv strips Electron and real-home variables', () => {
+  const env = sanitizeLabEnv({
+    ELECTRON_RUN_AS_NODE: '1',
+    DSH_HOME: 'C:/real',
+    DSH_AGENTS_HOME: 'C:/real/agents',
+    PATH: 'x',
+  });
+  assert.equal('ELECTRON_RUN_AS_NODE' in env, false);
+  assert.equal('DSH_HOME' in env, false);
+  assert.equal('DSH_AGENTS_HOME' in env, false);
+  assert.equal(env.PATH, 'x');
+});
+
+test('runLabVerify sanitizes the environment handed to the lab', async () => {
+  let captured = null;
+  await runLabVerify({
+    nodeExe: 'node',
+    labEntry: 'lab.js',
+    pluginSpec: 'p',
+    artifactsDir: 'a',
+    timeoutMs: 5000,
+    env: { ELECTRON_RUN_AS_NODE: '1', DSH_HOME: 'C:/real', PATH: 'x' },
+    spawnImpl: (file, args, options) => { captured = options; return fakeChild({ code: 0 }); },
+  });
+  assert.equal('ELECTRON_RUN_AS_NODE' in captured.env, false);
+  assert.equal('DSH_HOME' in captured.env, false);
+  assert.equal(captured.env.PATH, 'x');
 });
 
 test('an already-aborted signal resolves aborted without spawning', async () => {
@@ -182,98 +177,23 @@ test('aborting mid-run kills the process tree and resolves aborted', async () =>
   assert.equal(killed, 1);
 });
 
-test('sanitizeLabEnv strips the real DSH home vars but keeps others', () => {
-  const env = sanitizeLabEnv({
-    DSH_HOME: 'C:/real',
-    DSH_AGENTS_HOME: 'C:/real/agents',
-    DSH_LAB_HOME: 'C:/lab',
-    PATH: 'x',
-  });
-  assert.equal('DSH_HOME' in env, false);
-  assert.equal('DSH_AGENTS_HOME' in env, false);
-  assert.equal(env.DSH_LAB_HOME, 'C:/lab');
-  assert.equal(env.PATH, 'x');
-});
-
-test('buildShellArgs opens a visible keep-open shell and never passes --profile-lab', () => {
-  const args = buildShellArgs({ labEntry: 'C:/lab/bin/lab.js', pluginSpec: 'C:/plugins/foo', online: false });
-  assert.deepEqual(args, [
-    'C:/lab/bin/lab.js',
-    'shell',
-    '--offline',
-    '--show',
-    '--no-compare-web',
-    '--plugin',
-    'C:/plugins/foo',
-    '--keep-open',
-  ]);
-  assert.equal(args.includes('--profile-lab'), false);
-});
-
-test('buildShellArgs supports a plain timed shell without a plugin', () => {
-  const args = buildShellArgs({ labEntry: 'lab.js', holdMs: 20000 });
-  assert.equal(args.includes('--plugin'), false);
-  assert.deepEqual(args.slice(-2), ['--show-hold', '20000']);
-  assert.equal(args.includes('--keep-open'), false);
-});
-
-test('buildShellArgs passes --profile-lab when a persistent profile is selected', () => {
-  const args = buildShellArgs({ labEntry: 'lab.js', profileLab: 'test1' });
-  const at = args.indexOf('--profile-lab');
-  assert.equal(at >= 0, true);
-  assert.equal(args[at + 1], 'test1');
-  assert.throws(() => buildShellArgs({ labEntry: 'lab.js', profileLab: 'desktop' }), /desktop/);
-});
-
-test('spawnLabShell detaches, ignores stdio, and never inherits DSH_HOME', () => {
+test('killProcessTree uses taskkill /T /F on win32', () => {
   const calls = [];
-  const child = { pid: 4242, unref() { calls.push(['unref']); } };
-  const result = spawnLabShell({
-    nodeExe: 'node',
-    labEntry: 'lab.js',
-    pluginSpec: 'p',
-    cwd: 'C:/lab',
-    env: { DSH_HOME: 'C:/real', DSH_AGENTS_HOME: 'C:/real/agents', PATH: 'x' },
-    spawnImpl: (file, args, options) => {
+  const result = killProcessTree({ pid: 9876 }, {
+    platform: 'win32',
+    spawnSyncImpl: (file, args, options) => {
       calls.push({ file, args, options });
-      return child;
+      return { status: 0, stdout: 'SUCCESS', stderr: '' };
     },
   });
-  assert.equal(result.pid, 4242);
-  const spawnCall = calls.find((call) => call.file);
-  assert.equal(spawnCall.options.detached, true);
-  assert.equal(spawnCall.options.stdio, 'ignore');
-  assert.equal('DSH_HOME' in spawnCall.options.env, false);
-  assert.equal(spawnCall.options.env.PATH, 'x');
-  assert.deepEqual(calls.at(-1), ['unref']);
+  assert.equal(result.killed, true);
+  assert.equal(calls[0].file, 'taskkill');
+  assert.deepEqual(calls[0].args, ['/PID', '9876', '/T', '/F']);
 });
 
-test('runLabVerify strips the host DSH_HOME from the lab environment', async () => {
-  let captured = null;
-  await runLabVerify({
-    nodeExe: 'node',
-    labEntry: 'lab.js',
-    pluginSpec: 'p',
-    artifactsDir: 'a',
-    timeoutMs: 5000,
-    env: { DSH_HOME: 'C:/real', DSH_AGENTS_HOME: 'C:/real/agents', PATH: 'x' },
-    spawnImpl: (file, args, options) => { captured = options; return fakeChild({ code: 0 }); },
-  });
-  assert.equal('DSH_HOME' in captured.env, false);
-  assert.equal('DSH_AGENTS_HOME' in captured.env, false);
-  assert.equal(captured.env.PATH, 'x');
-});
-
-test('a spawn failure resolves instead of throwing', async () => {
-  const outcome = await runLabVerify({
-    nodeExe: 'node',
-    labEntry: 'lab.js',
-    pluginSpec: 'p',
-    artifactsDir: 'a',
-    timeoutMs: 1000,
-    spawnImpl: () => { throw new Error('spawn EPERM'); },
-  });
-  assert.equal(outcome.report, null);
-  assert.equal(outcome.spawnError, true);
-  assert.match(outcome.stderr, /spawn EPERM/);
+test('killProcessTree falls back to SIGKILL off win32', () => {
+  let signal = null;
+  const result = killProcessTree({ pid: 1, kill: (value) => { signal = value; } }, { platform: 'linux' });
+  assert.equal(result.killed, true);
+  assert.equal(signal, 'SIGKILL');
 });
