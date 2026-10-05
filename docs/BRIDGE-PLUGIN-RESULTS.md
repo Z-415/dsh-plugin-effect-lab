@@ -208,8 +208,10 @@ cwd 下读不到 → `result=null`。默认 artifacts（`<cwd>/artifacts`，绝�
 
 ## 5. 红线遵守情况
 
-- 工具命令永不传 `--profile-lab`（单测断言），也不设置 `DSH_HOME`；实验舱保持默认临时
-  隔离 home。
+- 默认每次验证都是一次性临时 profile，不传 `--profile-lab`；只有用户在面板/工具里显式
+  选择持久 profile 时才传 `--profile-lab <name>`，且名称限定 `[a-z0-9._-]{1,32}`、拒绝
+  `desktop`，只落在实验舱自己的 `.lab-profiles/<name>`。桥接从不设置 `DSH_HOME`，并在
+  spawn 前剥离宿主的 `DSH_HOME`/`DSH_AGENTS_HOME`；真实 `~/.dsh` 仍不是任何运行目标。
 - `bridge-plugin/package.json` 的 `dependencies == {}`，`files` 不含实验舱源码；集成测试
   断言 profile `node_modules` 无实验舱。
 - 宿主启动路径不做重活：`apply` 只注册路由与工具；配置解析、spawn、读文件全部推迟到
@@ -256,20 +258,29 @@ cwd 下读不到 → `result=null`。默认 artifacts（`<cwd>/artifacts`，绝�
 4. **打开壳界面入口**：面板新增「打开壳界面」按钮，走 `POST /dsh-lab-bridge/shell`
    （同样 token + loopback）。host 以 detached / stdio=ignore 启动
    `node <lab>/bin/lab.js shell --show --no-compare-web [--plugin <spec>] [--keep-open]`；
-   不传 `--profile-lab`，并对 verify 与 shell 都剥离宿主真实 `DSH_HOME`/`DSH_AGENTS_HOME`，
-   壳仍使用实验舱的临时隔离 home。规格为空时打开普通 DSH 壳，窗口自己关。
+   默认使用一次性临时 profile（选择持久 profile 时才追加 `--profile-lab <name>`），并对
+   verify 与 shell 都剥离宿主真实 `DSH_HOME`/`DSH_AGENTS_HOME`。规格为空时打开普通 DSH 壳，
+   窗口自己关。
+5. **profile 选择**：新增 `GET /dsh-lab-bridge/profiles`（token + loopback）列出实验舱
+   `.lab-profiles` 下的持久 profile；面板用下拉选择「一次性（临时）」或 `dev`/`test1` 等，
+   verify 与 shell 都带上该选择，完成后显示实际使用的 Profile；agent 工具
+   `lab_verify_plugin` 也增加可选 `profile` 参数。名称限定 `[a-z0-9._-]{1,32}`，拒绝
+   `desktop` 与路径穿越；持久 profile 仍只落在 `.lab-profiles/<name>`，绝不指向真实
+   `~/.dsh`/desktop。
 
 验证：
 
-- `npm test` → **259** 通过；`$env:DSH_LAB_E2E='1'; npm run test:e2e` → **25** 通过（含面板
-  「打开壳界面」点击后显示已打开壳窗口的断言）。
+- `npm test` → **268** 通过；`$env:DSH_LAB_E2E='1'; npm run test:e2e` → **26** 通过（含面板
+  「打开壳界面」点击后显示已打开壳窗口、profile 下拉把 `dev` 传进 `/verify`、真实宿主用
+  `DSH_LAB_PROFILES` 跑持久 `test1` 并保留 manifest 的断言）。
 - 面板集成测试：无 `/dsh-lab-bridge` anchor、点击后 `window.location.href` 不变、
   `window.open` 收到 `http://127.0.0.1:<port>/...`；开始 → 进行中 → 完成 → 摘要 → iframe
   的闭环全部断言通过。
 - 控制面集成测试：真实宿主注入 token；无 token / 错 token → 401；带 token → 200；
   真实启动一次 `runLabVerify` 并轮询到 done + 真实报告。
 - 反向验证：恢复 `<a href>` → anchor 断言红；202 不进入 running → runningSeen 红；
-  移除 token 校验 → 401 红；loopback 恒真 → 403 红。
+  移除 token 校验 → 401 红；loopback 恒真 → 403 红；控制器不把 profileLab 传给实验舱 →
+  持久 profile 集成红；移除 `desktop` 保留名保护 → 单测红。
 - **真实桌面版**：用官方 CLI 重新安装后，`profiles/desktop` deps 26 / bundles 24，
   `dsh-plugin-effect-lab-bridge` 链接到仓库，`dsh-plugin-effect-lab` 不在 profile；真实宿主
   端口 19387 上 `GET /dsh-lab-bridge/latest.json` → 200、
@@ -282,3 +293,8 @@ cwd 下读不到 → `result=null`。默认 artifacts（`<cwd>/artifacts`，绝�
 上 `POST /dsh-lab-bridge/shell` 无 token → **401**（旧代码该路径是 404），证明新增的
 「打开壳界面」控制路由已在真实桌面版加载。面板按钮会以当前规格打开实验舱的 Electron
 壳窗口；壳使用临时隔离 home，关掉窗口即结束。
+
+补充（2026-10-05 续三，profile 选择）：默认仍是一次性临时 profile；面板新增 profile
+下拉后，可显式选择 `dev`/`test1` 等持久 profile。真实宿主上 `GET /dsh-lab-bridge/profiles`
+无 token → **401**，证明新路由已加载；持久 profile 只在实验舱 `.lab-profiles/<name>` 下，
+桥接仍不设置真实 `DSH_HOME`，`desktop` 名称被拒绝。
