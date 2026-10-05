@@ -27,6 +27,8 @@
 - The 插件 group is re-ordered: the two **在壳窗口打开** buttons share the first
   row, the other actions follow, and **验证这个插件** sits alone on the last,
   full-width row.
+- In the 更多（矩阵） area the **跨版本矩阵** button now spans the full row, so
+  its long label stays on one line instead of wrapping inside a half-width cell.
 
 ### Fixed
 

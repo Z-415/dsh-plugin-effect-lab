@@ -211,7 +211,7 @@
             <div class="actions">
               <button data-args="matrix|--config|fixtures/matrix/theme-conflict.json|--online">主题冲突矩阵</button>
               <button data-args="matrix|--config|fixtures/matrix/effect-conflict.json">效果探针矩阵</button>
-              <button data-args="matrix|--config|fixtures/matrix/effect-conflict.json|--runtime-matrix">跨版本矩阵（每个版本各跑一遍）</button>
+              <button class="span2" data-args="matrix|--config|fixtures/matrix/effect-conflict.json|--runtime-matrix">跨版本矩阵（每个版本各跑一遍）</button>
             </div>
             <p class="note">矩阵会给每个组合各跑一次完整验证（较慢），结果写进 artifacts 里的 matrix.html。跨版本矩阵需要机器上有多个官方版本：用环境变量 DSH_LAB_RUNTIMES 或直接给 lab.js --runtime 指定，详见 docs/VERSION-POLICY.md。需要联网的组合已经带了 --online。</p>
           </details>

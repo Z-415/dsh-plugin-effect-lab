@@ -113,6 +113,16 @@ const LAYOUT_AND_BANNER = `(() => {
   const more = document.getElementById('moreChecks');
   const moreCollapsed = more.open === false;
   more.open = true;
+  // Label of every 更多 button must stay on one line (the cross-version matrix
+  // label used to wrap inside a half-width cell).
+  const lineCount = (el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return range.getClientRects().length;
+  };
+  const multiline = [...more.querySelectorAll('button')]
+    .filter((btn) => btn.getBoundingClientRect().height > 0 && lineCount(btn) > 1)
+    .map((btn) => btn.textContent.trim());
   const openLayoutOk = rect(document.getElementById('log')).height >= 120
     && rect(controls).bottom <= rect(document.querySelector('.logwrap')).top + 1;
   // Simulate a failed run finishing so the banner and the toast fire.
@@ -121,6 +131,7 @@ const LAYOUT_AND_BANNER = `(() => {
   return JSON.stringify({
     layoutOk,
     moreCollapsed,
+    multiline,
     openLayoutOk,
     logHeight: Math.round(log.height),
     controls: { visible: Math.round(controlsRect.height), content: controls.scrollHeight },
@@ -413,6 +424,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(layout.bodyClipped, false, JSON.stringify(layout));
     assert.equal(layout.controls.visible >= 100, true, JSON.stringify(layout));
     assert.equal(layout.moreCollapsed, true, 'the 更多 area must start collapsed so it costs no height');
+    assert.deepEqual(layout.multiline, [], `更多 buttons wrapped onto two lines: ${JSON.stringify(layout.multiline)}`);
     assert.equal(layout.openLayoutOk, true, JSON.stringify(layout));
     // A failed run must show the banner and raise a desktop notification.
     assert.equal(layout.bannerHidden, false, JSON.stringify(layout));
