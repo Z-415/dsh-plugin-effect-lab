@@ -17,7 +17,7 @@ import {
   fixtureEnv,
   readFixtureSpec,
 } from './fixture-manager.js';
-import { hasFatal, scanLogs, scanNoise, summarize } from './log-scanner.js';
+import { hasFatal, scanLogs, scanNoise, scanSources, summarize } from './log-scanner.js';
 import { writeHtmlReport } from './html-report.js';
 import { openLabProfileHome, recordProfilePlugins } from './lab-profile.js';
 import { describeAgentCoverage, scanForCredentials } from './model-coverage.js';
@@ -466,6 +466,21 @@ export async function runLab(options = {}) {
       screenshots: browser.screenshots,
     };
     writeJson(runDir, 'dom/dom.json', browser.dom);
+    // The signature library also reads the renderer side: client module load
+    // failures and slot-kind errors only ever show up in console/page errors.
+    const consoleHits = scanSources([
+      ...(browser.consoleErrors ?? []),
+      ...(browser.pageErrors ?? []),
+      ...(browser.networkFailures ?? []).map((failure) => failure.errorText ?? failure.url ?? ''),
+    ]);
+    report.consoleSignatureHits = consoleHits;
+    addCheck(
+      checks,
+      'console-signatures',
+      !hasFatal(consoleHits),
+      consoleHits.length ? summarize(consoleHits) : 'no known failure signature in console/page errors',
+      { informational: options.strictConsole !== true },
+    );
   } catch (error) {
     const message = String(error?.stack ?? error);
     errors.push(message);
@@ -502,9 +517,15 @@ export async function runLab(options = {}) {
     report.cleanup.processesLeft = processesLeft;
     writeText(runDir, 'boot.out.log', bootOutput.stdout ?? '');
     writeText(runDir, 'boot.err.log', bootOutput.stderr ?? '');
-    report.signatureHits = report.signatureHits?.length
-      ? report.signatureHits
-      : scanLogs(`${bootOutput.stdout}\n${bootOutput.stderr}`);
+    const bootText = `${bootOutput.stdout ?? ''}\n${bootOutput.stderr ?? ''}`;
+    const consoleTexts = browser
+      ? [
+        ...(browser.consoleErrors ?? []),
+        ...(browser.pageErrors ?? []),
+        ...(browser.networkFailures ?? []).map((failure) => failure.errorText ?? failure.url ?? ''),
+      ]
+      : [];
+    report.signatureHits = scanSources([bootText, ...consoleTexts]);
 
     if (iso) {
       try {
@@ -545,6 +566,17 @@ export async function runLab(options = {}) {
         residue.ok
           ? `isolated root removed, ports released; new lab homes: ${residue.newHomes.length}`
           : `failed: ${residue.failures.join(', ')}`,
+      );
+      const orphans = residue.labProcesses?.orphans ?? [];
+      report.cleanup.orphanProcesses = orphans.map((entry) => ({ pid: entry.pid, name: entry.name }));
+      addCheck(
+        checks,
+        'cleanup-orphan-processes',
+        orphans.length === 0,
+        orphans.length
+          ? `${orphans.length} orphan lab process(es): ${orphans.map((entry) => `${entry.pid} ${entry.name}`).join(', ')} (run: lab clean)`
+          : 'no orphan lab process',
+        { informational: true },
       );
     } catch (error) {
       addCheck(checks, 'cleanup-no-residue', false, String(error?.message ?? error));

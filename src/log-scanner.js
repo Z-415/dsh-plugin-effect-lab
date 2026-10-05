@@ -215,6 +215,25 @@ export function scanLogs(text) {
   return hits;
 }
 
+/**
+ * Scan several inputs (boot logs, browser console errors, page errors, ...)
+ * and dedupe hits by `id` + matched fragment, so one failure reported in two
+ * places only shows up once.
+ */
+export function scanSources(sources) {
+  const seen = new Set();
+  const hits = [];
+  for (const source of sources ?? []) {
+    for (const hit of scanLogs(source)) {
+      const key = `${hit.id}\u0000${hit.matched}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      hits.push(hit);
+    }
+  }
+  return hits;
+}
+
 export function scanNoise(text) {
   const input = String(text ?? '');
   return NOISE.filter((item) => item.pattern.test(input)).map((item) => ({ id: item.id }));

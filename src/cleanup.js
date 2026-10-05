@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { listOrphanLabHomes } from './home-manager.js';
 import { canConnect } from './net-utils.js';
+import { planLabProcesses } from './process-reaper.js';
 
 /**
  * No-residue evidence for acceptance case F.
@@ -51,6 +52,7 @@ export async function verifyNoResidue(options = {}) {
     ports = [],
     before = null,
     after = snapshotLabResidue(),
+    processPlan = null,
   } = options;
   const isolatedRootRemoved = isolatedRoot ? !fs.existsSync(isolatedRoot) : true;
   const { newHomes } = before ? diffResidue(before, after) : { newHomes: [] };
@@ -63,7 +65,14 @@ export async function verifyNoResidue(options = {}) {
     'isolated-root-removed': isolatedRootRemoved,
     'ports-released': portsStillListening.length === 0,
   };
-  const advisory = { 'no-new-lab-homes': newHomes.length === 0 };
+  // A lab process with no run directory left is an orphan; a concurrent run
+  // keeps its own directory and is therefore not reported.
+  const processes = processPlan ?? planLabProcesses({});
+  const orphanProcesses = processes?.orphans ?? [];
+  const advisory = {
+    'no-new-lab-homes': newHomes.length === 0,
+    'no-lab-processes': orphanProcesses.length === 0,
+  };
   const failures = Object.entries(checks).filter(([, pass]) => !pass).map(([name]) => name);
   return {
     ok: failures.length === 0,
@@ -72,6 +81,7 @@ export async function verifyNoResidue(options = {}) {
     failures,
     newHomes,
     portsStillListening,
+    labProcesses: { matched: processes?.matched ?? 0, orphans: orphanProcesses },
     residueAfter: after,
   };
 }

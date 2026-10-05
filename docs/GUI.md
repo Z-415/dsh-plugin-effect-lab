@@ -61,8 +61,8 @@ footer (open report / open artifacts / abort).
 | 检查 | 空会话 / 长会话 | `verify --fixture-variant empty\|long` |
 | 检查 | 失败签名库 | `scan --list` |
 | 检查 | 扫描最近一次日志 | `scan --latest` |
-| 清理 | 查看残留（不改动） | `clean --dry-run` |
-| 清理 | 清理残留临时目录 | `clean` |
+| 清理 | 查看残留（不改动） | `clean --dry-run`（残留目录 + 游离的 lab 进程） |
+| 清理 | 清理残留临时目录 | `clean`（先回收游离进程，再删目录） |
 
 The three shell-window buttons also append `--native-desktop` /
 `--probe-native-dialog` when the matching checkboxes are ticked (see below).

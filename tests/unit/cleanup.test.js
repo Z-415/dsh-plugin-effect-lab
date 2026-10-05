@@ -41,6 +41,7 @@ test('verifyNoResidue passes when the root is gone and no port listens', async (
     ports: [],
     before,
     after: before,
+    processPlan: { matched: 0, orphans: [] },
   });
   assert.equal(result.ok, true);
   assert.deepStrictEqual(result.failures, []);
@@ -55,6 +56,7 @@ test('verifyNoResidue fails when the isolated root still exists', async () => {
       ports: [],
       before,
       after: before,
+      processPlan: { matched: 0, orphans: [] },
     });
     assert.equal(result.ok, false);
     assert.deepStrictEqual(result.failures, ['isolated-root-removed']);
@@ -70,8 +72,24 @@ test('a new lab home is advisory, not a hard failure', async () => {
     ports: [],
     before: { homes: [] },
     after: { homes: [{ path: 'C:\\tmp\\dsh-lab-other' }] },
+    processPlan: { matched: 0, orphans: [] },
   });
   assert.equal(result.ok, true);
-  assert.deepStrictEqual(result.advisory, { 'no-new-lab-homes': false });
+  assert.equal(result.advisory['no-new-lab-homes'], false);
+  assert.equal(result.advisory['no-lab-processes'], true);
   assert.deepStrictEqual(result.newHomes.map((item) => item.path), ['C:\\tmp\\dsh-lab-other']);
+});
+
+test('an orphan lab process is advisory, not a hard failure', async () => {
+  const missing = path.join(os.tmpdir(), `dsh-lab-missing-${Date.now()}`);
+  const result = await verifyNoResidue({
+    isolatedRoot: missing,
+    ports: [],
+    before: { homes: [] },
+    after: { homes: [] },
+    processPlan: { matched: 2, orphans: [{ pid: 7, name: 'msedge.exe' }] },
+  });
+  assert.equal(result.ok, true, 'a stray process must not fail the run');
+  assert.equal(result.advisory['no-lab-processes'], false);
+  assert.deepStrictEqual(result.labProcesses.orphans.map((entry) => entry.pid), [7]);
 });

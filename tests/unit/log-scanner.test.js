@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { hasFatal, listSignatures, scanLogs, summarize } from '../../src/log-scanner.js';
+import { hasFatal, listSignatures, scanLogs, scanSources, summarize } from '../../src/log-scanner.js';
 
 test('duplicate loader id is fatal', () => {
   const hits = scanLogs('Error: duplicate loader entry id: dsh-vscode-bridge');
@@ -83,4 +83,21 @@ test('summarize labels the category for each hit', () => {
   const text = summarize(scanLogs('Error: EADDRINUSE: address already in use 127.0.0.1:1'));
   assert.match(text, /BLOCKER/);
   assert.match(text, /\[port-in-use\] \(boot\)/);
+});
+
+test('scanSources merges boot logs and console errors without duplicates', () => {
+  const hits = scanSources([
+    'Error: EADDRINUSE: address already in use 127.0.0.1:5566',
+    'Failed to fetch dynamically imported module: dsh-app://app/assets/client.js',
+    // The same boot failure echoed on stderr must not be counted twice.
+    'Error: EADDRINUSE: address already in use 127.0.0.1:5566',
+    '',
+    null,
+  ]);
+  assert.deepEqual(hits.map((hit) => hit.id), ['port-in-use', 'client-module-load']);
+  assert.equal(hits.every((hit) => hit.severity === 'fatal'), true);
+});
+
+test('scanSources of a clean boot log and clean console returns nothing', () => {
+  assert.deepEqual(scanSources(['[dsh] listening on port 5566', '[dsh] plugin tree loaded', undefined]), []);
 });

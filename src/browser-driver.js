@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { childEnv, killTree, stopTracked } from './process-tree.js';
+import { reapProcessesByCommandLine } from './process-reaper.js';
 import { ensureDir, sleep } from './util.js';
 
 export function browserCandidates(explicitPath) {
@@ -29,22 +30,8 @@ export function browserCandidates(explicitPath) {
  */
 export function reapBrowserProcesses(userDataDir, options = {}) {
   const { platform = process.platform, name = 'msedge.exe' } = options;
-  if (platform !== 'win32') return { supported: false, matched: 0 };
-  const target = String(userDataDir ?? '');
-  if (!target) return { supported: true, matched: 0 };
-  const quoted = target.replace(/'/g, "''");
-  const script = [
-    `$target = '${quoted}';`,
-    `$p = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq '${name}' -and $_.CommandLine -and $_.CommandLine.Contains($target) });`,
-    'foreach ($proc in $p) { Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue }',
-    '$p.Count',
-  ].join(' ');
-  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
-    windowsHide: true,
-    encoding: 'utf8',
-  });
-  const matched = Number.parseInt(String(result.stdout ?? '').trim(), 10);
-  return { supported: true, matched: Number.isFinite(matched) ? matched : 0, status: result.status };
+  const result = reapProcessesByCommandLine(userDataDir, { platform, names: [name] });
+  return { supported: result.supported, matched: result.matched };
 }
 
 export function findBrowser(explicitPath) {

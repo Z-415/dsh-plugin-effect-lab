@@ -6,12 +6,14 @@ import { snapshotLabResidue, verifyNoResidue } from '../cleanup.js';
 import { evaluateDomAssertions } from '../dom-assertions.js';
 import { writeHtmlReport } from '../html-report.js';
 import { openLabProfileHome, recordProfilePlugins } from '../lab-profile.js';
+import { hasFatal, scanSources, summarize } from '../log-scanner.js';
 import { defaultArtifactsRoot } from '../config.js';
 import { createIsolatedHome } from '../home-manager.js';
 import { mintAuthCookie } from '../port-and-token.js';
 import { FIXTURE_SESSION_ID, fixtureEnv, readFixtureSpec } from '../fixture-manager.js';
 import { installProfilePlugins } from '../plugin-install.js';
 import { spawnTracked, stopTracked } from '../process-tree.js';
+import { reapProcessesByCommandLine } from '../process-reaper.js';
 import { writeMinimalProfile } from '../profile-builder.js';
 import { diffRealHome, snapshotRealHome } from '../real-home-guard.js';
 import { copyIfExists, prepareArtifacts, renderReportMarkdown, writeJson, writeText } from '../report-writer.js';
@@ -68,9 +70,12 @@ export async function runShell(options = {}) {
   let iso = null;
   let boot = null;
   let shellProc = null;
+  let shellUserDataDir = null;
   let webBrowser = null;
   let realBefore = null;
   let webProbe = null;
+  let webConsoleTexts = [];
+  let shellResult = null;
   let shellVsWeb = null;
   let residueBefore = null;
   let shellScreenshotDiff = null;
@@ -224,6 +229,7 @@ export async function runShell(options = {}) {
           { informational: true },
         );
         progress(`web baseline captured (${webProbe.slotCount} slots, ${webProbe.tokenCount} tokens)`);
+        webConsoleTexts = [...(webBrowser.consoleErrors ?? []), ...(webBrowser.pageErrors ?? [])];
       } catch (error) {
         addCheck(checks, 'web-baseline-ui', false, String(error?.message ?? error), { informational: true });
       } finally {
@@ -259,6 +265,7 @@ export async function runShell(options = {}) {
     progress(`launching Electron shell window${options.keepOpen ? ' (close it to finish)' : ''}`);
 
     const userDataDir = ensureDir(path.join(iso.root, 'electron-userdata'));
+    shellUserDataDir = userDataDir;
     const screenshotFile = path.join(runDir, 'screenshots', 'shell.png');
     const resultFile = path.join(runDir, 'shell-result.json');
     const configFile = path.join(iso.root, 'shell-config.json');
@@ -282,7 +289,9 @@ export async function runShell(options = {}) {
       assertTokens: options.assertTokens ?? ['--dsw-alias-bg-base'],
     }, null, 2)}\n`, 'utf8');
 
-    shellProc = spawnTracked(shell.exe, [], {
+    // The per-run user-data-dir is what lets a cleanup find this Electron tree
+    // if the process outlives a killed or timed-out run.
+    shellProc = spawnTracked(shell.exe, [`--user-data-dir=${userDataDir}`], {
       cwd: shell.dir,
       env: { DSH_LAB_SHELL_CONFIG: configFile },
     });
@@ -295,6 +304,7 @@ export async function runShell(options = {}) {
       await sleep(500);
     }
     const result = fs.existsSync(resultFile) ? JSON.parse(fs.readFileSync(resultFile, 'utf8')) : null;
+    shellResult = result;
     progress(result ? 'shell result received' : 'shell result missing');
     addCheck(checks, 'shell-result', result?.ok === true, result?.error ?? (result ? 'written' : 'missing'));
     if (result?.capture) {
@@ -489,6 +499,14 @@ export async function runShell(options = {}) {
         errors.push(`shell cleanup failed: ${String(error)}`);
       }
     }
+    if (shellUserDataDir) {
+      try {
+        const reaped = reapProcessesByCommandLine(shellUserDataDir, { names: ['DeepSeek Harness.exe'] });
+        report.cleanup.shellProcessesReaped = reaped.matched;
+      } catch (error) {
+        errors.push(`shell process reap failed: ${String(error)}`);
+      }
+    }
     if (boot) {
       try {
         const stopped = await boot.stop();
@@ -535,8 +553,44 @@ export async function runShell(options = {}) {
           ? `root removed, ports released; new lab homes: ${residue.newHomes.length}`
           : `failed: ${residue.failures.join(', ')}`,
       );
+      const orphans = residue.labProcesses?.orphans ?? [];
+      report.cleanup.orphanProcesses = orphans.map((entry) => ({ pid: entry.pid, name: entry.name }));
+      addCheck(
+        checks,
+        'cleanup-orphan-processes',
+        orphans.length === 0,
+        orphans.length
+          ? `${orphans.length} orphan lab process(es): ${orphans.map((entry) => `${entry.pid} ${entry.name}`).join(', ')} (run: lab clean)`
+          : 'no orphan lab process',
+        { informational: true },
+      );
     } catch (error) {
       addCheck(checks, 'cleanup-no-residue', false, String(error?.message ?? error));
+    }
+    {
+      const bootOutput = boot?.getOutput?.() ?? { stdout: '', stderr: '' };
+      const consoleTexts = [
+        ...webConsoleTexts,
+        ...(shellResult?.consoleErrors ?? []),
+        ...(shellResult?.pageErrors ?? []),
+      ];
+      report.signatureHits = scanSources([`${bootOutput.stdout ?? ''}\n${bootOutput.stderr ?? ''}`, ...consoleTexts]);
+      report.consoleSignatureHits = scanSources(consoleTexts);
+      addCheck(
+        checks,
+        'boot-signatures',
+        !hasFatal(report.signatureHits),
+        report.signatureHits.length ? summarize(report.signatureHits) : 'No known failure signatures matched.',
+      );
+      addCheck(
+        checks,
+        'console-signatures',
+        !hasFatal(report.consoleSignatureHits),
+        report.consoleSignatureHits.length
+          ? summarize(report.consoleSignatureHits)
+          : 'no known failure signature in console/page errors',
+        { informational: true },
+      );
     }
     report.finishedAt = nowIso();
     report.ok = checks.every((check) => check.pass || check.informational === true);

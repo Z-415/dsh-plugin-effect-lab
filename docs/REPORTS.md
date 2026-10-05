@@ -49,6 +49,9 @@ shell-result.json       raw shell result (DOM, console errors, page errors, sett
   `category` (`boot` / `plugin` / `client` / `profile` / `env` / `runtime` /
   `crash`), a root cause, and a suggested fix; see
   `docs/FAILURE-SIGNATURES.md` and `lab scan --list`;
+- `consoleSignatureHits[]`: the same fingerprints, but matched against the
+  browser console errors, page errors, and failed requests (`console-signatures`
+  check). `signatureHits` is the merge of both sources, deduped.
 - `browser.consoleErrors[]`, `pageErrors[]`, `networkFailures[]`;
 - `cleanup.homeRemoved` and `cleanup.portsLeft`;
 - `realHome.diff`: structural file hash comparison against the real `~/.dsh`.
@@ -64,9 +67,14 @@ shell-result.json       raw shell result (DOM, console errors, page errors, sett
   `realModelRequests: false`, plus the covered/uncovered surface list.
 - `settings`: with `--screenshot settings`, `{ totalSlots, added }` lists the
   slots the settings page added on top of the conversation view.
-- `cleanup.residue`: `{ ok, checks, advisory, newHomes, portsStillListening }`.
-  `isolated-root-removed` and `ports-released` gate `ok`; `no-new-lab-homes` is
-  advisory because concurrent lab runs create their own homes.
+- `cleanup.residue`:
+  `{ ok, checks, advisory, newHomes, portsStillListening, labProcesses }`.
+  `isolated-root-removed` and `ports-released` gate `ok`; `no-new-lab-homes` and
+  `no-lab-processes` are advisory (concurrent lab runs create their own homes;
+  a process may still be exiting). `labProcesses.orphans` lists lab-spawned
+  Edge/Electron processes whose run directory is gone, and
+  `cleanup.orphanProcesses` is the same list on the run report. `lab clean`
+  reaps them.
 - `shell.screenshotDiff`: `{ identical, dimensionsMatch, pixels }` where
   `pixels.changedRatio` is the fraction of pixels beyond a small threshold and
   `pixels.cells` is a 64x40 per-cell change map. Matrix runs put the same

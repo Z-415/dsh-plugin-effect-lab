@@ -415,6 +415,33 @@ Final suite: unit 145/145, integration 15/15.
 
 Final suite: unit 148/148, integration 15/15.
 
+## 0.1.0 - 2026-10-05 (orphan processes and console signatures)
+
+### Added
+
+- `src/process-reaper.js`: one unit-tested reaper for the two things the lab can
+  leak. `lab clean` now reaps orphaned lab processes as well as their temp
+  directories, and runs report them via `report.cleanup.orphanProcesses`,
+  `residue.advisory['no-lab-processes']`, and the `cleanup-orphan-processes`
+  check. A process is an orphan when its run directory is gone, or is about to
+  be removed by this `clean`; a concurrent run keeps its directory and is left
+  alone.
+- The Electron shell is now spawned with a per-run
+  `--user-data-dir=<iso.root>\electron-userdata` and reaped by it when the run
+  ends, so a killed or timed-out shell no longer survives.
+- `consoleSignatureHits[]`: the failure signature library also reads browser
+  console errors, page errors, and failed requests (`console-signatures`), and
+  `signatureHits` is the deduped merge of boot logs + renderer errors. The shell
+  report gained the same `boot-signatures` / `console-signatures` checks.
+
+### Fixed
+
+- `lab clean` deleted run directories before killing the processes holding
+  them, which failed with `EBUSY` and left both behind. It now reaps first, then
+  removes the directories.
+
+Final suite: unit 160/160, integration 15/15.
+
 ## 0.1.0 - 2026-10-05 (leaner GUI, profile dropdown)
 
 ### Changed

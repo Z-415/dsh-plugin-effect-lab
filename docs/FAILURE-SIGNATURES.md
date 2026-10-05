@@ -2,9 +2,10 @@
 
 `src/log-scanner.js` maps a boot log fragment (or a browser console line) to a
 category, a root cause, and a suggested fix. `lab verify`/`lab capture` scan
-`boot.out.log` + `boot.err.log`; `report.signatureHits[]` and the
-`boot-signatures` check use the same library, and `lab scan --log <file>` runs
-it on an existing log.
+`boot.out.log` + `boot.err.log` **and** the browser console/page errors;
+`report.signatureHits[]`, `report.consoleSignatureHits[]`, the
+`boot-signatures` and `console-signatures` checks use the same library, and
+`lab scan --log <file>` runs it on an existing log.
 
 Print the current library, with the exact fix text, from the CLI:
 

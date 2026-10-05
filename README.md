@@ -135,7 +135,7 @@ node bin/lab.js shell --no-compare-web
 node bin/lab.js scan --log .\artifacts\<run>\boot.err.log
 node bin/lab.js scan --list                            # the failure signature library
 node bin/lab.js scan --latest                          # rescan the newest run's boot logs
-node bin/lab.js clean --dry-run
+node bin/lab.js clean --dry-run                        # leftover dirs + orphan lab processes
 ```
 
 All commands that boot the real runtime need permission to spawn and terminate
