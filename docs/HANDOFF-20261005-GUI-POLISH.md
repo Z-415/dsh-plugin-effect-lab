@@ -12,14 +12,14 @@
 
 ```powershell
 cd 'C:\Users\35259\Desktop\新建文件夹 (2)\dsh-plugin-effect-lab'
-npm test                                     # 单元 194/194，约 1 秒
+npm test                                     # 单元 203/203，约 1.3 秒
 $env:DSH_LAB_E2E='1'; node --test tests/integration/gui-page.test.js   # GUI 2/2，约 6 秒
 node bin/lab.js gui                          # 打开 GUI 自己看
 ```
 
 真启动类命令必须能派生并 `taskkill` 子进程；受限沙箱里 `taskkill` 会被拒，
-命令会挂住——不是项目问题，换普通终端即可。`npm run test:e2e` 全量是 16/16、
-约 141 秒。
+命令会挂住——不是项目问题，换普通终端即可。`npm run test:e2e` 全量是 17/17、
+约 145 秒。
 
 ## 1. 本轮做了什么（7 件事）
 
@@ -77,8 +77,8 @@ node bin/lab.js gui                          # 打开 GUI 自己看
 ## 4. 怎么验证
 
 ```powershell
-npm test                                                  # 194/194
-$env:DSH_LAB_E2E='1'; npm run test:e2e                     # 16/16，约 141 秒
+npm test                                                  # 203/203
+$env:DSH_LAB_E2E='1'; npm run test:e2e                     # 17/17，约 145 秒
 node bin/lab.js gui                                        # 手工看
 node bin/lab.js clean --dry-run                            # 跑完应 0 残留
 ```
