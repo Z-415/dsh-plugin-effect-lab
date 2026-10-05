@@ -37,6 +37,9 @@
   .note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
   label.chk { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-size: 12px; }
   label.chk input { margin: 0; }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+  summary:hover { color: var(--text); }
   .banner { border-radius: 8px; padding: 8px 12px; font-weight: 600; border: 1px solid transparent; }
   .banner.ok { background: #e8f5ee; border-color: #a6d9bd; color: #0a5c30; }
   .banner.bad { background: #fdecea; border-color: #f3b6b0; color: #8f1d14; }
@@ -88,6 +91,14 @@
           <button data-args="scan|--list">失败签名库</button>
           <button data-args="scan|--latest">扫描最近一次日志</button>
         </div>
+        <details id="moreChecks">
+          <summary>更多（矩阵）</summary>
+          <div class="row" style="margin-top:8px">
+            <button data-args="matrix|--config|fixtures/matrix/theme-conflict.json|--online">主题冲突矩阵</button>
+            <button data-args="matrix|--config|fixtures/matrix/effect-conflict.json">效果探针矩阵</button>
+          </div>
+          <p class="note">矩阵会给每个组合各跑一次完整验证（较慢），结果写进 artifacts 里的 matrix.html。需要联网的组合已经带了 --online。</p>
+        </details>
       </div>
       <div class="group">
         <h2>清理</h2>

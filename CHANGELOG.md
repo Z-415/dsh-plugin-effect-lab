@@ -485,6 +485,20 @@ Final suite: unit 167/167, integration 15/15.
 
 Final suite: unit 174/174, integration 15/15.
 
+## 0.1.0 - 2026-10-05 (matrix back in the GUI, collapsed)
+
+### Added
+
+- A collapsed **更多（矩阵）** disclosure in the GUI's 检查 group holds the two
+  `matrix` presets (theme conflict, effect probe), so the mouse-driven flow has
+  them again without giving up the log pane: it costs no height until opened,
+  and opening it only makes the controls area scroll.
+- `tests/integration/gui-page.test.js` asserts the disclosure starts closed,
+  that the layout still fits when it is opened, and that the buttons dispatch
+  `matrix --config ...`.
+
+Final suite: unit 174/174, integration 15/15.
+
 ## 0.1.0 - 2026-10-05 (leaner GUI, profile dropdown)
 
 ### Changed

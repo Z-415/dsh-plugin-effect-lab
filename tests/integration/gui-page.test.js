@@ -99,19 +99,27 @@ const PROFILE_SELECT = `(async () => {
 })()`;
 
 const LAYOUT_AND_BANNER = `(() => {
-  const log = document.getElementById('log').getBoundingClientRect();
-  const wrap = document.querySelector('.logwrap').getBoundingClientRect();
+  const rect = (el) => el.getBoundingClientRect();
+  const log = rect(document.getElementById('log'));
+  const wrap = rect(document.querySelector('.logwrap'));
   const controls = document.getElementById('controls');
-  const controlsRect = controls.getBoundingClientRect();
-  const footer = document.querySelector('footer').getBoundingClientRect();
+  const controlsRect = rect(controls);
+  const footer = rect(document.querySelector('footer'));
   const layoutOk = log.height >= 120
     && wrap.bottom <= footer.top + 1
     && controlsRect.bottom <= wrap.top + 1;
+  const more = document.getElementById('moreChecks');
+  const moreCollapsed = more.open === false;
+  more.open = true;
+  const openLayoutOk = rect(document.getElementById('log')).height >= 120
+    && rect(controls).bottom <= rect(document.querySelector('.logwrap')).top + 1;
   // Simulate a failed run finishing so the banner and the toast fire.
   window.__handlers.done({ code: 1 });
   const banner = document.getElementById('banner');
   return JSON.stringify({
     layoutOk,
+    moreCollapsed,
+    openLayoutOk,
     logHeight: Math.round(log.height),
     controls: { visible: Math.round(controlsRect.height), content: controls.scrollHeight },
     bodyClipped: document.body.scrollHeight > window.innerHeight + 1,
@@ -163,6 +171,13 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(result.calls.some((args) => args[0] === 'shell'), true);
     assert.equal(result.calls.some((args) => args[0] === 'profile'), true, JSON.stringify(result.calls));
     assert.equal(result.calls.some((args) => args[0] === 'scan'), true, 'the signature-library button must dispatch scan');
+    assert.equal(result.calls.some((args) => args[0] === 'matrix'), true, 'the collapsed 更多 area must dispatch matrix');
+    const themeMatrix = result.calls.find((args) => args[0] === 'matrix' && args.includes('--online'));
+    assert.deepEqual(
+      themeMatrix.slice(0, 3),
+      ['matrix', '--config', 'fixtures/matrix/theme-conflict.json'],
+      JSON.stringify(result.calls),
+    );
 
     // With both desktop checkboxes ticked, the shell buttons must pass the new flags.
     assert.equal(desktop.calls.length, 2, JSON.stringify(desktop.calls));
@@ -190,6 +205,8 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(layout.logHeight >= 120, true, JSON.stringify(layout));
     assert.equal(layout.bodyClipped, false, JSON.stringify(layout));
     assert.equal(layout.controls.visible >= 100, true, JSON.stringify(layout));
+    assert.equal(layout.moreCollapsed, true, 'the 更多 area must start collapsed so it costs no height');
+    assert.equal(layout.openLayoutOk, true, JSON.stringify(layout));
     // A failed run must show the banner and raise a desktop notification.
     assert.equal(layout.bannerHidden, false, JSON.stringify(layout));
     assert.match(layout.bannerText, /失败/);

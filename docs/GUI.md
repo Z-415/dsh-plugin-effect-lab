@@ -37,7 +37,8 @@ Three groups, in this order:
    and every plugin-related action (verify, open the shell window, uninstall,
    list, two plugins together, desktop-mode switches).
 2. **检查** — `doctor`, the plain `verify` presets, and the failure-signature
-   tools.
+   tools. A collapsed **更多（矩阵）** disclosure holds the two `matrix`
+   presets, so they cost no height until opened.
 3. **清理** — dry-run and clean of the leaked temp directories.
 
 Below the groups: the result banner, the always-visible log pane, and the
@@ -61,6 +62,8 @@ footer (open report / open artifacts / abort).
 | 检查 | 空会话 / 长会话 | `verify --fixture-variant empty\|long` |
 | 检查 | 失败签名库 | `scan --list` |
 | 检查 | 扫描最近一次日志 | `scan --latest` |
+| 检查（更多 ▾） | 主题冲突矩阵 | `matrix --config fixtures/matrix/theme-conflict.json --online` |
+| 检查（更多 ▾） | 效果探针矩阵 | `matrix --config fixtures/matrix/effect-conflict.json` |
 | 清理 | 查看残留（不改动） | `clean --dry-run`（残留目录 + 游离的 lab 进程） |
 | 清理 | 清理残留临时目录 | `clean`（先回收游离进程，再删目录） |
 
