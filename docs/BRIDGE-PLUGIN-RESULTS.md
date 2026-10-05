@@ -329,5 +329,6 @@ cwd 下读不到 → `result=null`。默认 artifacts（`<cwd>/artifacts`，绝�
   nonce、移除节流、恢复报告 `<a href>`，各自断言变红。
 - 真实桌面版：`pnpm install --offline` 刷新 profile 后重启，真实宿主 19387 上
   `GET /dsh-lab-bridge/launch` → 405、`POST /launch` 无 nonce → 401、旧
-  `GET /dsh-lab-bridge/latest.json` → 404，证明启动器形态已加载；面板按钮点击后的外部
-  GUI 窗口由人工确认。
+  `GET /dsh-lab-bridge/latest.json` → 404，证明启动器形态已加载。
+- **人工确认通过（2026-10-06）**：真实桌面版里 设置 → 插件 → 实验舱桥接 → 点击
+  「启动实验舱」，实验舱自己的 Electron GUI 正常在外部启动，DSH 界面保持不变。
