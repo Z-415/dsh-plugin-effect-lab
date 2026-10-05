@@ -9,7 +9,7 @@
  * cannot bypass the lab's isolation rules.
  */
 
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Notification, shell } = require('electron');
 const { spawnSync, spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -135,6 +135,19 @@ ipcMain.handle('lab:open-artifacts', async () => {
   const error = await shell.openPath(artifactsDir);
   return { opened: !error, error: error || null };
 });
+ipcMain.handle('lab:notify', (_event, payload) => {
+  const title = String(payload?.title ?? 'DSH Plugin Effect Lab');
+  const body = String(payload?.body ?? '');
+  const supported = typeof Notification.isSupported === 'function' ? Notification.isSupported() === true : true;
+  if (!supported) return { shown: false, supported: false };
+  try {
+    new Notification({ title, body }).show();
+    return { shown: true, supported: true };
+  } catch (error) {
+    return { shown: false, supported, error: String(error?.message ?? error) };
+  }
+});
+
 ipcMain.handle('lab:info', () => ({
   repo,
   electron: process.versions.electron,

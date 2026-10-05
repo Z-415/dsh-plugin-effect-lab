@@ -13,6 +13,8 @@ const guiPage = path.resolve(here, '..', '..', 'src', 'gui', 'index.html');
 /** A stand-in for the preload bridge that records the commands the UI builds. */
 const STUB = `<script>
 window.__calls = [];
+window.__handlers = {};
+window.__notifyCalls = [];
 window.__rendererErrors = [];
 window.addEventListener('error', (event) => window.__rendererErrors.push(String(event.message)));
 window.prompt = () => null;
@@ -22,10 +24,11 @@ window.labGui = {
   stop: async () => ({ stopped: true }),
   openReport: async () => ({ opened: false, reason: 'stub' }),
   openArtifacts: async () => ({ opened: false }),
+  notify: async (payload) => { window.__notifyCalls.push(payload); return { shown: true }; },
   info: async () => ({ electron: 'stub', node: 'stub', repo: 'stub' }),
-  onStarted: () => {},
-  onOutput: () => {},
-  onDone: () => {},
+  onStarted: (handler) => { window.__handlers.started = handler; },
+  onOutput: (handler) => { window.__handlers.output = handler; },
+  onDone: (handler) => { window.__handlers.done = handler; },
 };
 </script>`;
 
@@ -68,6 +71,31 @@ const CLICK_DESKTOP = `(() => {
   return JSON.stringify({ calls: window.__calls, errors: window.__rendererErrors });
 })()`;
 
+const LAYOUT_AND_BANNER = `(() => {
+  const log = document.getElementById('log').getBoundingClientRect();
+  const wrap = document.querySelector('.logwrap').getBoundingClientRect();
+  const controls = document.getElementById('controls');
+  const controlsRect = controls.getBoundingClientRect();
+  const footer = document.querySelector('footer').getBoundingClientRect();
+  const layoutOk = log.height >= 120
+    && wrap.bottom <= footer.top + 1
+    && controlsRect.bottom <= wrap.top + 1;
+  // Simulate a failed run finishing so the banner and the toast fire.
+  window.__handlers.done({ code: 1 });
+  const banner = document.getElementById('banner');
+  return JSON.stringify({
+    layoutOk,
+    logHeight: Math.round(log.height),
+    controls: { visible: Math.round(controlsRect.height), content: controls.scrollHeight },
+    bodyClipped: document.body.scrollHeight > window.innerHeight + 1,
+    bannerHidden: banner.hidden,
+    bannerText: banner.textContent,
+    bannerClass: banner.className,
+    notifyCalls: window.__notifyCalls,
+    errors: window.__rendererErrors,
+  });
+})()`;
+
 test('every GUI button dispatches a lab command without a renderer error', {
   skip: !enabled,
   timeout: 180_000,
@@ -80,10 +108,14 @@ test('every GUI button dispatches a lab command without a renderer error', {
       baseUrl: pathToFileURL(page.file).href,
       screenshots: [],
       artifactsDir,
-      probes: { clickAll: CLICK_ALL, desktop: CLICK_DESKTOP },
+      // Match the real launcher window (gui/main.js) so layout regressions that
+      // only show up at this size are caught.
+      viewport: { width: 1080, height: 760 },
+      probes: { clickAll: CLICK_ALL, desktop: CLICK_DESKTOP, layout: LAYOUT_AND_BANNER },
     });
     const result = JSON.parse(ui.extra.clickAll);
     const desktop = JSON.parse(ui.extra.desktop);
+    const layout = JSON.parse(ui.extra.layout);
     assert.deepEqual(result.errors, [], `renderer errors: ${JSON.stringify(result.errors)}`);
     assert.deepEqual(result.thrown, [], `click handlers threw: ${JSON.stringify(result.thrown)}`);
     assert.equal(result.calls.length > 0, true, 'no button dispatched a command');
@@ -108,6 +140,18 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.deepEqual(keepOpen.slice(0, 2), ['shell', '--no-compare-web']);
     const compare = desktop.calls.find((args) => args[0] === 'shell' && !args.includes('--keep-open'));
     assert.equal(compare.includes('--show'), true, 'the dialog probe needs a visible window');
+
+    // The log pane must stay on screen; adding controls must not squeeze it out.
+    assert.equal(layout.layoutOk, true, JSON.stringify(layout));
+    assert.equal(layout.logHeight >= 120, true, JSON.stringify(layout));
+    assert.equal(layout.bodyClipped, false, JSON.stringify(layout));
+    assert.equal(layout.controls.content > layout.controls.visible, true, 'the controls area must scroll');
+    // A failed run must show the banner and raise a desktop notification.
+    assert.equal(layout.bannerHidden, false, JSON.stringify(layout));
+    assert.match(layout.bannerText, /失败/);
+    assert.match(layout.bannerClass, /bad/);
+    assert.equal(layout.notifyCalls.length, 1, JSON.stringify(layout.notifyCalls));
+    assert.match(layout.notifyCalls[0].title, /失败/);
   } finally {
     if (ui) await ui.close();
     fs.rmSync(page.dir, { recursive: true, force: true });

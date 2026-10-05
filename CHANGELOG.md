@@ -392,6 +392,29 @@ Final suite: unit 120/120, integration 15/15.
 
 Final suite: unit 145/145, integration 15/15.
 
+## 0.1.0 - 2026-10-05 (visible run log and completion toast)
+
+### Fixed
+
+- **The GUI log pane had been squeezed to 0px.** Adding the new control rows
+  pushed `.logwrap` below the 760px launcher window (measured:
+  `logwrap.height = 0`, `top = 739`), so the CLI output was invisible and the
+  only way to read a run was to open the report. The control groups now live in
+  their own scroll region (`#controls`) and the log pane keeps
+  `min-height: 220px`, so stdout/stderr is always on screen.
+  `tests/integration/gui-page.test.js` now measures the real 1080x760 window and
+  fails if the log pane collapses or the page overflows.
+
+### Added
+
+- The launcher shows an in-window result banner when a command finishes
+  (green = 完成, red = 失败, with exit code and elapsed time; failures stay until
+  the next run) and raises a real Windows notification for failures or runs
+  longer than 5 seconds, via a new `lab:notify` IPC in
+  `src/gui/{main,preload}.js`.
+
+Final suite: unit 148/148, integration 15/15.
+
 ## 0.1.0 - 2026-10-05 (mouse-driven entries for the new features)
 
 ### Added

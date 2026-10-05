@@ -74,6 +74,21 @@ output into the log pane, and never bypasses the lab's isolation rules.
 Footer buttons open the newest `report.html` / `matrix.html` in your default
 browser, or the `artifacts/` folder. **中止** kills the running child tree.
 
+## 运行输出去哪看
+
+窗口下半部分是**常驻日志区**：命令的 stdout/stderr 实时流进来，跑完自动滚到最新。
+上方按钮区如果放不下会自己滚动，不会再把日志区挤没（日志区固定至少 220px）。
+
+命令结束时还有两道提示，不用去翻报告：
+
+- **窗口内横幅**：绿=完成、红=失败，写明「命令 · 退出码 · 用时」；成功的 8 秒后自动
+  消失，失败的会一直留着直到下一次运行。
+- **系统通知**：失败、或运行超过 5 秒的命令，会再弹一条 Windows 通知，切到别的窗口
+  也能看到结果（成功且很快的命令只闪横幅，避免刷屏）。
+
+要完整证据再点 **打开最新 HTML 报告**；原始日志也会写入
+`gui-runtime/gui-<version>/userdata/gui.log`。
+
 The two text fields drive the custom buttons:
 
 - **插件**: `dsh-plugin-x@1.2.3`, or a local directory / `.tgz` path. Local

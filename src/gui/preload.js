@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('labGui', {
   run: (args) => ipcRenderer.invoke('lab:run', args),
   stop: () => ipcRenderer.invoke('lab:stop'),
+  notify: (payload) => ipcRenderer.invoke('lab:notify', payload),
   openReport: () => ipcRenderer.invoke('lab:open-report'),
   openArtifacts: () => ipcRenderer.invoke('lab:open-artifacts'),
   info: () => ipcRenderer.invoke('lab:info'),
