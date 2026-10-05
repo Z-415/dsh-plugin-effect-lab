@@ -46,3 +46,26 @@ test('dom assertion flags parse as repeatable values plus a number', () => {
   assert.deepStrictEqual(flags['assert-body-attr'], ['data-we-wallpaper']);
   assert.equal(flags['min-slots'], '24');
 });
+
+test('profile remove-plugin keeps the profile name and the plugin selectors positional', () => {
+  const { command, flags } = parseArgv([
+    'profile',
+    'remove-plugin',
+    'dev',
+    'dsh-plugin-wallpaper-engine@1.2.0',
+    'dsh-ui-tweaks',
+  ]);
+  assert.equal(command, 'profile');
+  assert.deepStrictEqual(flags._, [
+    'remove-plugin',
+    'dev',
+    'dsh-plugin-wallpaper-engine@1.2.0',
+    'dsh-ui-tweaks',
+  ]);
+  assert.equal(flags.plugin, undefined, 'positional selectors do not need --plugin');
+});
+
+test('profile remove-plugin without a name fails without touching a runtime', async () => {
+  const code = await main(['profile', 'remove-plugin']);
+  assert.equal(code, 2);
+});

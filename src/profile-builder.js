@@ -63,6 +63,25 @@ export function appendBundles(profileDir, names) {
   return manifest;
 }
 
+/**
+ * Drop removed dependency names from the profile bundle order.
+ *
+ * A bundle that no longer has a matching dependency makes the profile
+ * unloadable, so removal must always trim `dsh.profile.bundles` in the same
+ * step that `dsh plugin remove` drops the dependency.
+ */
+export function removeBundles(profileDir, names) {
+  const file = path.join(profileDir, 'package.json');
+  const manifest = readJson(file);
+  const drop = new Set(names);
+  const bundles = manifest.dsh?.profile?.bundles ?? [];
+  manifest.dsh ??= {};
+  manifest.dsh.profile ??= {};
+  manifest.dsh.profile.bundles = bundles.filter((name) => !drop.has(name));
+  writeJson(file, manifest);
+  return manifest;
+}
+
 export function validateProfileManifest(manifest) {
   const problems = [];
   const bundles = manifest?.dsh?.profile?.bundles ?? [];

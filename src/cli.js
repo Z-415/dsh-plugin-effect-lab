@@ -201,11 +201,17 @@ export async function main(argv) {
         open: flags['no-open'] !== true,
       });
     case 'profile':
-      return runProfileCommand({
-        action: flags._[0] ?? 'list',
-        name: flags._[1],
-        json: flags.json === true,
-      });
+      {
+        const [action = 'list', name, ...selectors] = flags._;
+        return runProfileCommand({
+          action,
+          name,
+          plugins: [...(flags.plugin ?? []), ...selectors],
+          json: flags.json === true,
+          runtimePath: flags.runtime,
+          installTimeoutMs: numberFlag(flags, 'install-timeout'),
+        });
+      }
     default:
       process.stderr.write(`unknown command: ${command}\n\n${helpText()}`);
       return 2;
@@ -234,7 +240,8 @@ Usage:
             [--show] [--keep-open] [--show-hold <ms>] [--no-html]
             [--browser <exe>] [--browser-timeout <ms>] [--json]
   lab gui [--install-shortcut] [--rebuild] [--no-open] [--json]
-  lab profile list|create|remove [name] [--json]
+  lab profile list|create|remove|path [name] [--json]
+  lab profile remove-plugin <name> <plugin...> [--json]
   lab scan --log <boot.err.log> [--json]
   lab clean [--dry-run] [--older-than <minutes>] [--json]
 
@@ -261,6 +268,7 @@ to add plugins one at a time:
   lab shell --profile-lab dev --plugin B@2 --online   # add B, check A+B
   lab shell --profile-lab dev --show --keep-open      # reopen with A+B
   lab profile list                                    # what is installed
+  lab profile remove-plugin dev B@2                   # uninstall one plugin
   lab profile remove dev                              # delete the profile
 `;
 }

@@ -52,11 +52,35 @@ and in each plugin's findings marked `[profile]`.
 ## Managing profiles
 
 ```powershell
-node bin/lab.js profile list          # name + recorded plugin specs
-node bin/lab.js profile create dev    # just the skeleton
+node bin/lab.js profile list                        # name + recorded plugin specs
+node bin/lab.js profile create dev                  # just the skeleton
 node bin/lab.js profile path dev
-node bin/lab.js profile remove dev    # delete the whole profile
+node bin/lab.js profile remove-plugin dev B@2       # uninstall one plugin
+node bin/lab.js profile remove dev                  # delete the whole profile
 ```
+
+## Uninstall a single plugin
+
+`remove-plugin` keeps the profile and every other installed plugin, which is the
+point of a persistent profile: add A and B, then drop B and reopen A.
+
+```powershell
+node bin/lab.js profile remove-plugin dev dsh-ui-tweaks          # by name
+node bin/lab.js profile remove-plugin dev dsh-ui-tweaks@0.20.0   # by name@version
+node bin/lab.js profile remove-plugin dev .\my-plugin            # by the recorded spec
+```
+
+A selector may be the bare package name, `name@version`, or the exact spec shown
+by `profile list`. The command:
+
+1. runs `dsh plugin remove` in the profile (pnpm drops the dependency);
+2. trims that package from `dsh.profile.bundles`, so the profile still validates;
+3. unlinks any leftover `link:`/`file:` junction in `node_modules` with an
+   `lstat`-based removal that never follows the link into the plugin source;
+4. drops the recorded spec from `lab-profile.json`.
+
+Selectors that are not installed are reported and make the command exit 1; a
+fully unmatched invocation never starts the runtime.
 
 Delete `.lab-profiles/` by hand to clear everything.
 

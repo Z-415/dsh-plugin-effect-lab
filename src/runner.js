@@ -164,9 +164,11 @@ export async function runLab(options = {}) {
         : `found ${credentials.files.length} credential file(s), ${credentials.keys.length} inline key(s)`,
     );
 
-    const profileName = options.profileName ?? makeProfileName();
+    const profileName = options.profileName ?? (iso.persistent ? `lab-${iso.name}` : makeProfileName());
     const profileDir = iso.profileDir(profileName);
-    writeMinimalProfile(profileDir, { name: profileName });
+    if (!fs.existsSync(path.join(profileDir, 'package.json'))) {
+      writeMinimalProfile(profileDir, { name: profileName });
+    }
     report.profile = { name: profileName, dir: profileDir };
     addCheck(checks, 'profile-minimal', true, path.join(profileDir, 'package.json'));
 
@@ -237,9 +239,10 @@ export async function runLab(options = {}) {
           : `${audit.names.length} installed package(s), no cross-plugin conflict`,
       );
     }
-    if (options.profileLab && (options.plugins ?? []).length) {
-      recordProfilePlugins(options.profileLab, options.plugins);
-      progress(`lab profile "${options.profileLab}" now records ${(options.plugins ?? []).length} plugin spec(s)`);
+    const recordedPlugins = (pluginPipeline.pluginList ?? []).filter((entry) => !entry.fixture);
+    if (options.profileLab && recordedPlugins.length) {
+      recordProfilePlugins(options.profileLab, recordedPlugins);
+      progress(`lab profile "${options.profileLab}" now records ${recordedPlugins.length} plugin spec(s)`);
     }
     progress(pluginPipeline.install ? `installed ${pluginPipeline.resolvedSpecs.length} plugin spec(s)` : 'no plugins requested');
 

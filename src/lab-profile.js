@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseNpmSpec } from './semver.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -77,17 +78,63 @@ export function createLabProfile(name, options = {}) {
   return { dir, manifest, created: true };
 }
 
-/** Record the specs that were installed into the profile. */
+/**
+ * Record the specs that were installed into the profile.
+ *
+ * Each entry also stores the resolved package `name` when the caller knows it
+ * (the runners do), so a later `remove-plugin` can match a bare package name
+ * even for a local-directory or tarball spec whose recorded `spec` is a path.
+ */
 export function recordProfilePlugins(name, specs, options = {}) {
   const { dir, manifest } = createLabProfile(name);
   const known = new Set((manifest.plugins ?? []).map((entry) => entry.spec));
-  for (const spec of specs) {
+  for (const raw of specs) {
+    const spec = typeof raw === 'string' ? raw : raw?.spec;
     if (!spec || known.has(spec)) continue;
     known.add(spec);
-    manifest.plugins.push({ spec, addedAt: options.now ?? new Date().toISOString() });
+    const entry = { spec, addedAt: options.now ?? new Date().toISOString() };
+    const resolvedName = typeof raw === 'string' ? null : raw?.name;
+    if (resolvedName) entry.name = resolvedName;
+    manifest.plugins.push(entry);
   }
   writeManifest(dir, manifest);
   return manifest;
+}
+
+/** The package name a recorded entry answers to, from its name or its spec. */
+export function profilePluginName(entry) {
+  if (entry?.name) return entry.name;
+  return entry?.spec ? parseNpmSpec(entry.spec)?.name ?? null : null;
+}
+
+/**
+ * Whether a recorded manifest entry refers to `selector`, which may be an
+ * exact spec, a bare package name, or `name@version`.
+ */
+export function profilePluginMatches(entry, selector) {
+  const text = String(selector ?? '').trim();
+  if (!text) return false;
+  if (entry?.spec === text || entry?.name === text) return true;
+  const wanted = parseNpmSpec(text)?.name ?? text;
+  return profilePluginName(entry) === wanted;
+}
+
+/**
+ * Forget recorded plugin specs after they were removed from the profile.
+ * Returns the entries that matched so the caller can report them.
+ */
+export function forgetProfilePlugins(name, selectors) {
+  const { dir, manifest } = createLabProfile(name);
+  const wanted = (selectors ?? []).filter(Boolean);
+  const removed = [];
+  const kept = [];
+  for (const entry of manifest.plugins ?? []) {
+    if (wanted.some((selector) => profilePluginMatches(entry, selector))) removed.push(entry);
+    else kept.push(entry);
+  }
+  manifest.plugins = kept;
+  writeManifest(dir, manifest);
+  return { dir, manifest, removed };
 }
 
 /**

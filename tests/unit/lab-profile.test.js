@@ -7,10 +7,12 @@ import {
   assertSafeProfileDir,
   assertSafeProfileName,
   createLabProfile,
+  forgetProfilePlugins,
   labProfileDir,
   labProfilesRoot,
   listLabProfiles,
   openLabProfileHome,
+  profilePluginMatches,
   readLabProfile,
   recordProfilePlugins,
   removeLabProfile,
@@ -88,4 +90,58 @@ test('openLabProfileHome keeps the profile instead of deleting it', async () => 
     assert.equal(result.kept, true);
     assert.equal(fs.existsSync(path.join(home.tmp, 'marker.txt')), true, 'the profile must survive dispose');
   });
+});
+
+test('recordProfilePlugins keeps a resolved name so a path spec can be removed by name', async () => {
+  await withTempRoot(() => {
+    recordProfilePlugins('dev', [
+      { spec: './fixtures/plugins/effect-probe', name: 'dsh-lab-effect-probe' },
+      'dsh-plugin-wallpaper-engine@1.2.0',
+    ]);
+    const manifest = readLabProfile('dev');
+    assert.deepEqual(manifest.plugins.map((entry) => entry.spec), [
+      './fixtures/plugins/effect-probe',
+      'dsh-plugin-wallpaper-engine@1.2.0',
+    ]);
+    assert.equal(manifest.plugins[0].name, 'dsh-lab-effect-probe');
+    assert.equal(manifest.plugins[1].name, undefined, 'a string spec records no resolved name');
+  });
+});
+
+test('forgetProfilePlugins matches by spec, name@version, and bare name', async () => {
+  await withTempRoot(() => {
+    recordProfilePlugins('dev', [
+      { spec: './fixtures/plugins/effect-probe', name: 'dsh-lab-effect-probe' },
+      'dsh-plugin-wallpaper-engine@1.2.0',
+      'dsh-ui-tweaks@0.20.0',
+    ]);
+
+    const byPathSpec = forgetProfilePlugins('dev', ['./fixtures/plugins/effect-probe']);
+    assert.deepEqual(byPathSpec.removed.map((entry) => entry.name), ['dsh-lab-effect-probe']);
+
+    const byVersionedName = forgetProfilePlugins('dev', ['dsh-plugin-wallpaper-engine@1.2.0']);
+    assert.deepEqual(byVersionedName.removed.map((entry) => entry.spec), ['dsh-plugin-wallpaper-engine@1.2.0']);
+
+    const byBareName = forgetProfilePlugins('dev', ['dsh-ui-tweaks']);
+    assert.deepEqual(byBareName.removed.map((entry) => entry.spec), ['dsh-ui-tweaks@0.20.0']);
+
+    assert.deepEqual(readLabProfile('dev').plugins, []);
+  });
+});
+
+test('forgetProfilePlugins leaves unrelated plugins alone and ignores empty selectors', async () => {
+  await withTempRoot(() => {
+    recordProfilePlugins('dev', ['dsh-plugin-wallpaper-engine@1.2.0']);
+    const result = forgetProfilePlugins('dev', ['not-installed', '']);
+    assert.deepEqual(result.removed, []);
+    assert.deepEqual(readLabProfile('dev').plugins.map((entry) => entry.spec), ['dsh-plugin-wallpaper-engine@1.2.0']);
+  });
+});
+
+test('profilePluginMatches compares names without being confused by versions', () => {
+  assert.equal(profilePluginMatches({ spec: 'pkg@1.2.3' }, 'pkg'), true);
+  assert.equal(profilePluginMatches({ spec: 'pkg@1.2.3' }, 'pkg@9.9.9'), true);
+  assert.equal(profilePluginMatches({ spec: './local-dir', name: 'local-pkg' }, 'local-pkg'), true);
+  assert.equal(profilePluginMatches({ spec: 'pkg@1.2.3' }, 'other'), false);
+  assert.equal(profilePluginMatches({ spec: 'pkg@1.2.3' }, ''), false);
 });

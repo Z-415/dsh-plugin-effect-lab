@@ -1,10 +1,13 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { findDeclarationConflicts, scanPluginDeclarations } from './declaration-scanner.js';
 import { createFixtureWorkspace, seederPluginDir } from './fixture-manager.js';
+import { removeTreeSafely } from './home-manager.js';
 import { postcheckPlugins, precheckPlugins, summarizePluginEntries } from './plugin-check.js';
-import { appendBundles, detectAddedDependencies } from './profile-builder.js';
+import { appendBundles, detectAddedDependencies, removeBundles } from './profile-builder.js';
 import { readInstalledManifest } from './plugin-resolver.js';
 import { runCommand } from './process-tree.js';
+import { parseNpmSpec } from './semver.js';
 import { readJson } from './util.js';
 
 /**
@@ -45,6 +48,128 @@ export function auditProfilePlugins(profileDir, version) {
     names,
     version,
     conflicts: declarations.length >= 2 ? findDeclarationConflicts(declarations) : [],
+  };
+}
+
+/** Third-party packages currently installed in a profile. */
+export function listInstalledProfilePlugins(profileDir) {
+  const manifest = readJson(path.join(profileDir, 'package.json'));
+  return Object.keys(manifest.dependencies ?? {}).filter((name) => !name.startsWith('@deepseek-ai/'));
+}
+
+/** Map a user selector (name, name@version, or a spec) onto an installed name. */
+function matchInstalledPlugin(installed, selector) {
+  const text = String(selector ?? '').trim();
+  if (!text) return null;
+  if (installed.includes(text)) return text;
+  const name = parseNpmSpec(text)?.name ?? text;
+  return installed.find((entry) => entry === name) ?? null;
+}
+
+/**
+ * Remove plugins from a persistent profile: `dsh plugin remove` drops the
+ * dependency and node_modules entry, then the bundle order is trimmed so the
+ * profile still validates.
+ *
+ * Returns stages instead of throwing so the CLI can report unmatched selectors
+ * next to the packages that really are installed.
+ */
+export async function removeProfilePlugins(options) {
+  const {
+    runtime,
+    env,
+    profileDir,
+    profileName,
+    plugins = [],
+    timeoutMs,
+  } = options;
+
+  const installed = listInstalledProfilePlugins(profileDir);
+  const targets = [];
+  const unmatched = [];
+  for (const selector of plugins) {
+    const name = matchInstalledPlugin(installed, selector);
+    if (!name) {
+      unmatched.push(selector);
+      continue;
+    }
+    if (!targets.includes(name)) targets.push(name);
+  }
+
+  if (!targets.length) {
+    return {
+      ok: false,
+      stage: 'resolve',
+      installed,
+      targets,
+      unmatched,
+      removed: [],
+      removeCommand: null,
+      removeArgs: null,
+    };
+  }
+
+  const args = ['plugin', '--profile', profileName, 'remove', ...targets];
+  const removeCommand = await runCommand(runtime.cmd, args, {
+    cwd: profileDir,
+    env,
+    timeoutMs,
+  });
+  if (removeCommand.code !== 0) {
+    return {
+      ok: false,
+      stage: 'remove',
+      installed,
+      targets,
+      unmatched,
+      removed: [],
+      removeCommand,
+      removeArgs: args,
+    };
+  }
+
+  const stillPresent = new Set(listInstalledProfilePlugins(profileDir));
+  const removed = targets.filter((name) => !stillPresent.has(name));
+  if (!removed.length) {
+    // The command reported success but the dependency is still declared:
+    // do not trim the bundle order for a plugin that is still installed.
+    return {
+      ok: false,
+      stage: 'remove',
+      installed,
+      targets,
+      unmatched,
+      removed: [],
+      removeCommand,
+      removeArgs: args,
+      reason: 'dependency-still-present',
+    };
+  }
+  removeBundles(profileDir, removed);
+
+  // pnpm prunes registry dependencies itself, but a `link:`/`file:` directory
+  // dependency can leave its junction in node_modules after `remove`. Unlink it
+  // with lstat-based removal so the plugin's source directory is never touched.
+  for (const name of removed) {
+    const entry = path.join(profileDir, 'node_modules', ...name.split('/'));
+    let present = false;
+    try {
+      present = Boolean(fs.lstatSync(entry));
+    } catch {
+      present = false;
+    }
+    if (present) removeTreeSafely(entry);
+  }
+
+  return {
+    ok: true,
+    stage: 'removed',
+    installed,
+    targets,
+    unmatched,
+    removed,
+    removeCommand,
+    removeArgs: args,
   };
 }
 

@@ -286,3 +286,31 @@ Final suite: unit 90/90, integration 11/11.
   real-home hash check still runs unchanged.
 
 Final suite: unit 96/96, integration 12/12.
+
+## 0.1.0 - 2026-10-05 (single-plugin uninstall)
+
+### Added
+
+- `lab profile remove-plugin <name> <plugin...>`: uninstall one plugin from a
+  persistent lab profile without deleting the profile. A selector may be a bare
+  package name, `name@version`, or the recorded spec; the command runs
+  `dsh plugin remove`, trims `dsh.profile.bundles`, unlinks any leftover
+  `link:`/`file:` junction with `removeTreeSafely`, and drops the recorded spec
+  from `lab-profile.json`. Unmatched selectors are reported and exit non-zero
+  without spawning the runtime.
+- `removeBundles()` in `profile-builder.js` and `forgetProfilePlugins()` /
+  `profilePluginMatches()` in `lab-profile.js`, with unit coverage.
+- `tests/integration/profile-remove-plugin.test.js`: installs two local
+  fixtures, removes one, and asserts the bundle, `node_modules`, and recorded
+  manifest all shrink while the other plugin and the fixture source survive.
+
+### Fixed
+
+- `verify`/`capture` with `--profile-lab` used a random profile name and
+  rewrote `package.json` on every run, so plugins never accumulated and a
+  second run could wipe the profile. They now share the stable `lab-<name>`
+  profile with `shell` and only scaffold it when it is missing.
+- `recordProfilePlugins` now stores the resolved package name next to the spec,
+  so a local-directory plugin can be removed by package name.
+
+Final suite: unit 103/103, integration 15/15.

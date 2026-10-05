@@ -169,9 +169,10 @@ export async function runShell(options = {}) {
       );
     }
     const fixtureWorkspace = pipeline.fixtureWorkspace;
-    if (options.profileLab && (options.plugins ?? []).length) {
-      recordProfilePlugins(options.profileLab, options.plugins);
-      progress(`lab profile "${options.profileLab}" now records ${(options.plugins ?? []).length} plugin spec(s)`);
+    const recordedPlugins = (pipeline.pluginList ?? []).filter((entry) => !entry.fixture);
+    if (options.profileLab && recordedPlugins.length) {
+      recordProfilePlugins(options.profileLab, recordedPlugins);
+      progress(`lab profile "${options.profileLab}" now records ${recordedPlugins.length} plugin spec(s)`);
     }
     progress(pipeline.install ? `installed ${pipeline.resolvedSpecs.length} plugin spec(s)` : 'no plugins requested');
 

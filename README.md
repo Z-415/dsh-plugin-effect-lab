@@ -129,6 +129,7 @@ node bin/lab.js shell --keep-open                     # close it yourself
 node bin/lab.js shell --profile-lab dev --plugin dsh-plugin-wallpaper-engine@1.2.0 --online --show --keep-open
 node bin/lab.js shell --profile-lab dev --show --keep-open   # plugins still installed
 node bin/lab.js profile list
+node bin/lab.js profile remove-plugin dev dsh-ui-tweaks@0.20.0
 node bin/lab.js shell --no-compare-web
 node bin/lab.js scan --log .\artifacts\<run>\boot.err.log
 node bin/lab.js clean --dry-run
