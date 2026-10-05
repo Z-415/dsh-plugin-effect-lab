@@ -11,6 +11,18 @@ function makeRoot(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+/**
+ * Keep the temporary roots when a stability run fails, so the failed run's
+ * boot logs and report stay on disk for diagnosis. Clean up on success.
+ */
+function cleanupRoots(roots, failed) {
+  if (failed) {
+    console.error(`[stability] run failed; keeping artifacts for diagnosis: ${roots.join(', ')}`);
+    return;
+  }
+  for (const root of roots) fs.rmSync(root, { recursive: true, force: true });
+}
+
 function portOf(report) {
   const check = (report.checks ?? []).find((item) => item.name === 'boot-url');
   const match = /port (\d+)/.exec(check?.detail ?? '');
@@ -35,6 +47,7 @@ test('two concurrent runs get distinct ports and leave no residue', {
 }, async () => {
   const rootA = makeRoot('dsh-lab-race-a-');
   const rootB = makeRoot('dsh-lab-race-b-');
+  let failed = false;
   try {
     const [a, b] = await Promise.all([
       runLab({ artifactsRoot: rootA, screenshots: ['home'] }),
@@ -44,9 +57,11 @@ test('two concurrent runs get distinct ports and leave no residue', {
     assertClean(b);
     assert.notEqual(portOf(a), null);
     assert.notEqual(portOf(a), portOf(b));
+  } catch (error) {
+    failed = true;
+    throw error;
   } finally {
-    fs.rmSync(rootA, { recursive: true, force: true });
-    fs.rmSync(rootB, { recursive: true, force: true });
+    cleanupRoots([rootA, rootB], failed);
   }
 });
 
@@ -59,6 +74,7 @@ test('the same run repeated three times is stable and leaks nothing', {
   const slotSets = [];
   const settleAfterMissing = [];
   const conversationMissing = [];
+  let failed = false;
   try {
     for (let index = 0; index < 3; index += 1) {
       const root = makeRoot(`dsh-lab-stability-${index}-`);
@@ -92,7 +108,10 @@ test('the same run repeated three times is stable and leaks nothing', {
     );
     assert.equal(new Set(slotSets).size, 1, `slot name set drifted across runs:\n${slotSets.join('\n')}`);
     assert.equal(slotSets[0].length > 0, true);
+  } catch (error) {
+    failed = true;
+    throw error;
   } finally {
-    for (const root of roots) fs.rmSync(root, { recursive: true, force: true });
+    cleanupRoots(roots, failed);
   }
 });

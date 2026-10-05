@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { openUi } from './browser-driver.js';
 import { bootWeb } from './boot-supervisor.js';
+import { assertBootListening, bootReadiness } from './boot-readiness.js';
 import { snapshotLabResidue, verifyNoResidue } from './cleanup.js';
 import { evaluateDomAssertions } from './dom-assertions.js';
 import {
@@ -260,7 +261,8 @@ export async function runLab(options = {}) {
       addCheck(checks, 'mock-provider-started', true, mockServer.origin);
     }
 
-    boot = await bootWeb({
+    const bootWebImpl = options.bootWebImpl ?? bootWeb;
+    boot = await bootWebImpl({
       runtime,
       home: iso.home,
       agentsHome: iso.agents,
@@ -276,12 +278,24 @@ export async function runLab(options = {}) {
         ...(mockServer ? { [MOCK_API_KEY_ENV]: 'lab-mock-key' } : {}),
       },
     });
-    addCheck(checks, 'boot-url', Number(boot.port) > 0, `port ${boot.port}`);
+    bootOutput = boot.getOutput();
+    const readiness = bootReadiness(boot);
+    addCheck(checks, 'boot-url', readiness.urlPass, readiness.urlDetail);
     report.boot = {
+      port: boot.port,
+      listening: boot.listening === true,
       transport: boot.transport,
       fallbackReason: boot.fallbackReason ?? null,
       injections: { count: boot.injections?.length ?? 0, kinds: boot.injectionKinds ?? [] },
     };
+    addCheck(checks, 'boot-listening', readiness.listeningPass, readiness.listeningDetail);
+    if (!readiness.listeningPass) {
+      // Fail fast: probing an unlistening port only produces cascading
+      // `fetch failed` noise. bootOutput is already captured above, so the
+      // failureContext still carries the boot-log tail.
+      errors.push(`boot-listening failed before probing: ${readiness.listeningDetail}`);
+      assertBootListening(boot);
+    }
     addCheck(
       checks,
       'boot-transport',
@@ -293,7 +307,6 @@ export async function runLab(options = {}) {
     );
     progress(`isolated host booted on port ${boot.port}`);
 
-    bootOutput = boot.getOutput();
     report.signatureHits = scanLogs(`${bootOutput.stdout}\n${bootOutput.stderr}`);
     report.noise = scanNoise(`${bootOutput.stdout}\n${bootOutput.stderr}`);
     addCheck(checks, 'boot-signatures', !hasFatal(report.signatureHits), summarize(report.signatureHits));
