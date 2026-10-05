@@ -15,12 +15,14 @@ const STUB = `<script>
 window.__calls = [];
 window.__handlers = {};
 window.__notifyCalls = [];
+window.__menuCalls = [];
 window.__rendererErrors = [];
 window.addEventListener('error', (event) => window.__rendererErrors.push(String(event.message)));
 window.prompt = () => null;
 window.confirm = () => false;
 window.labGui = {
   run: async (args) => { window.__calls.push(args); return { started: true }; },
+  menu: async (action) => { window.__menuCalls.push(action); return { ok: true }; },
   stop: async () => ({ stopped: true }),
   openReport: async () => ({ opened: false, reason: 'stub' }),
   openArtifacts: async () => ({ opened: false }),
@@ -222,6 +224,66 @@ const DESIGN = `(() => {
   });
 })()`;
 
+/**
+ * The whole window is one light palette: white page, white panels, and a white
+ * log pane with dark, readable text. Locks the flat/unified look so the dark
+ * console cannot creep back in.
+ */
+const THEME = `(() => {
+  const toRgb = (value) => (value.match(/\\d+(\\.\\d+)?/g) || []).slice(0, 3).map(Number);
+  const luminance = (rgb) => {
+    const [r, g, b] = rgb.map((v) => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (a, b) => {
+    const la = luminance(a);
+    const lb = luminance(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  };
+  const background = (selector) => toRgb(getComputedStyle(document.querySelector(selector)).backgroundColor);
+  const isLight = (rgb) => rgb.length === 3 && rgb.every((v) => v >= 235);
+  const logBg = background('.logwrap');
+  const logFg = toRgb(getComputedStyle(document.getElementById('log')).color);
+  return JSON.stringify({
+    logBg,
+    logFg,
+    logLight: isLight(logBg),
+    bodyLight: isLight(background('body')),
+    panelLight: isLight(background('#pluginGroup')),
+    titlebarLight: isLight(background('.titlebar')),
+    logContrast: Number(contrast(logFg, logBg).toFixed(2)),
+    errors: window.__rendererErrors,
+  });
+})()`;
+
+/** The in-page menu replaces the English OS menu; clicks go through labGui.menu. */
+const MENUS = `(() => {
+  window.__menuCalls = [];
+  const labels = [...document.querySelectorAll('.menubar .menu-btn')].map((btn) => btn.textContent.trim());
+  const opened = [];
+  const actions = [];
+  for (const menu of document.querySelectorAll('.menu')) {
+    const btn = menu.querySelector('.menu-btn');
+    btn.click();
+    opened.push(menu.classList.contains('open'));
+    for (const item of menu.querySelectorAll('[data-action]')) {
+      actions.push(item.dataset.action);
+      item.click();
+    }
+  }
+  return JSON.stringify({
+    labels,
+    opened,
+    actions,
+    remainingOpen: document.querySelectorAll('.menu.open').length,
+    calls: window.__menuCalls,
+    errors: window.__rendererErrors,
+  });
+})()`;
+
 test('every GUI button dispatches a lab command without a renderer error', {
   skip: !enabled,
   timeout: 180_000,
@@ -243,6 +305,8 @@ test('every GUI button dispatches a lab command without a renderer error', {
         profiles: PROFILE_SELECT,
         layout: LAYOUT_AND_BANNER,
         design: DESIGN,
+        theme: THEME,
+        menus: MENUS,
       },
     });
     const result = JSON.parse(ui.extra.clickAll);
@@ -250,6 +314,8 @@ test('every GUI button dispatches a lab command without a renderer error', {
     const profiles = JSON.parse(ui.extra.profiles);
     const layout = JSON.parse(ui.extra.layout);
     const design = JSON.parse(ui.extra.design);
+    const theme = JSON.parse(ui.extra.theme);
+    const menus = JSON.parse(ui.extra.menus);
 
     assert.deepEqual(result.errors, [], `renderer errors: ${JSON.stringify(result.errors)}`);
     assert.deepEqual(result.thrown, [], `click handlers threw: ${JSON.stringify(result.thrown)}`);
@@ -322,6 +388,28 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(design.bodyOverflowX <= 1, true, `body overflows horizontally by ${design.bodyOverflowX}px`);
     assert.equal(design.buttonCount >= 20, true, `expected the full button set, got ${design.buttonCount}`);
     assert.deepEqual(design.errors, []);
+
+    // One flat light palette: white page, panels and log pane, dark log text.
+    assert.equal(theme.bodyLight, true, JSON.stringify(theme));
+    assert.equal(theme.panelLight, true, JSON.stringify(theme));
+    assert.equal(theme.logLight, true, JSON.stringify(theme));
+    assert.equal(theme.titlebarLight, true, JSON.stringify(theme));
+    assert.equal(theme.logContrast >= 7, true, JSON.stringify(theme));
+    assert.deepEqual(theme.errors, []);
+
+    // The top bar is a Chinese in-page menu; every item dispatches its action.
+    assert.deepEqual(menus.labels, ['文件', '编辑', '查看', '窗口', '帮助']);
+    assert.deepEqual(menus.opened, [true, true, true, true, true], JSON.stringify(menus.opened));
+    assert.deepEqual(menus.actions, [
+      'quit',
+      'undo', 'redo', 'cut', 'copy', 'paste', 'selectAll',
+      'reload', 'forceReload', 'toggleDevTools', 'resetZoom', 'zoomIn', 'zoomOut', 'toggleFullscreen',
+      'minimize', 'close',
+      'about',
+    ], JSON.stringify(menus.actions));
+    assert.equal(menus.remainingOpen, 0, JSON.stringify(menus));
+    assert.deepEqual(menus.calls, menus.actions, JSON.stringify(menus.calls));
+    assert.deepEqual(menus.errors, []);
   } finally {
     if (ui) await ui.close();
     fs.rmSync(page.dir, { recursive: true, force: true });
@@ -360,10 +448,11 @@ test('GUI layout stays usable at the minimum window size', {
       artifactsDir,
       // The launcher's minimum size (gui/main.js: minWidth 820, minHeight 560).
       viewport: { width: 820, height: 560 },
-      probes: { layout: MIN_LAYOUT, design: DESIGN },
+      probes: { layout: MIN_LAYOUT, design: DESIGN, theme: THEME },
     });
     const layout = JSON.parse(ui.extra.layout);
     const design = JSON.parse(ui.extra.design);
+    const theme = JSON.parse(ui.extra.theme);
     assert.equal(layout.logHeight >= 120, true, JSON.stringify(layout));
     assert.equal(layout.controlAboveLog, true, JSON.stringify(layout));
     assert.equal(layout.logAboveFooter, true, JSON.stringify(layout));
@@ -374,6 +463,9 @@ test('GUI layout stays usable at the minimum window size', {
     assert.deepEqual(design.overlaps, [], JSON.stringify(design.overlaps));
     assert.deepEqual(design.fieldOverflow, [], JSON.stringify(design.fieldOverflow));
     assert.equal(design.bodyOverflowX <= 1, true, `body overflows horizontally by ${design.bodyOverflowX}px`);
+    assert.equal(theme.logLight, true, JSON.stringify(theme));
+    assert.equal(theme.titlebarLight, true, JSON.stringify(theme));
+    assert.equal(theme.logContrast >= 7, true, JSON.stringify(theme));
   } finally {
     if (ui) await ui.close();
     fs.rmSync(page.dir, { recursive: true, force: true });

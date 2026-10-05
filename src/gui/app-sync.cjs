@@ -8,7 +8,7 @@ const path = require('node:path');
  * the runtime, and the launcher re-checks them at startup so an existing
  * Desktop shortcut reflects the current source without a manual rebuild.
  */
-const APP_FILES = ['index.html', 'main.js', 'preload.js', 'app-sync.cjs'];
+const APP_FILES = ['index.html', 'main.js', 'preload.js', 'app-sync.cjs', 'menu.cjs'];
 
 /**
  * Copy changed app files from `sourceDir` into the built `appDir`.

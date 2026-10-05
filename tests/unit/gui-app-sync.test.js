@@ -18,7 +18,7 @@ function tempPair() {
 }
 
 test('APP_FILES covers every file the launcher serves', () => {
-  assert.deepEqual(APP_FILES, ['index.html', 'main.js', 'preload.js', 'app-sync.cjs']);
+  assert.deepEqual(APP_FILES, ['index.html', 'main.js', 'preload.js', 'app-sync.cjs', 'menu.cjs']);
 });
 
 test('syncAppFiles copies changed files and leaves identical ones alone', () => {

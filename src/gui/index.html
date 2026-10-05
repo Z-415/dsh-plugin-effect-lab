@@ -5,7 +5,7 @@
 <title>DSH Plugin Effect Lab</title>
 <style>
   :root {
-    --bg: #f2f4f7;
+    --bg: #ffffff;
     --panel: #ffffff;
     --line: #e5e7eb;
     --line-strong: #d2d6dd;
@@ -23,10 +23,25 @@
   html, body { height: 100%; }
   body { margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
          font: 13px/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-  header { display: flex; align-items: baseline; gap: 12px; padding: 12px 18px;
-           background: var(--panel); border-bottom: 1px solid var(--line); }
-  h1 { margin: 0; font-size: 15px; font-weight: 650; }
-  .sub { margin-left: auto; min-width: 0; color: var(--muted); font-size: 11.5px;
+  /* Custom title bar: the OS title bar follows the Windows accent colour, so
+     the launcher draws its own white strip and keeps the native caption
+     buttons via titleBarOverlay (right padding below reserves their space). */
+  .titlebar { flex: 0 0 36px; display: flex; align-items: center; gap: 10px; padding: 0 150px 0 12px;
+              background: var(--panel); border-bottom: 1px solid var(--line); -webkit-app-region: drag; }
+  .apptitle { font-size: 12.5px; font-weight: 650; white-space: nowrap; }
+  .menubar { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
+  .menu { position: relative; flex: 0 0 auto; }
+  .menu-btn { min-height: 24px; padding: 2px 8px; white-space: nowrap; border-color: transparent; background: transparent; font-size: 12.5px; }
+  .menu-btn:hover:not(:disabled), .menu.open .menu-btn { background: #f2f4f7; }
+  .menu-pop { position: absolute; top: calc(100% + 4px); left: 0; z-index: 50; display: none;
+              min-width: 168px; flex-direction: column; padding: 4px; background: var(--panel);
+              border: 1px solid var(--line-strong); border-radius: 8px; }
+  .menu.open .menu-pop { display: flex; }
+  .menu-pop button { justify-content: flex-start; min-height: 28px; padding: 4px 10px; white-space: nowrap;
+                     font-weight: 400; border-color: transparent; background: transparent; }
+  .menu-pop button:hover:not(:disabled) { background: #f2f4f7; }
+  .menu-sep { height: 1px; margin: 4px 6px; background: var(--line); }
+  .env { margin-left: auto; min-width: 0; color: var(--muted); font-size: 11.5px;
          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   main { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px 18px 14px; }
   /* Controls scroll on their own so the log pane below always keeps its height. */
@@ -71,12 +86,12 @@
   summary { cursor: pointer; color: var(--muted); font-size: 11.5px; }
   summary:hover { color: var(--text); }
   .logwrap { flex: 1 1 auto; min-height: 200px; display: flex; flex-direction: column;
-             background: #11151b; border: 1px solid #1d232b; border-radius: 8px; overflow: hidden; }
+             background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
   .logbar { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
-            background: #171c23; border-bottom: 1px solid #232a33; color: #c3cbd6; font-size: 11.5px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; }
+            background: var(--panel); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11.5px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #9aa1ab; }
   .dot.run { background: #e0a23a; } .dot.ok { background: #35b06a; } .dot.bad { background: #e0544a; }
-  pre { flex: 1; margin: 0; padding: 12px 14px; overflow: auto; color: #d6dde6;
+  pre { flex: 1; margin: 0; padding: 12px 14px; overflow: auto; color: var(--text);
         font: 12px/1.55 Consolas, "Cascadia Mono", monospace; white-space: pre-wrap; word-break: break-word; }
   footer { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
   footer .spacer { flex: 1; }
@@ -90,10 +105,57 @@
 </style>
 </head>
 <body>
-  <header>
-    <h1>DSH Plugin Effect Lab</h1>
-    <div class="sub" id="env">正在读取环境…</div>
-  </header>
+  <div class="titlebar" id="titlebar">
+    <span class="apptitle">DSH Plugin Effect Lab</span>
+    <nav class="menubar" aria-label="应用菜单">
+      <div class="menu">
+        <button type="button" class="menu-btn" aria-haspopup="true" aria-expanded="false">文件</button>
+        <div class="menu-pop" role="menu">
+          <button type="button" role="menuitem" data-action="quit">退出</button>
+        </div>
+      </div>
+      <div class="menu">
+        <button type="button" class="menu-btn" aria-haspopup="true" aria-expanded="false">编辑</button>
+        <div class="menu-pop" role="menu">
+          <button type="button" role="menuitem" data-action="undo">撤销</button>
+          <button type="button" role="menuitem" data-action="redo">重做</button>
+          <div class="menu-sep" role="separator"></div>
+          <button type="button" role="menuitem" data-action="cut">剪切</button>
+          <button type="button" role="menuitem" data-action="copy">复制</button>
+          <button type="button" role="menuitem" data-action="paste">粘贴</button>
+          <button type="button" role="menuitem" data-action="selectAll">全选</button>
+        </div>
+      </div>
+      <div class="menu">
+        <button type="button" class="menu-btn" aria-haspopup="true" aria-expanded="false">查看</button>
+        <div class="menu-pop" role="menu">
+          <button type="button" role="menuitem" data-action="reload">重新加载</button>
+          <button type="button" role="menuitem" data-action="forceReload">强制重新加载</button>
+          <button type="button" role="menuitem" data-action="toggleDevTools">开发者工具</button>
+          <div class="menu-sep" role="separator"></div>
+          <button type="button" role="menuitem" data-action="resetZoom">实际大小</button>
+          <button type="button" role="menuitem" data-action="zoomIn">放大</button>
+          <button type="button" role="menuitem" data-action="zoomOut">缩小</button>
+          <div class="menu-sep" role="separator"></div>
+          <button type="button" role="menuitem" data-action="toggleFullscreen">全屏</button>
+        </div>
+      </div>
+      <div class="menu">
+        <button type="button" class="menu-btn" aria-haspopup="true" aria-expanded="false">窗口</button>
+        <div class="menu-pop" role="menu">
+          <button type="button" role="menuitem" data-action="minimize">最小化</button>
+          <button type="button" role="menuitem" data-action="close">关闭</button>
+        </div>
+      </div>
+      <div class="menu">
+        <button type="button" class="menu-btn" aria-haspopup="true" aria-expanded="false">帮助</button>
+        <div class="menu-pop" role="menu">
+          <button type="button" role="menuitem" data-action="about">关于 DSH Plugin Effect Lab</button>
+        </div>
+      </div>
+    </nav>
+    <span class="env" id="env">正在读取环境…</span>
+  </div>
   <main id="root">
     <section id="controls">
       <div class="group" id="pluginGroup">
@@ -175,7 +237,10 @@
   const status = document.getElementById('status');
   const hint = document.getElementById('hint');
   const stopBtn = document.getElementById('stop');
-  const allButtons = [...document.querySelectorAll('button')].filter((b) => !['stop', 'report', 'artifacts'].includes(b.id));
+  // Titlebar buttons stay usable while a run is in flight (minimize, devtools,
+  // reload), so they are not part of the busy-disable set.
+  const allButtons = [...document.querySelectorAll('button')]
+    .filter((b) => !['stop', 'report', 'artifacts'].includes(b.id) && !b.closest('.titlebar'));
   const presetButtons = [...document.querySelectorAll('button[data-args]')];
   const pluginInput = document.getElementById('plugin');
   const profileSelect = document.getElementById('profileSelect');
@@ -372,6 +437,47 @@
     if (!result.opened) append(`\n[gui] ${result.reason || result.error}\n`);
   });
   document.getElementById('artifacts').addEventListener('click', () => window.labGui.openArtifacts());
+
+  const menuRoots = [...document.querySelectorAll('.menu')];
+  function closeMenus() {
+    for (const menu of menuRoots) {
+      menu.classList.remove('open');
+      const btn = menu.querySelector('.menu-btn');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+  }
+  function sendMenuAction(action) {
+    if (typeof window.labGui.menu === 'function') window.labGui.menu(action);
+  }
+  for (const menu of menuRoots) {
+    const btn = menu.querySelector('.menu-btn');
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const wasOpen = menu.classList.contains('open');
+      closeMenus();
+      if (!wasOpen) {
+        menu.classList.add('open');
+        btn.setAttribute('aria-expanded', 'true');
+      }
+    });
+  }
+  for (const item of document.querySelectorAll('.menu-pop [data-action]')) {
+    item.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const action = item.dataset.action;
+      closeMenus();
+      sendMenuAction(action);
+    });
+  }
+  document.addEventListener('click', closeMenus);
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMenus(); });
+  const titlebar = document.getElementById('titlebar');
+  if (titlebar) {
+    titlebar.addEventListener('dblclick', (event) => {
+      if (event.target.closest('button')) return;
+      sendMenuAction('toggleMaximize');
+    });
+  }
 
   window.labGui.onOutput((text) => append(text));
   window.labGui.onDone(({ code }) => {

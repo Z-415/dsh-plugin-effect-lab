@@ -1,13 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { COPY_DIRS, COPY_FILES } from '../electron-shell/runtime-builder.js';
 
+const require = createRequire(import.meta.url);
+const { APP_FILES } = require('./app-sync.cjs');
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 /** The copied executable is renamed so the shortcut is self-explanatory. */
 export const GUI_EXE_NAME = 'DSH Plugin Effect Lab.exe';
-export const GUI_APP_FILES = ['main.js', 'preload.js', 'index.html', 'app-sync.cjs'];
+/** One source of truth: the launcher syncs the same list at every start. */
+export const GUI_APP_FILES = APP_FILES;
 
 /**
  * Home for the copied runtime. It deliberately lives *inside the project*
@@ -50,14 +54,18 @@ export async function buildGuiRuntime(officialInstallDir, options = {}) {
   const appSources = Object.fromEntries(
     GUI_APP_FILES.map((name) => [name, fs.readFileSync(path.join(here, name))]),
   );
+  // The stamp proves a full copy finished. App files are then refreshed file
+  // by file, including ones a newer build added, so shipping a new GUI file
+  // never forces the 346 MB copy again (and never needs the window closed).
   const cached = !force
     && fs.existsSync(stamp)
     && fs.existsSync(exe)
-    && GUI_APP_FILES.every((name) => fs.existsSync(path.join(appDir, name)));
+    && fs.existsSync(appDir);
   if (cached) {
     for (const [name, bytes] of Object.entries(appSources)) {
       const target = path.join(appDir, name);
-      if (!fs.readFileSync(target).equals(bytes)) fs.writeFileSync(target, bytes);
+      const same = fs.existsSync(target) && fs.readFileSync(target).equals(bytes);
+      if (!same) fs.writeFileSync(target, bytes);
     }
     return { dir, exe, appDir, version, cached: true, bytes: 0, copyMs: 0 };
   }

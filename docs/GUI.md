@@ -21,7 +21,7 @@ The first build copies the official Electron runtime (about 346 MB on
 ```text
 <project>\gui-runtime\gui-<electron-version>\
   DSH Plugin Effect Lab.exe      <- renamed copy of the official Electron exe
-  resources\app\{main.js,preload.js,index.html,app-sync.cjs,gui-config.json}
+  resources\app\{main.js,preload.js,index.html,app-sync.cjs,menu.cjs,gui-config.json}
   userdata\gui-config.json
   userdata\gui.log
 ```
@@ -55,6 +55,23 @@ log pane keeps a minimum height, and the window can shrink to 820×560.
 
 Below the groups: the result banner, the always-visible log pane, and the
 footer (open report / open artifacts / abort).
+
+The whole window is one flat light palette: white page, white panels, and a
+white log pane with dark text.
+
+### Title bar and menu
+
+The window draws its own **white title bar** instead of the OS one, because the
+native title bar follows the Windows accent colour and broke the all-white look.
+The bar holds the app name, the Chinese menu (**文件 / 编辑 / 查看 / 窗口 / 帮助**),
+the environment line, and the standard minimise/maximise/close buttons, which
+Electron still draws through the window-controls overlay.
+
+Menu items map to the usual actions: undo/redo/cut/copy/paste/select-all,
+reload/force-reload/devtools/zoom/fullscreen, minimise/close, and about.
+`Ctrl+C/V/Z`, `Ctrl+R`, `Ctrl+Shift+I` and the zoom shortcuts keep working
+because the application menu is still installed (just never shown). Double-click
+the bar to maximise or restore the window.
 
 ## What the buttons do
 

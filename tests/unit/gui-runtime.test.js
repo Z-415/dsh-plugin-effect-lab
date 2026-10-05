@@ -67,3 +67,21 @@ test('buildGuiRuntime refreshes a changed app file in the cached runtime', async
     fs.rmSync(install, { recursive: true, force: true });
   }
 });
+
+test('buildGuiRuntime restores a missing app file without copying the runtime again', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-gui-home-'));
+  const install = makeFakeInstall('3.0.0');
+  process.env.DSH_LAB_GUI_HOME = home;
+  try {
+    const built = await buildGuiRuntime(install);
+    fs.rmSync(path.join(built.appDir, 'app-sync.cjs'));
+    const again = await buildGuiRuntime(install);
+    assert.equal(again.cached, true, 'a missing app file must not force a full rebuild');
+    assert.equal(again.bytes, 0, 'the runtime must not be copied again');
+    assert.equal(fs.existsSync(path.join(built.appDir, 'app-sync.cjs')), true);
+  } finally {
+    delete process.env.DSH_LAB_GUI_HOME;
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(install, { recursive: true, force: true });
+  }
+});

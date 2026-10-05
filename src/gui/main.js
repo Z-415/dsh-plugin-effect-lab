@@ -9,7 +9,7 @@
  * cannot bypass the lab's isolation rules.
  */
 
-const { app, BrowserWindow, dialog, ipcMain, Notification, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, shell } = require('electron');
 const { spawnSync, spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -21,6 +21,13 @@ try {
   ({ syncAppFiles } = require('./app-sync.cjs'));
 } catch {
   // An older build may not ship the helper; run with whatever is on disk.
+}
+
+let buildMenuTemplate = null;
+try {
+  ({ buildMenuTemplate } = require('./menu.cjs'));
+} catch {
+  // Fall back to Electron's default menu when the helper is missing.
 }
 
 /**
@@ -78,6 +85,15 @@ function send(channel, payload) {
 function finish(code) {
   child = null;
   send('lab:done', { code });
+}
+
+function showAbout() {
+  dialog.showMessageBox({
+    type: 'info',
+    title: '关于 DSH Plugin Effect Lab',
+    message: 'DSH Plugin Effect Lab',
+    detail: `electron ${process.versions.electron}\nnode ${process.versions.node}\n${repo}`,
+  });
 }
 
 /** Run one lab command; the GUI is single-flight. */
@@ -157,6 +173,36 @@ function listProfiles() {
 }
 
 ipcMain.handle('lab:run', (_event, args) => runLab(Array.isArray(args) ? args.map(String) : []));
+/**
+ * The window draws its own title bar and menu (the OS one follows the Windows
+ * accent colour), so menu clicks arrive here by action name.
+ */
+ipcMain.handle('lab:menu', (_event, action) => {
+  if (!window || window.isDestroyed()) return { ok: false, reason: 'no window' };
+  const web = window.webContents;
+  switch (String(action)) {
+    case 'undo': web.undo(); break;
+    case 'redo': web.redo(); break;
+    case 'cut': web.cut(); break;
+    case 'copy': web.copy(); break;
+    case 'paste': web.paste(); break;
+    case 'selectAll': web.selectAll(); break;
+    case 'reload': web.reload(); break;
+    case 'forceReload': web.reloadIgnoringCache(); break;
+    case 'toggleDevTools': web.toggleDevTools(); break;
+    case 'resetZoom': web.setZoomLevel(0); break;
+    case 'zoomIn': web.setZoomLevel(web.getZoomLevel() + 0.5); break;
+    case 'zoomOut': web.setZoomLevel(web.getZoomLevel() - 0.5); break;
+    case 'toggleFullscreen': window.setFullScreen(!window.isFullScreen()); break;
+    case 'toggleMaximize': window.isMaximized() ? window.unmaximize() : window.maximize(); break;
+    case 'minimize': window.minimize(); break;
+    case 'close': window.close(); break;
+    case 'quit': app.quit(); break;
+    case 'about': showAbout(); break;
+    default: return { ok: false, reason: `unknown menu action: ${action}` };
+  }
+  return { ok: true };
+});
 ipcMain.handle('lab:stop', () => stopLab());
 ipcMain.handle('lab:open-report', async () => {
   const file = latestReport();
@@ -193,6 +239,15 @@ ipcMain.handle('lab:info', () => ({
 }));
 
 app.whenReady().then(() => {
+  // A light native theme keeps the title/menu strip light so it blends with the
+  // white page instead of picking up the OS dark palette.
+  nativeTheme.themeSource = 'light';
+  if (buildMenuTemplate) {
+    Menu.setApplicationMenu(Menu.buildFromTemplate(buildMenuTemplate({
+      appName: 'DSH Plugin Effect Lab',
+      onAbout: showAbout,
+    })));
+  }
   if (syncAppFiles) {
     syncAppFiles({ sourceDir: path.join(repo, 'src', 'gui'), appDir: __dirname, log: appendLog });
   }
@@ -201,14 +256,22 @@ app.whenReady().then(() => {
     height: 760,
     minWidth: 820,
     minHeight: 560,
-    backgroundColor: '#f5f6f8',
+    backgroundColor: '#ffffff',
     title: 'DSH Plugin Effect Lab',
+    // The native title bar follows the Windows accent colour, which broke the
+    // all-white look. A window-controls overlay lets us pin it to white while
+    // keeping the standard minimise/maximise/close buttons.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#ffffff', symbolColor: '#1f2329', height: 36 },
     webPreferences: {
       contextIsolation: true,
       sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
     },
   });
+  // The visible menu is drawn in the page; the app menu stays only so its
+  // accelerators (Ctrl+C/V/R, Ctrl+Shift+I, zoom) keep working.
+  window.setMenuBarVisibility(false);
   window.loadFile(path.join(__dirname, 'index.html'));
   // Surface renderer-side errors in gui.log so a broken UI is diagnosable.
   window.webContents.on('console-message', (...args) => {

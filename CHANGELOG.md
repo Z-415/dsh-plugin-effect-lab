@@ -14,13 +14,22 @@
 - The default 1080x760 window fits the whole control area without scrolling;
   below 900px wide the columns stack and the control area scrolls on its own
   while the log pane keeps at least 200px.
+- The window draws its own **white title bar** (the OS title bar follows the
+  Windows accent colour) with a Chinese in-page menu - 文件 / 编辑 / 查看 / 窗口 /
+  帮助 - while Electron still draws the minimise/maximise/close buttons. The
+  dark console became a white log pane with dark text, so the page is one flat
+  light palette.
 
 ### Fixed
 
 - A Desktop shortcut kept launching the stale `gui-runtime` copy of the UI
   until `lab gui` ran again. The launcher now re-syncs
-  `index.html` / `main.js` / `preload.js` / `app-sync.cjs` from `src/gui` at
-  every start (`src/gui/app-sync.cjs`), so the shortcut follows the source.
+  `index.html` / `main.js` / `preload.js` / `app-sync.cjs` / `menu.cjs` from
+  `src/gui` at every start (`src/gui/app-sync.cjs`), so the shortcut follows
+  the source.
+- Adding a new GUI app file no longer forces the 346 MB runtime copy (and no
+  longer needs the window closed): the cached build refreshes app files one by
+  one, including files a newer build added.
 
 ### Tests
 
@@ -28,9 +37,12 @@
   equal cell sizes, labels do not overflow their buttons, controls do not
   overlap or spill out of their rows, and the page has no horizontal scroll)
   plus a second case that runs the same probe at the minimum 820x560 window
-  size. `tests/unit/gui-app-sync.test.js` covers the startup sync (copy changed
-  files, leave identical ones, tolerate missing paths, log a failed copy).
-  Full suite: unit 190/190, integration 16/16.
+  size. It also asserts the menu labels are Chinese, every menu item dispatches
+  its action, the title bar/log pane are light, and the log text contrast is at
+  least 7:1. `tests/unit/gui-app-sync.test.js` covers the startup sync (copy
+  changed files, leave identical ones, tolerate missing paths, log a failed
+  copy) and `tests/unit/gui-menu.test.js` covers the Chinese menu template.
+  Full suite: unit 194/194, integration 16/16.
 
 ## 0.1.0 - 2026-10-04
 
