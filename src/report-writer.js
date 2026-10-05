@@ -50,7 +50,7 @@ export function renderReportMarkdown(report) {
   if (report.signatureHits?.length) {
     lines.push('', '## 启动日志特征', '');
     for (const hit of report.signatureHits) {
-      lines.push(`- [${hit.severity}] ${hit.id}: ${hit.rootCause} -> ${hit.fix}`);
+      lines.push(`- [${hit.severity}] ${hit.id} (${hit.category ?? 'general'}): ${hit.rootCause} -> ${hit.fix}`);
     }
   }
   if (report.browser?.consoleErrors?.length) {

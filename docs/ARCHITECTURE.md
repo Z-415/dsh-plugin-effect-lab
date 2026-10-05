@@ -75,6 +75,9 @@ second response follows the tool result. No real provider or credential is used.
 
 ## Failure signatures
 
-`src/log-scanner.js` maps boot-log fingerprints to a root cause and fix. Fatal
-signatures fail the run; peer conflicts are warnings. The Node `DEP0180`
-`fs.Stats` warning seen on 0.2.0-rc.2 is explicitly noise.
+`src/log-scanner.js` maps boot-log fingerprints to a category, a root cause,
+and a fix. Fatal signatures fail the run; peer conflicts are warnings. The
+library covers seven categories (`boot`, `plugin`, `client`, `profile`, `env`,
+`runtime`, `crash`); `docs/FAILURE-SIGNATURES.md` lists them and
+`lab scan --list` prints them at runtime. The Node `DEP0180` `fs.Stats`
+warning seen on 0.2.0-rc.2 is explicitly noise.

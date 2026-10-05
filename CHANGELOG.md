@@ -366,3 +366,28 @@ Final suite: unit 116/116, integration 15/15.
   antialiasing; `shell-screenshot-diff` is now a real check on it.
 
 Final suite: unit 120/120, integration 15/15.
+
+## 0.1.0 - 2026-10-05 (failure signature library)
+
+### Added
+
+- The boot-log signature library grew from 11 to 22 entries and each entry now
+  carries a `category`: `boot`, `plugin`, `client`, `profile`, `env`,
+  `runtime`, or `crash`. New fingerprints: `unknown-slot-kind`,
+  `unresolved-service`, `engines-unsatisfied`, `bundle-patch-missing`,
+  `bundle-dependency-mismatch`, `port-in-use`, `host-boot-timeout`,
+  `electron-main-crash`, `client-module-load`, `permission-denied`,
+  `path-too-long`.
+- `lab scan --list [--json]` prints the whole library (id, category, severity,
+  root cause, fix) so the next reader does not have to grep the source.
+- `docs/FAILURE-SIGNATURES.md`: the category table, the full entry list, and
+  the rule for adding a pattern (positive *and* benign negative test).
+- `report.signatureHits[]` and the HTML/Markdown reports now show the
+  category next to each hit.
+
+### Changed
+
+- The log-scanner suite is table-driven: one real log line per signature plus a
+  clean-boot negative test and a "ids are unique, fields present" library test.
+
+Final suite: unit 145/145, integration 15/15.

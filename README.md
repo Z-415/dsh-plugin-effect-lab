@@ -133,6 +133,7 @@ node bin/lab.js profile list
 node bin/lab.js profile remove-plugin dev dsh-ui-tweaks@0.20.0
 node bin/lab.js shell --no-compare-web
 node bin/lab.js scan --log .\artifacts\<run>\boot.err.log
+node bin/lab.js scan --list                            # the failure signature library
 node bin/lab.js clean --dry-run
 ```
 

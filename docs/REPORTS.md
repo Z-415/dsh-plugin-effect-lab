@@ -45,7 +45,10 @@ shell-result.json       raw shell result (DOM, console errors, page errors, sett
 
 - `ok`: all non-informational checks passed;
 - `checks[]`: boot, token, route, UI, token probe, cleanup, and hash checks;
-- `signatureHits[]`: fatal or warning boot-log fingerprints;
+- `signatureHits[]`: fatal or warning boot-log fingerprints, each with a
+  `category` (`boot` / `plugin` / `client` / `profile` / `env` / `runtime` /
+  `crash`), a root cause, and a suggested fix; see
+  `docs/FAILURE-SIGNATURES.md` and `lab scan --list`;
 - `browser.consoleErrors[]`, `pageErrors[]`, `networkFailures[]`;
 - `cleanup.homeRemoved` and `cleanup.portsLeft`;
 - `realHome.diff`: structural file hash comparison against the real `~/.dsh`.

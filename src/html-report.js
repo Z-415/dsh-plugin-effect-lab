@@ -124,8 +124,8 @@ export function renderHtmlReport(report = {}) {
   parts.push(section('检查项', checksTable(checks)));
 
   if (report.signatureHits?.length) {
-    parts.push(section('启动日志特征', table(['级别', '编号', '根因', '建议'], report.signatureHits.map((hit) => [
-      hit.severity, hit.id, hit.rootCause ?? '', hit.fix ?? '',
+    parts.push(section('启动日志特征', table(['级别', '编号', '分类', '根因', '建议'], report.signatureHits.map((hit) => [
+      hit.severity, hit.id, hit.category ?? '', hit.rootCause ?? '', hit.fix ?? '',
     ]))));
   }
 
