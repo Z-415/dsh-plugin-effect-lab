@@ -57,6 +57,24 @@ test('writeHtmlReport embeds screenshots as data URIs', () => {
   }
 });
 
+test('renderHtmlReport shows the failure context when no signature matched', () => {
+  const html = renderHtmlReport({
+    ...baseReport,
+    failureContext: {
+      reason: 'no known failure signature matched',
+      errors: ['boot failed <b>hard</b>'],
+      bootTail: ['[dsh] booting', 'WeirdFailure: nope'],
+      consoleErrors: ['Uncaught TypeError: x is not a function'],
+      pageErrors: [],
+    },
+  });
+  assert.equal(html.includes('未命中签名的失败上下文'), true);
+  assert.equal(html.includes('WeirdFailure: nope'), true);
+  assert.equal(html.includes('Uncaught TypeError: x is not a function'), true);
+  assert.equal(html.includes('boot failed &lt;b&gt;hard&lt;/b&gt;'), true, 'context must be escaped');
+  assert.equal(html.includes('boot failed <b>hard</b>'), false);
+});
+
 test('renderMatrixHtmlReport lists classification and conflicts', () => {
   const html = renderMatrixHtmlReport({
     ok: false,

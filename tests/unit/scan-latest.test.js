@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { latestRunLogs } from '../../src/commands/scan.js';
+import { buildScanReport, latestRunLogs } from '../../src/commands/scan.js';
 
 function makeRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-scan-'));
@@ -51,4 +51,45 @@ test('latestRunLogs skips the newest directory when it has no boot logs', () => 
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('buildScanReport carries the log tail when nothing matches', () => {
+  const report = buildScanReport({ files: ['x.log'], text: 'line one\nweird failure xyz\n' });
+  assert.deepEqual(report.hits, []);
+  assert.equal(report.fatal, false);
+  assert.equal(report.unknownFailure, true);
+  assert.deepEqual(report.tail, ['line one', 'weird failure xyz']);
+  assert.match(report.summary, /No known failure signatures matched/);
+});
+
+test('buildScanReport treats a clean log as clean, not as an unknown failure', () => {
+  const empty = buildScanReport({ text: '' });
+  assert.equal(empty.unknownFailure, false);
+  assert.equal(empty.tail, undefined);
+
+  const clean = buildScanReport({ text: '[dsh] booting\n[dsh] dsh web: http://127.0.0.1:1 (ready)\n' });
+  assert.equal(clean.unknownFailure, false, 'a clean boot log must not be reported as an unknown failure');
+  assert.equal(clean.tail, undefined);
+
+  // Asking for an explanation always attaches the tail, even on a clean log.
+  const explained = buildScanReport({ text: '[dsh] booting\n', explain: true });
+  assert.equal(explained.unknownFailure, false);
+  assert.deepEqual(explained.tail, ['[dsh] booting']);
+});
+
+test('buildScanReport adds surrounding lines for each hit only with explain', () => {
+  const text = ['boot ok', 'Error: EADDRINUSE: address already in use', 'cleanup failed'].join('\n');
+  const plain = buildScanReport({ text, explain: false });
+  assert.equal(plain.fatal, true);
+  assert.equal(plain.explanations, undefined);
+  assert.equal(plain.tail, undefined);
+
+  const explained = buildScanReport({ text, explain: true });
+  assert.equal(explained.explanations.length, 1);
+  assert.equal(explained.explanations[0].id, 'port-in-use');
+  assert.deepEqual(explained.explanations[0].lines, [
+    'boot ok',
+    'Error: EADDRINUSE: address already in use',
+    'cleanup failed',
+  ]);
 });

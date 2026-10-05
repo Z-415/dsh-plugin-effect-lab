@@ -6,7 +6,7 @@ import { snapshotLabResidue, verifyNoResidue } from '../cleanup.js';
 import { evaluateDomAssertions } from '../dom-assertions.js';
 import { writeHtmlReport } from '../html-report.js';
 import { openLabProfileHome, recordProfilePlugins } from '../lab-profile.js';
-import { hasFatal, scanSources, summarize } from '../log-scanner.js';
+import { hasFatal, scanSources, summarize, tailLines } from '../log-scanner.js';
 import { defaultArtifactsRoot } from '../config.js';
 import { createIsolatedHome } from '../home-manager.js';
 import { mintAuthCookie } from '../port-and-token.js';
@@ -594,6 +594,16 @@ export async function runShell(options = {}) {
     }
     report.finishedAt = nowIso();
     report.ok = checks.every((check) => check.pass || check.informational === true);
+    if (!hasFatal(report.signatureHits) && (!report.ok || errors.length)) {
+      const bootForContext = boot?.getOutput?.() ?? { stdout: '', stderr: '' };
+      report.failureContext = {
+        reason: 'no known failure signature matched',
+        errors: errors.slice(0, 10),
+        bootTail: tailLines(`${bootForContext.stdout ?? ''}\n${bootForContext.stderr ?? ''}`, 30),
+        consoleErrors: [...webConsoleTexts, ...(shellResult?.consoleErrors ?? [])].slice(0, 10),
+        pageErrors: (shellResult?.pageErrors ?? []).slice(0, 10),
+      };
+    }
     report.artifacts = {
       runDir,
       reportMd: path.join(runDir, 'report.md'),

@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { hasFatal, listSignatures, scanLogs, scanSources, summarize } from '../../src/log-scanner.js';
+import {
+  hasFatal,
+  linesAroundMatch,
+  listSignatures,
+  looksLikeFailure,
+  scanLogs,
+  scanSources,
+  summarize,
+  tailLines,
+} from '../../src/log-scanner.js';
 
 test('duplicate loader id is fatal', () => {
   const hits = scanLogs('Error: duplicate loader entry id: dsh-vscode-bridge');
@@ -100,4 +109,28 @@ test('scanSources merges boot logs and console errors without duplicates', () =>
 
 test('scanSources of a clean boot log and clean console returns nothing', () => {
   assert.deepEqual(scanSources(['[dsh] listening on port 5566', '[dsh] plugin tree loaded', undefined]), []);
+});
+
+test('tailLines returns the last non-empty lines, trimmed to a readable width', () => {
+  const text = ['', 'first', '   ', 'second   ', 'third'].join('\n');
+  assert.deepEqual(tailLines(text, 2), ['second', 'third']);
+  assert.deepEqual(tailLines('', 5), []);
+  assert.equal(tailLines('x'.repeat(500), 1)[0].length, 401, 'the line is cut at 400 chars plus an ellipsis');
+});
+
+test('linesAroundMatch returns the lines around a hit and nothing for a miss', () => {
+  const text = ['one', 'two', 'boom: EADDRINUSE', 'three', 'four'].join('\n');
+  assert.deepEqual(linesAroundMatch(text, 'EADDRINUSE', 1), ['two', 'boom: EADDRINUSE', 'three']);
+  assert.deepEqual(linesAroundMatch(text, 'boom', 0), ['boom: EADDRINUSE']);
+  assert.deepEqual(linesAroundMatch(text, 'not-there', 2), []);
+  assert.deepEqual(linesAroundMatch(text, '', 2), []);
+});
+
+test('looksLikeFailure separates a clean log from an unknown failure', () => {
+  assert.equal(looksLikeFailure('[dsh] booting\n[dsh] dsh web: http://127.0.0.1:1 (ready)'), false);
+  assert.equal(looksLikeFailure(''), false);
+  assert.equal(looksLikeFailure('  \n  '), false);
+  assert.equal(looksLikeFailure('[dsh] SomethingWeirdError: widget foo exploded'), true);
+  assert.equal(looksLikeFailure('process exited with code 3'), true);
+  assert.equal(looksLikeFailure('ENOENT: no such file'), true);
 });

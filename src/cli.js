@@ -39,7 +39,7 @@ const BOOLEAN_FLAGS = new Set([
   'json', 'offline', 'online', 'no-fixture', 'mock-model', 'strict-console',
   'no-cache', 'no-compare-web', 'dry-run', 'help', 'h',
   'no-html', 'native-desktop', 'probe-native-dialog',
-  'list', 'latest',
+  'list', 'latest', 'explain',
   'rebuild', 'install-shortcut', 'no-open',
 ]);
 
@@ -163,6 +163,7 @@ export async function main(argv) {
         logs: flags.log ?? [],
         list: flags.list === true,
         latest: flags.latest === true,
+        explain: flags.explain === true,
         artifactsRoot: flags.artifacts,
       });
     case 'clean':
@@ -251,8 +252,8 @@ Usage:
   lab gui [--install-shortcut] [--rebuild] [--no-open] [--json]
   lab profile list|create|remove|path [name] [--json]
   lab profile remove-plugin <name> <plugin...> [--json]
-  lab scan --log <boot.err.log> [--json]
-  lab scan --latest [--artifacts <dir>] [--json]
+  lab scan --log <boot.err.log> [--explain] [--json]
+  lab scan --latest [--explain] [--artifacts <dir>] [--json]
   lab scan --list [--json]
   lab clean [--dry-run] [--older-than <minutes>] [--json]
 

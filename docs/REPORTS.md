@@ -52,6 +52,11 @@ shell-result.json       raw shell result (DOM, console errors, page errors, sett
 - `consoleSignatureHits[]`: the same fingerprints, but matched against the
   browser console errors, page errors, and failed requests (`console-signatures`
   check). `signatureHits` is the merge of both sources, deduped.
+- `failureContext`: present when a run failed without matching any fatal
+  signature, so an unknown failure still carries evidence:
+  `{ reason, errors, bootTail, consoleErrors, pageErrors }`. Rendered as
+  "未命中签名的失败上下文" in the HTML/Markdown report. The `bootTail` is the
+  last 30 non-empty boot-log lines — the raw material for a new signature.
 - `browser.consoleErrors[]`, `pageErrors[]`, `networkFailures[]`;
 - `cleanup.homeRemoved` and `cleanup.portsLeft`;
 - `realHome.diff`: structural file hash comparison against the real `~/.dsh`.

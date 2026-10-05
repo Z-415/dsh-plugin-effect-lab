@@ -13,6 +13,7 @@ Print the current library, with the exact fix text, from the CLI:
 node bin/lab.js scan --list
 node bin/lab.js scan --list --json
 node bin/lab.js scan --latest          # rescan the newest artifacts/<run>/ boot logs
+node bin/lab.js scan --log x.log --explain   # lines around each hit
 ```
 
 ## Categories
@@ -70,8 +71,12 @@ failure sentence.
 
 ## Known limits
 
-- Only patterns already seen in this repo's runs are covered. An unknown
-  failure still reports the raw logs (`boot.out.log` / `boot.err.log`);
-  `lab scan` then says "clean" rather than guessing.
+- Only patterns already seen in this repo's runs are covered. An **unknown**
+  failure is handled rather than guessed at: when nothing matches but the log
+  looks like a failure, `lab scan` prints the last lines and says
+  `no known signature, but the log looks like a failure`. A failed run writes
+  `report.failureContext = { reason, errors, bootTail, consoleErrors,
+  pageErrors }`, which the HTML/Markdown reports render. That tail is exactly
+  what a new signature should be written from.
 - One version of DSH (0.2.0-rc.2) is covered. A future runtime may rename
   messages; the library is version-agnostic string matching by design.

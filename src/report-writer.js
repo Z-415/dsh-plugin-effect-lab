@@ -57,6 +57,27 @@ export function renderReportMarkdown(report) {
     lines.push('', '## 浏览器控制台错误', '');
     for (const error of report.browser.consoleErrors.slice(0, 20)) lines.push(`- ${error}`);
   }
+  if (report.failureContext) {
+    const context = report.failureContext;
+    lines.push('', '## 未命中签名的失败上下文', '', `原因：${context.reason ?? ''}`, '');
+    if (context.errors?.length) {
+      lines.push('运行错误：', '');
+      for (const error of context.errors) lines.push(`- ${error}`);
+      lines.push('');
+    }
+    if (context.bootTail?.length) {
+      lines.push('启动日志末尾：', '', '```text', ...context.bootTail, '```', '');
+    }
+    const rendererLines = [
+      ...(context.consoleErrors ?? []).map((line) => `[console] ${line}`),
+      ...(context.pageErrors ?? []).map((line) => `[page] ${line}`),
+    ];
+    if (rendererLines.length) {
+      lines.push('渲染端错误：', '');
+      for (const line of rendererLines) lines.push(`- ${line}`);
+      lines.push('');
+    }
+  }
   if (report.shell) {
     const shell = report.shell;
     lines.push('', '## Electron 壳', '');

@@ -17,7 +17,7 @@ import {
   fixtureEnv,
   readFixtureSpec,
 } from './fixture-manager.js';
-import { hasFatal, scanLogs, scanNoise, scanSources, summarize } from './log-scanner.js';
+import { hasFatal, scanLogs, scanNoise, scanSources, summarize, tailLines } from './log-scanner.js';
 import { writeHtmlReport } from './html-report.js';
 import { openLabProfileHome, recordProfilePlugins } from './lab-profile.js';
 import { describeAgentCoverage, scanForCredentials } from './model-coverage.js';
@@ -607,6 +607,18 @@ export async function runLab(options = {}) {
     writeJson(runDir, 'cleanup.json', report.cleanup);
     report.finishedAt = nowIso();
     report.ok = checks.every((check) => check.pass || check.informational === true);
+    // A failed run that matches no signature must still carry evidence: the
+    // boot-log tail and the renderer errors, so it can be diagnosed (and turned
+    // into a new signature) instead of just saying "clean".
+    if (!hasFatal(report.signatureHits) && (!report.ok || errors.length)) {
+      report.failureContext = {
+        reason: 'no known failure signature matched',
+        errors: errors.slice(0, 10),
+        bootTail: tailLines(`${bootOutput.stdout ?? ''}\n${bootOutput.stderr ?? ''}`, 30),
+        consoleErrors: (report.browser?.consoleErrors ?? []).slice(0, 10),
+        pageErrors: (report.browser?.pageErrors ?? []).slice(0, 10),
+      };
+    }
     report.artifacts = {
       runDir,
       reportMd: path.join(runDir, 'report.md'),

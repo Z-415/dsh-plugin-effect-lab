@@ -269,3 +269,61 @@ export function summarize(hits) {
   }
   return lines.join('\n');
 }
+
+/**
+ * The last `count` non-empty lines of a log, trimmed to a readable width.
+ * Used when a run fails without matching any signature: the tail is often
+ * enough to identify a new pattern, and it is far more useful than "clean".
+ */
+export function tailLines(text, count = 30, maxLineLength = 400) {
+  const lines = String(text ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+$/, ''))
+    .filter((line) => line.trim().length > 0);
+  return lines
+    .slice(-Math.max(0, count))
+    .map((line) => (line.length > maxLineLength ? `${line.slice(0, maxLineLength)}…` : line));
+}
+
+/**
+ * Lines around the first occurrence of a matched fragment, for
+ * `lab scan --explain`. `matched` is capped and trimmed when the hit is built,
+ * so a truncated fragment falls back to its first 40 characters.
+ */
+export function linesAroundMatch(text, needle, radius = 3, maxLineLength = 400) {
+  const target = String(needle ?? '').trim();
+  if (!target) return [];
+  const lines = String(text ?? '').split(/\r?\n/);
+  let index = lines.findIndex((line) => line.includes(target));
+  if (index < 0 && target.length > 40) index = lines.findIndex((line) => line.includes(target.slice(0, 40)));
+  if (index < 0) return [];
+  const slice = lines.slice(Math.max(0, index - radius), index + radius + 1);
+  while (slice.length && slice[slice.length - 1].trim() === '') slice.pop();
+  return slice.map((line) => (line.length > maxLineLength ? `${line.slice(0, maxLineLength)}…` : line));
+}
+
+/**
+ * Whether a log that matched no signature still looks like a failure. Used so
+ * a clean boot log is not reported as an unknown failure, while a real one
+ * still gets its tail attached.
+ */
+export function looksLikeFailure(text) {
+  const input = String(text ?? '');
+  if (!input.trim()) return false;
+  return [
+    /\berror\b/i,
+    /[A-Za-z]Error\b/,      // TypeError, SomethingWeirdError
+    /\bexception\b/i,
+    /\bfailed\b|\bfailure\b/i,
+    /\bfatal\b/i,
+    /\bpanic\b/i,
+    /\bcannot\b|\bcan't\b/i,
+    /\brefused\b/i,
+    /\btimed? out\b|\btimeout\b/i,
+    /\bunhandled\b/i,
+    /\bcrash(?:ed)?\b/i,
+    /\bE[A-Z]{3,}\b/,
+    /exit(?:ed)?(?: with)? (?:code|status) [1-9]/i,
+    /\[error\]/i,
+  ].some((pattern) => pattern.test(input));
+}

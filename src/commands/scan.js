@@ -1,7 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { defaultArtifactsRoot } from '../config.js';
-import { hasFatal, listSignatures, scanLogs, summarize } from '../log-scanner.js';
+import {
+  hasFatal,
+  linesAroundMatch,
+  listSignatures,
+  looksLikeFailure,
+  scanLogs,
+  summarize,
+  tailLines,
+} from '../log-scanner.js';
 
 /**
  * The newest run under `artifacts/` that has boot logs, so the GUI (and a
@@ -27,6 +35,37 @@ export function latestRunLogs(root = defaultArtifactsRoot()) {
   return null;
 }
 
+/**
+ * Build the scan report for one blob of log text.
+ *
+ * An unknown failure must not come back as just "clean": when nothing matches,
+ * the report carries a bounded tail of the log so there is still evidence to
+ * look at (and to turn into a new signature). `explain` adds the lines around
+ * each match.
+ */
+export function buildScanReport(options = {}) {
+  const {
+    files = [],
+    runDir = null,
+    text = '',
+    explain = false,
+    tailCount = 30,
+  } = options;
+  const hits = scanLogs(text);
+  const report = { files, runDir, fatal: hasFatal(hits), hits, summary: summarize(hits) };
+  if (!hits.length) {
+    report.unknownFailure = looksLikeFailure(text);
+    if (report.unknownFailure || explain) report.tail = tailLines(text, tailCount);
+  } else if (explain) {
+    report.explanations = hits.map((hit) => ({
+      id: hit.id,
+      matched: hit.matched,
+      lines: linesAroundMatch(text, hit.matched, 3),
+    }));
+  }
+  return report;
+}
+
 export async function runScanCommand(options = {}) {
   if (options.list) {
     const signatures = listSignatures();
@@ -41,6 +80,7 @@ export async function runScanCommand(options = {}) {
     }
     return 0;
   }
+
   let files = options.logs?.length ? options.logs : [];
   let runDir = null;
   if (!files.length && options.latest) {
@@ -56,18 +96,30 @@ export async function runScanCommand(options = {}) {
     process.stderr.write('scan needs --log <file> or --latest\n');
     return 2;
   }
+
   const text = files.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
-  const hits = scanLogs(text);
-  const report = { files, runDir, fatal: hasFatal(hits), hits, summary: summarize(hits) };
-  if (options.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-  else {
+  const report = buildScanReport({ files, runDir, text, explain: options.explain === true });
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else {
     if (runDir) process.stdout.write(`scanning latest run: ${runDir}\n`);
     process.stdout.write(`${summaryLine(report)}\n`);
-    for (const hit of hits) process.stdout.write(`- [${hit.severity}] ${hit.id} (${hit.category}): ${hit.matched}\n`);
+    for (const hit of report.hits) process.stdout.write(`- [${hit.severity}] ${hit.id} (${hit.category}): ${hit.matched}\n`);
+    if (report.tail?.length) {
+      process.stdout.write(`no known signature matched; last ${report.tail.length} non-empty log line(s):\n`);
+      for (const line of report.tail) process.stdout.write(`  | ${line}\n`);
+    }
+    for (const explanation of report.explanations ?? []) {
+      process.stdout.write(`context for ${explanation.id}:\n`);
+      for (const line of explanation.lines) process.stdout.write(`  | ${line}\n`);
+    }
   }
-  return hasFatal(hits) ? 1 : 0;
+  return hasFatal(report.hits) ? 1 : 0;
 }
 
 function summaryLine(report) {
-  return report.fatal ? 'scan: FATAL signatures found' : report.hits.length ? 'scan: warnings only' : 'scan: clean';
+  if (report.fatal) return 'scan: FATAL signatures found';
+  if (report.hits.length) return 'scan: warnings only';
+  if (report.unknownFailure) return 'scan: no known signature, but the log looks like a failure (tail below)';
+  return 'scan: clean';
 }

@@ -442,6 +442,26 @@ Final suite: unit 148/148, integration 15/15.
 
 Final suite: unit 160/160, integration 15/15.
 
+## 0.1.0 - 2026-10-05 (unknown-failure context)
+
+### Added
+
+- `report.failureContext`: when a run fails without matching any fatal
+  signature, the report now carries `{ reason, errors, bootTail, consoleErrors,
+  pageErrors }` — the last 30 non-empty boot-log lines plus the renderer errors.
+  Rendered as "未命中签名的失败上下文" in the HTML and Markdown reports, so an
+  unknown failure is evidence instead of silence.
+- `lab scan` no longer answers a real failure with "clean": when nothing matches
+  but the log looks like a failure it prints the tail and says
+  `no known signature, but the log looks like a failure`. A clean boot log still
+  reports `scan: clean`.
+- `lab scan --explain`: prints the lines around every match (boot or console),
+  and the tail when nothing matched.
+- `looksLikeFailure()` / `tailLines()` / `linesAroundMatch()` in
+  `src/log-scanner.js`, with unit coverage.
+
+Final suite: unit 167/167, integration 15/15.
+
 ## 0.1.0 - 2026-10-05 (leaner GUI, profile dropdown)
 
 ### Changed

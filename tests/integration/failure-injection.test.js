@@ -19,6 +19,13 @@ test('a missing plugin source fails cleanly without residue', {
   try {
     const report = await runLab({ plugins: ['./fixtures/plugins/does-not-exist'], artifactsRoot: root });
     assert.equal(report.ok, false);
+    // An unknown failure must carry evidence, not just "no signature matched".
+    assert.equal(report.failureContext?.reason, 'no known failure signature matched');
+    assert.equal(
+      (report.failureContext?.errors ?? []).length > 0,
+      true,
+      JSON.stringify(report.failureContext),
+    );
     assert.equal(report.cleanup.homeRemoved, true);
     assert.deepEqual(report.cleanup.portsLeft, []);
     assert.equal(report.cleanup.residue?.ok, true, JSON.stringify(report.cleanup.residue));

@@ -129,6 +129,20 @@ export function renderHtmlReport(report = {}) {
     ]))));
   }
 
+  if (report.failureContext) {
+    const context = report.failureContext;
+    const lines = [
+      ...(context.bootTail ?? []),
+      ...(context.consoleErrors ?? []).map((line) => `[console] ${line}`),
+      ...(context.pageErrors ?? []).map((line) => `[page] ${line}`),
+      ...(context.errors ?? []).map((line) => `[error] ${line}`),
+    ];
+    parts.push(section(
+      `未命中签名的失败上下文（${context.reason ?? ''}）`,
+      `<pre>${esc(lines.join('\n') || '(empty)')}</pre>`,
+    ));
+  }
+
   if (screenshotFiles.length) {
     parts.push(section('截图', screenshotFiles.map(embedImage).join('')));
   }
