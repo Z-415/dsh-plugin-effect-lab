@@ -3,7 +3,10 @@ import path from 'node:path';
 import { ensureDir } from './util.js';
 
 export function prepareArtifacts(artifactsRoot, runId) {
-  const runDir = ensureDir(path.join(artifactsRoot, runId));
+  // Resolve to absolute: the Electron shell child runs with cwd = the copied
+  // runtime dir, so a relative artifacts root would make it write
+  // shell-result.json somewhere the parent never reads.
+  const runDir = ensureDir(path.join(path.resolve(artifactsRoot), runId));
   ensureDir(path.join(runDir, 'screenshots'));
   ensureDir(path.join(runDir, 'dom'));
   return runDir;

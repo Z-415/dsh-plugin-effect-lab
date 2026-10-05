@@ -36,6 +36,28 @@ function addCheck(checks, name, pass, detail, extra = {}) {
   checks.push({ name, pass: Boolean(pass), detail, ...extra });
 }
 
+/**
+ * Describe the shell child's outcome for the `shell-run` check.
+ *
+ * When `shell-result.json` is missing the runner already reports
+ * `shell-result: missing`; this helper keeps the accompanying `shell-run`
+ * failure readable (exit code + stderr tail) instead of a TypeError from
+ * dereferencing the null result.
+ *
+ * @param {object|null} result parsed shell-result.json, or null when absent
+ * @param {{ exitCode?: number|null, stderr?: string }} [facts]
+ */
+export function describeShellRun(result, facts = {}) {
+  if (result) return { pass: true, detail: 'shell result written' };
+  const exitCode = facts.exitCode ?? null;
+  const stderrTail = tailLines(String(facts.stderr ?? ''), 3).join(' | ').slice(0, 400);
+  return {
+    pass: false,
+    detail: `shell-result 缺失（壳进程 exitCode=${exitCode}）`
+      + `${stderrTail ? `; stderr=${stderrTail}` : '; stderr=空'}`,
+  };
+}
+
 /** Minimal standalone Electron shell prototype: official frontend + isolated host. */
 export async function runShell(options = {}) {
   const progress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
@@ -77,6 +99,12 @@ export async function runShell(options = {}) {
   let webProbe = null;
   let webConsoleTexts = [];
   let shellResult = null;
+  let shellRunRecorded = false;
+  const recordShellRun = (pass, detail) => {
+    if (shellRunRecorded) return;
+    shellRunRecorded = true;
+    addCheck(checks, 'shell-run', pass, detail);
+  };
   let shellVsWeb = null;
   let residueBefore = null;
   let shellScreenshotDiff = null;
@@ -338,6 +366,13 @@ export async function runShell(options = {}) {
     shellResult = result;
     progress(result ? 'shell result received' : 'shell result missing');
     addCheck(checks, 'shell-result', result?.ok === true, result?.error ?? (result ? 'written' : 'missing'));
+    {
+      const described = describeShellRun(result, {
+        exitCode: shellProc.child.exitCode ?? null,
+        stderr: shellProc.getOutput().stderr,
+      });
+      recordShellRun(described.pass, described.detail);
+    }
     if (result?.capture) {
       addCheck(
         checks,
@@ -474,7 +509,7 @@ export async function runShell(options = {}) {
         `indexSource=${result.indexSource ?? 'unknown'} transport=${boot.transport}`,
         { informational: true },
       );
-      if (result.derivedInjections) {
+      if (result?.derivedInjections) {
         const derived = result.derivedInjections;
         addCheck(
           checks,
@@ -556,7 +591,8 @@ export async function runShell(options = {}) {
         count: boot.injections?.length ?? 0,
         kinds: boot.injectionKinds ?? [],
       },
-      derivedInjections: result.derivedInjections ?? null,
+      derivedInjections: result?.derivedInjections ?? null,
+      childExitCode: shellProc.child.exitCode ?? null,
       cached: shell.cached,
       result,
       screenshotFile,
@@ -572,7 +608,7 @@ export async function runShell(options = {}) {
     };
   } catch (error) {
     errors.push(String(error?.stack ?? error));
-    addCheck(checks, 'shell-run', false, String(error?.message ?? error));
+    recordShellRun(false, `shell-run 异常: ${String(error?.message ?? error)}（详见 errors 与 shell-result）`);
   } finally {
     progress('cleaning up processes and the isolated home');
     if (webBrowser) {
