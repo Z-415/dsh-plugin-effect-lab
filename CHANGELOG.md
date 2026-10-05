@@ -409,6 +409,10 @@ Final suite: unit 145/145, integration 15/15.
 - `tests/integration/gui-page.test.js` now ticks both desktop checkboxes and
   asserts the shell commands carry `--native-desktop` / `--probe-native-dialog`
   (and that the dialog probe forces `--show`).
+- `lab scan --latest [--artifacts <dir>]`: rescan the newest
+  `artifacts/<run>/` that has boot logs, so the GUI's **扫描最近一次运行的日志**
+  button works without a file picker. Unit coverage in
+  `tests/unit/scan-latest.test.js`.
 
 ### Changed
 

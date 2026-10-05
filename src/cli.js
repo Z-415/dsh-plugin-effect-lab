@@ -39,7 +39,7 @@ const BOOLEAN_FLAGS = new Set([
   'json', 'offline', 'online', 'no-fixture', 'mock-model', 'strict-console',
   'no-cache', 'no-compare-web', 'dry-run', 'help', 'h',
   'no-html', 'native-desktop', 'probe-native-dialog',
-  'list',
+  'list', 'latest',
   'rebuild', 'install-shortcut', 'no-open',
 ]);
 
@@ -158,7 +158,13 @@ export async function main(argv) {
         html: flags['no-html'] !== true,
       });
     case 'scan':
-      return runScanCommand({ ...common, logs: flags.log ?? [], list: flags.list === true });
+      return runScanCommand({
+        ...common,
+        logs: flags.log ?? [],
+        list: flags.list === true,
+        latest: flags.latest === true,
+        artifactsRoot: flags.artifacts,
+      });
     case 'clean':
       return runCleanCommand({
         ...common,
@@ -246,6 +252,7 @@ Usage:
   lab profile list|create|remove|path [name] [--json]
   lab profile remove-plugin <name> <plugin...> [--json]
   lab scan --log <boot.err.log> [--json]
+  lab scan --latest [--artifacts <dir>] [--json]
   lab scan --list [--json]
   lab clean [--dry-run] [--older-than <minutes>] [--json]
 

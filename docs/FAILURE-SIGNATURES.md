@@ -11,6 +11,7 @@ Print the current library, with the exact fix text, from the CLI:
 ```powershell
 node bin/lab.js scan --list
 node bin/lab.js scan --list --json
+node bin/lab.js scan --latest          # rescan the newest artifacts/<run>/ boot logs
 ```
 
 ## Categories

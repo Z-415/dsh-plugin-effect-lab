@@ -63,6 +63,7 @@ output into the log pane, and never bypasses the lab's isolation rules.
 | 检查 | 验证 + 设置页截图 | `verify --screenshot home --screenshot settings` |
 | 检查 | 空会话 / 长会话 | `verify --fixture-variant empty\|long` |
 | 检查 | 查看失败签名库 | `scan --list` |
+| 检查 | 扫描最近一次运行的日志 | `scan --latest` |
 | Electron 壳 | 打开壳窗口（20 秒） | `shell --no-compare-web --show --show-hold 20000 [--native-desktop] [--probe-native-dialog]` |
 | Electron 壳 | 打开壳窗口（自己关） | `shell --no-compare-web --keep-open [--native-desktop] [--probe-native-dialog]` |
 | Electron 壳 | 壳 vs web 对比 | `shell [--native-desktop] [--probe-native-dialog]` |
