@@ -430,13 +430,17 @@ export async function runLab(options = {}) {
     progress('opening the UI in headless Edge');
     const requestedScreenshots = options.screenshots ?? ['home'];
     const wantsSettings = requestedScreenshots.includes('settings');
+    // A fixture with no events has no sidebar session row to click; only the
+    // workspace selection applies there.
+    const fixtureHasSessionRow = fixtureEnabled && (fixtureSpec?.turns?.length ?? 0) > 0;
     browser = await openUi({
       baseUrl: boot.url,
       screenshots: requestedScreenshots.filter((name) => name !== 'settings'),
       screenshotsAfter: fixtureEnabled ? ['fixture'] : [],
       screenshotsSettings: wantsSettings ? ['settings'] : [],
       clickText: fixtureEnabled ? path.basename(fixtureWorkspace) : null,
-      clickSessionRow: fixtureEnabled,
+      clickSessionRow: fixtureHasSessionRow,
+      sessionText: fixtureHasSessionRow ? fixtureTitle : null,
       openSettings: wantsSettings,
       assertTokens,
       artifactsDir: runDir,
@@ -448,11 +452,21 @@ export async function runLab(options = {}) {
       addCheck(
         checks,
         'fixture-ui-clicked',
-        browser.clickedSession === true,
-        `workspace=${browser.clicked === true}, session=${browser.clickedSession === true}`,
+        browser.clicked === true && (!fixtureHasSessionRow || browser.clickedSession === true),
+        `workspace=${browser.clicked === true}, session=${browser.clickedSession === true}`
+          + `${fixtureHasSessionRow ? '' : ' (no fixture events; session row not expected)'}`,
       );
     }
     addCheck(checks, 'dom-slots', browser.dom.slotCount > 0, `${browser.dom.slotCount} data-slot node(s)`);
+    if (browser.settleAfter) {
+      addCheck(
+        checks,
+        'browser-dom-settled',
+        browser.settleAfter.stable === true,
+        `${browser.settleAfter.slots} slot(s) after ${browser.settleAfter.waitedMs}ms`
+          + `${browser.settleAfter.stable ? '' : `, did not reach minSlots=${browser.settleAfter.minSlots ?? 'n/a'}`}`,
+      );
+    }
     const domAssertions = evaluateDomAssertions(browser.dom, {
       tokens: assertTokens,
       slots: options.assertSlots ?? [],
@@ -484,6 +498,8 @@ export async function runLab(options = {}) {
     );
     report.browser = {
       ui: browser.ui,
+      settle: browser.settle ?? null,
+      settleAfter: browser.settleAfter ?? null,
       dom: browser.dom,
       clicked: browser.clicked,
       consoleErrors: browser.consoleErrors,

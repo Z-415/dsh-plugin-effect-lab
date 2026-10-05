@@ -56,7 +56,9 @@ test('the same run repeated three times is stable and leaks nothing', {
 }, async () => {
   const roots = [];
   const ports = [];
-  const slotCounts = [];
+  const slotSets = [];
+  const settleAfterMissing = [];
+  const conversationMissing = [];
   try {
     for (let index = 0; index < 3; index += 1) {
       const root = makeRoot(`dsh-lab-stability-${index}-`);
@@ -64,11 +66,32 @@ test('the same run repeated three times is stable and leaks nothing', {
       const report = await runLab({ artifactsRoot: root, screenshots: ['home'] });
       assertClean(report);
       ports.push(portOf(report));
-      slotCounts.push(report.browser?.dom?.slotCount ?? 0);
+      // The element count is not an invariant (a transitional plateau can hold
+      // a different count for a moment), so compare the sorted, deduplicated
+      // slot-name set and require the probe to have read a settled DOM.
+      const settleAfter = report.browser?.settleAfter;
+      if (settleAfter?.stable !== true) settleAfterMissing.push(index);
+      const slots = [...(report.browser?.dom?.slots ?? [])].sort();
+      // The seeded fixture conversation must be the mounted state; the hero/
+      // onboarding page (the old 37-slot drift) is a different slot set.
+      if (!slots.includes('conversation.session') || !slots.includes('conversation.chat.node')) {
+        conversationMissing.push(index);
+      }
+      slotSets.push(slots.join('|'));
     }
     assert.equal(new Set(ports).size, 3, `expected three distinct ports, got ${ports.join(', ')}`);
-    assert.equal(new Set(slotCounts).size, 1, `slot count drifted: ${slotCounts.join(', ')}`);
-    assert.equal(slotCounts[0] > 0, true);
+    assert.deepEqual(
+      settleAfterMissing,
+      [],
+      `run(s) ${settleAfterMissing.join(', ')} never reached a settled DOM after the session click`,
+    );
+    assert.deepEqual(
+      conversationMissing,
+      [],
+      `run(s) ${conversationMissing.join(', ')} never mounted the fixture conversation`,
+    );
+    assert.equal(new Set(slotSets).size, 1, `slot name set drifted across runs:\n${slotSets.join('\n')}`);
+    assert.equal(slotSets[0].length > 0, true);
   } finally {
     for (const root of roots) fs.rmSync(root, { recursive: true, force: true });
   }

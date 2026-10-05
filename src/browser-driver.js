@@ -190,28 +190,44 @@ async function waitForUi(client, timeoutMs) {
   return { ready: false, last };
 }
 
-/** Wait until the [`data-slot`] count stops changing, so probes are comparable. */
-async function waitForStableUi(client, options = {}) {
-  const { stableMs = 1500, timeoutMs = 25_000, intervalMs = 500 } = options;
+/**
+ * Wait until the [`data-slot`] count stops changing, so probes are comparable.
+ *
+ * `minSlots` is a floor (the web baseline count): a plateau below it is a
+ * transitional state and is never accepted as stable. With `raiseToPeak` the
+ * floor also tracks the highest count seen so far, so a page that keeps
+ * mounting new slots is followed to its terminal plateau instead of freezing
+ * on an early one. This mirrors the shell-side `waitForStableShell`.
+ */
+export async function waitForStableUi(client, options = {}) {
+  const {
+    stableMs = 1500,
+    timeoutMs = 25_000,
+    intervalMs = 500,
+    minSlots = 0,
+    raiseToPeak = false,
+  } = options;
   const started = Date.now();
   let last = -1;
   let stableSince = Date.now();
   let current = 0;
+  let floor = minSlots;
   while (Date.now() - started < timeoutMs) {
     try {
       current = await evaluate(client, "document.querySelectorAll('[data-slot]').length");
     } catch {
       current = last;
     }
-    if (current !== last) {
+    if (raiseToPeak && current > floor) floor = current;
+    if (current !== last || current < floor) {
       last = current;
       stableSince = Date.now();
     } else if (Date.now() - stableSince >= stableMs) {
-      return { stable: true, slots: current, waitedMs: Date.now() - started };
+      return { stable: true, slots: current, waitedMs: Date.now() - started, minSlots: floor };
     }
     await sleep(intervalMs);
   }
-  return { stable: false, slots: current, waitedMs: Date.now() - started };
+  return { stable: false, slots: current, waitedMs: Date.now() - started, minSlots: floor };
 }
 
 async function probeDom(client, assertTokens) {
@@ -322,6 +338,7 @@ export async function openUi(options) {
     screenshotsSettings = [],
     clickText = null,
     clickSessionRow = false,
+    sessionText = null,
     openSettings = false,
     probes = {},
     probesAfter = {},
@@ -405,31 +422,78 @@ export async function openUi(options) {
     let clicked = null;
     let clickedSession = null;
     const extraAfter = {};
+    // Poll a page predicate so an interaction only fires once its target has
+    // actually rendered (the fixture session row appears asynchronously after
+    // the workspace is selected).
+    const waitFor = async (expression, { timeoutMs: waitTimeoutMs = 20_000, intervalMs = 300 } = {}) => {
+      const started = Date.now();
+      while (Date.now() - started < waitTimeoutMs) {
+        try {
+          const value = await evaluate(client, expression);
+          if (value) return value;
+        } catch {
+          // The page may still be rendering between polls.
+        }
+        await sleep(intervalMs);
+      }
+      return null;
+    };
+    const workspaceClickExpression = `(() => {
+      const primary = [...document.querySelectorAll('button, a, [role="button"]')];
+      const all = [...document.querySelectorAll('body *')];
+      const find = (nodes) => nodes.find((node) => node.textContent && node.textContent.includes(${JSON.stringify(clickText)}));
+      const element = find(primary) ?? find(all)?.closest('button, a, [role="button"], [role="treeitem"], li') ?? find(all);
+      if (!element) return false;
+      element.click();
+      return true;
+    })()`;
     if (clickText) {
-      clicked = await evaluate(client, `(() => {
-        const primary = [...document.querySelectorAll('button, a, [role="button"]')];
-        const all = [...document.querySelectorAll('body *')];
-        const find = (nodes) => nodes.find((node) => node.textContent && node.textContent.includes(${JSON.stringify(clickText)}));
-        const element = find(primary) ?? find(all);
-        if (!element) return false;
-        element.click();
-        return true;
-      })()`);
-      await sleep(1500);
+      clicked = (await waitFor(workspaceClickExpression, { timeoutMs: 20_000 })) === true;
+      if (clicked) await sleep(500);
     }
     if (clickSessionRow) {
-      clickedSession = await evaluate(client, `(() => {
+      const sessionRowExpression = `(() => {
         const root = document.querySelector('[data-slot="sidebar.workspaces"]');
         if (!root) return false;
         const all = [...root.querySelectorAll('*')];
-        const leaf = all.find((node) => node.children.length === 0 && /未命名|Untitled|New session/i.test(node.textContent || ''));
+        const wanted = ${JSON.stringify(sessionText)};
+        const matches = (text) => (wanted ? text.includes(wanted) : false) || /未命名|Untitled|New session/i.test(text);
+        const leaf = all.find((node) => node.children.length === 0 && matches(node.textContent || ''));
+        const rowSlot = root.querySelector('[data-slot="sidebar.workspaces.session.row.action"]');
+        if (!leaf && !rowSlot) return false;
         const clickable = leaf?.closest('button, [role="button"], a, li');
-        const target = clickable ?? leaf ?? [...root.querySelectorAll('button, [role="button"], a')].at(-1);
+        // The session row is a plain div with an onClick handler, so the
+        // matching leaf itself is a valid click target (the event bubbles).
+        const target = clickable ?? leaf ?? rowSlot?.closest('button, [role="button"], a, li') ?? rowSlot
+          ?? [...root.querySelectorAll('button, [role="button"], a')].at(-1);
         if (!target) return false;
         target.click();
         return true;
-      })()`);
-      await sleep(1800);
+      })()`;
+      const mountExpression = `!!document.querySelector('[data-slot="conversation.chat.node"], [data-slot="conversation.session"]')`;
+      // Under load the sidebar can take a while to render, and clicking too
+      // early silently leaves the hero/empty state mounted (the old 37-slot
+      // drift). Poll through the full deadline and re-select the workspace if
+      // the session row never showed up.
+      const deadline = Date.now() + 45_000;
+      clickedSession = false;
+      let lastWorkspaceClickAt = clicked === true ? Date.now() : 0;
+      while (Date.now() < deadline) {
+        const clickedNow = (await waitFor(sessionRowExpression, { timeoutMs: 12_000 })) === true;
+        if (!clickedNow) {
+          if (!clickText) break;
+          if (Date.now() - lastWorkspaceClickAt > 5_000) {
+            lastWorkspaceClickAt = Date.now();
+            if ((await waitFor(workspaceClickExpression, { timeoutMs: 8_000 })) === true) clicked = true;
+          }
+          continue;
+        }
+        clickedSession = true;
+        // The conversation only counts as mounted once the seeded turn view is
+        // present; a hero/onboarding page has no conversation.session slot.
+        const mounted = await waitFor(mountExpression, { timeoutMs: 15_000 });
+        if (mounted) break;
+      }
     }
     for (const name of screenshotsAfter) await capture(name);
     let openedSettings = false;
@@ -459,6 +523,18 @@ export async function openUi(options) {
       }
     }
     for (const name of screenshotsSettings) await capture(name);
+    // Clicking a workspace/session or opening settings starts a mount/transition.
+    // Re-settle after those interactions, and never accept a plateau below the
+    // pre-interaction baseline, so `probeDom` reads the terminal DOM instead of
+    // a transitional one (this count feeds the shell probe's minSlots floor).
+    const interacted = Boolean(clickText) || clickSessionRow === true || openSettings === true;
+    const settleAfter = interacted && options.settle !== false
+      ? await waitForStableUi(client, {
+        ...options.settleOptions,
+        minSlots: Math.max(options.settleOptions?.minSlots ?? 0, settle?.slots ?? 0),
+        raiseToPeak: true,
+      })
+      : null;
     // Probe after the workspace/session/settings interactions so the recorded
     // DOM matches the captured conversation state instead of a pre-mount plateau.
     const dom = await probeDom(client, assertTokens);
@@ -469,6 +545,7 @@ export async function openUi(options) {
       browser,
       ui,
       settle,
+      settleAfter,
       dom,
       clicked,
       clickedSession,
