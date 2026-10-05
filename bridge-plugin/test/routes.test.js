@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { readArtifactFile, resolveInsideArtifacts } from '../lib/artifacts-store.js';
-import { createBridgeRouteHandler } from '../lib/routes.js';
+import { createBridgeRouteHandler, loopbackOrigin } from '../lib/routes.js';
 
 function createArtifacts() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-bridge-routes-'));
@@ -23,7 +23,7 @@ function createArtifacts() {
   return { root, runDir };
 }
 
-function invoke(handler, url, method = 'GET') {
+function invoke(handler, url, method = 'GET', headers = {}) {
   return new Promise((resolve) => {
     const chunks = [];
     const res = {
@@ -32,9 +32,18 @@ function invoke(handler, url, method = 'GET') {
       setHeader(name, value) { this.headers[name.toLowerCase()] = value; },
       end(body) { resolve({ status: this.statusCode, headers: this.headers, body: body ?? Buffer.concat(chunks) }); },
     };
-    handler({ method, url }, res);
+    handler({ method, url, headers }, res);
   });
 }
+
+test('loopbackOrigin accepts only loopback Host headers', () => {
+  assert.equal(loopbackOrigin({ headers: { host: '127.0.0.1:19387' } }), 'http://127.0.0.1:19387');
+  assert.equal(loopbackOrigin({ headers: { host: 'localhost:8080' } }), 'http://localhost:8080');
+  assert.equal(loopbackOrigin({ headers: { host: '[::1]:8080' } }), 'http://[::1]:8080');
+  assert.equal(loopbackOrigin({ headers: { host: '192.168.1.5:19387' } }), null);
+  assert.equal(loopbackOrigin({ headers: { host: 'evil.example.com' } }), null);
+  assert.equal(loopbackOrigin({ headers: {} }), null);
+});
 
 test('serves the latest report html from the artifacts root', async () => {
   const { root } = createArtifacts();
@@ -81,12 +90,13 @@ test('latest.json returns hasReport and the summarized verdict', async () => {
   const { root } = createArtifacts();
   try {
     const handler = createBridgeRouteHandler({ getConfig: () => ({ artifactsDir: root, routePrefix: '/dsh-lab-bridge' }) });
-    const res = await invoke(handler, '/dsh-lab-bridge/latest.json');
+    const res = await invoke(handler, '/dsh-lab-bridge/latest.json', 'GET', { host: '127.0.0.1:19387' });
     assert.equal(res.status, 200);
     const payload = JSON.parse(String(res.body));
     assert.equal(payload.hasReport, true);
     assert.equal(payload.ok, true);
     assert.equal(payload.runId, 'run-1');
+    assert.equal(payload.loopbackReportUrl, 'http://127.0.0.1:19387/dsh-lab-bridge/latest/report.html');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

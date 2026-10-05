@@ -80,10 +80,21 @@ function placeholderPage(message) {
 <body>
 <h1>还没有实验舱报告</h1>
 <p>${text}</p>
-<p>先调用工具 <code>lab_verify_plugin</code>，完成后刷新本页。</p>
+<p>请在 DSH 的「实验舱桥接」面板里发起验证；本页只读，关闭标签页或返回上一页即可回到 DSH。</p>
 </body>
 </html>
 `;
+}
+
+/**
+ * Build the loopback origin from the request Host so the client can hand an
+ * http:// URL to the OS browser (the shell denies dsh-app:// window opens).
+ * Only a loopback Host is accepted; anything else yields null.
+ */
+export function loopbackOrigin(req) {
+  const host = String(req?.headers?.host ?? '').trim();
+  if (!/^(127\.0\.0\.1|localhost|\[::1\]):\d{1,5}$/i.test(host)) return null;
+  return `http://${host}`;
 }
 
 /** The latest run's directory *name* relative to the artifacts root. */
@@ -129,6 +140,7 @@ export function createBridgeRouteHandler({ getConfig }) {
       return;
     }
     if (rest === '' || rest === '/') {
+      const origin = loopbackOrigin(req);
       json(res, 200, {
         routes: {
           summary: `${prefix}/latest.json`,
@@ -137,10 +149,13 @@ export function createBridgeRouteHandler({ getConfig }) {
           reportMarkdown: `${prefix}/latest/report.md`,
         },
         artifactsDir: config.artifactsDir,
+        loopbackReportUrl: origin ? `${origin}${prefix}/latest/report.html` : null,
       });
       return;
     }
     if (rest === '/latest.json') {
+      const origin = loopbackOrigin(req);
+      const loopbackReportUrl = origin ? `${origin}${prefix}/latest/report.html` : null;
       const latest = readLatestReport(config.artifactsDir);
       if (!latest) {
         json(res, 200, {
@@ -148,11 +163,13 @@ export function createBridgeRouteHandler({ getConfig }) {
           ok: false,
           message: '还没有实验舱报告。先调用 lab_verify_plugin。',
           reportUrl: `${prefix}/latest/report.html`,
+          loopbackReportUrl,
         });
         return;
       }
       json(res, 200, {
         hasReport: true,
+        loopbackReportUrl,
         ...summarizeReport({ report: latest.report, exitCode: 0, timedOut: false }),
       });
       return;

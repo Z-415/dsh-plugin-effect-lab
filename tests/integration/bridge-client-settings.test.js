@@ -26,6 +26,15 @@ const BRIDGE_SECTION_PROBE = `(async () => {
   if (!nav) return JSON.stringify({ found: false });
   (nav.closest('button, [role="button"], a') ?? nav).click();
   await wait(2000);
+  const locationBefore = window.location.href;
+  const bridgeAnchors = [...document.querySelectorAll('a')]
+    .filter((el) => (el.getAttribute('href') ?? '').includes('/dsh-lab-bridge')).length;
+  let openedUrl = null;
+  const originalOpen = window.open;
+  window.open = (url, target, features) => { openedUrl = url; return { url, target, features }; };
+  const externalButton = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('在浏览器打开'));
+  if (externalButton) externalButton.click();
+  window.open = originalOpen;
   const textAfterNav = document.body.innerText;
   const previewButton = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('内嵌查看报告'));
   if (previewButton) previewButton.click();
@@ -35,6 +44,10 @@ const BRIDGE_SECTION_PROBE = `(async () => {
     found: true,
     hasRunId: textAfterNav.includes('b2-client-run'),
     hasPreviewButton: Boolean(previewButton),
+    hasExternalButton: Boolean(externalButton),
+    openedUrl,
+    bridgeAnchors,
+    locationUnchanged: window.location.href === locationBefore,
     hasIframe: Boolean(iframe),
     iframeHasReport: Boolean(iframe && iframe.srcdoc && iframe.srcdoc.includes('B2 inline report')),
   });
@@ -111,6 +124,10 @@ test('the bridge settings section shows the latest summary and previews the repo
     assert.equal(probe.found, true, 'the 实验舱桥接 settings section must be present');
     assert.equal(probe.hasRunId, true, 'the section must show the latest seeded runId');
     assert.equal(probe.hasPreviewButton, true, 'the section must expose the inline preview button');
+    assert.equal(probe.bridgeAnchors, 0, 'no anchor may navigate the SPA to the report URL');
+    assert.equal(probe.locationUnchanged, true, 'clicking controls must not navigate the top-level SPA');
+    assert.equal(probe.hasExternalButton, true, 'the loopback report URL must be offered as an external-open button');
+    assert.match(probe.openedUrl ?? '', /^http:\/\/127\.0\.0\.1:\d+\/dsh-lab-bridge\/latest\/report\.html$/);
     assert.equal(probe.hasIframe, true, 'clicking preview must mount the report iframe');
     assert.equal(probe.iframeHasReport, true, 'the iframe must contain the seeded report HTML');
     assert.equal(ui.settingsProbe?.totalSlots > 0, true);
