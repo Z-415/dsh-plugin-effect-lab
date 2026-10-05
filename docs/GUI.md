@@ -59,7 +59,9 @@ footer (open report / open artifacts / abort).
 The whole window is one flat light palette: white page, white panels, and a
 white log pane with dark text. Buttons are borderless: the fill carries the
 state and hovering steps the background colour (no outline), the way DSH's own
-buttons behave.
+buttons behave. Plain buttons use the light-blue fill (`#f2f6ff`); only
+**验证这个插件** (solid accent), **在壳窗口打开（自己关）** (blue-100) and the two
+red-tinted destructive actions (**卸载这个插件**, **清理残留临时目录**) differ.
 
 ### Title bar and menu
 

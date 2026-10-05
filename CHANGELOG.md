@@ -19,9 +19,14 @@
   帮助 - while Electron still draws the minimise/maximise/close buttons. The
   dark console became a white log pane with dark text, so the page is one flat
   light palette.
-- Buttons lost their outlines: they are filled (`#f3f4f6`) and hovering steps
-  the background colour instead of drawing a border, like DSH's own buttons.
-  The primary / strong / danger variants keep their fills and are borderless too.
+- Buttons lost their outlines and use the light-blue fill (`#f2f6ff`) with the
+  accent text colour; hovering steps the background instead of drawing a
+  border, like DSH's own buttons. Only four actions keep a fill of their own:
+  **验证这个插件** (solid accent), **在壳窗口打开（自己关）** (blue-100),
+  **卸载这个插件** and **清理残留临时目录** (soft red).
+- The 插件 group is re-ordered: the two **在壳窗口打开** buttons share the first
+  row, the other actions follow, and **验证这个插件** sits alone on the last,
+  full-width row.
 
 ### Fixed
 

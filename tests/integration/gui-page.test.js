@@ -309,12 +309,14 @@ const BUTTONS = `(() => {
   const read = (selector) => {
     const cs = getComputedStyle(document.querySelector(selector));
     const transparent = cs.borderTopColor === 'rgba(0, 0, 0, 0)' || cs.borderTopColor === 'transparent';
-    return { bg: cs.backgroundColor, borderless: transparent };
+    return { bg: cs.backgroundColor, color: cs.color, borderless: transparent };
   };
   return JSON.stringify({
     normal: read('#runShellPluginTimed'),
+    strong: read('#runShellPlugin'),
     primary: read('#runVerifyPlugin'),
     danger: read('#runRemovePlugin'),
+    preset: read('button[data-args="verify"]'),
     menu: read('.menu-btn'),
     errors: window.__rendererErrors,
   });
@@ -464,8 +466,14 @@ test('every GUI button dispatches a lab command without a renderer error', {
       if (name === 'errors') continue;
       assert.equal(style.borderless, true, `${name} keeps a border: ${JSON.stringify(buttons)}`);
     }
-    assert.notEqual(buttons.normal.bg, 'rgb(255, 255, 255)', JSON.stringify(buttons));
+    // Plain buttons are the light blue; the accents step apart from them.
+    assert.equal(buttons.normal.bg, 'rgb(242, 246, 255)', JSON.stringify(buttons));
+    assert.equal(buttons.preset.bg, 'rgb(242, 246, 255)', JSON.stringify(buttons));
+    assert.equal(buttons.strong.bg, 'rgb(219, 234, 254)', JSON.stringify(buttons));
     assert.equal(buttons.primary.bg, 'rgb(37, 99, 235)', JSON.stringify(buttons));
+    assert.equal(buttons.danger.bg, 'rgb(253, 241, 240)', JSON.stringify(buttons));
+    // Title-bar menu buttons keep plain text instead of the accent colour.
+    assert.equal(buttons.menu.color, 'rgb(31, 35, 41)', JSON.stringify(buttons));
   } finally {
     if (ui) await ui.close();
     fs.rmSync(page.dir, { recursive: true, force: true });

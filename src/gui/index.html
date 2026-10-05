@@ -31,14 +31,15 @@
   .apptitle { font-size: 12.5px; font-weight: 650; white-space: nowrap; }
   .menubar { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
   .menu { position: relative; flex: 0 0 auto; }
-  .menu-btn { min-height: 24px; padding: 2px 8px; white-space: nowrap; border-color: transparent; background: transparent; font-size: 12.5px; }
+  .menu-btn { min-height: 24px; padding: 2px 8px; white-space: nowrap; color: var(--text);
+              border-color: transparent; background: transparent; font-size: 12.5px; }
   .menu-btn:hover:not(:disabled), .menu.open .menu-btn { background: #f2f4f7; }
   .menu-pop { position: absolute; top: calc(100% + 4px); left: 0; z-index: 50; display: none;
               min-width: 168px; flex-direction: column; padding: 4px; background: var(--panel);
               border: 1px solid var(--line-strong); border-radius: 8px; }
   .menu.open .menu-pop { display: flex; }
   .menu-pop button { justify-content: flex-start; min-height: 28px; padding: 4px 10px; white-space: nowrap;
-                     font-weight: 400; border-color: transparent; background: transparent; }
+                     color: var(--text); font-weight: 400; border-color: transparent; background: transparent; }
   .menu-pop button:hover:not(:disabled) { background: #f2f4f7; }
   .menu-sep { height: 1px; margin: 4px 6px; background: var(--line); }
   .env { margin-left: auto; min-width: 0; color: var(--muted); font-size: 11.5px;
@@ -64,19 +65,21 @@
   .actions + .actions { margin-top: 8px; }
   .actions > .span2 { grid-column: 1 / -1; }
   /* Borderless buttons: the fill carries the state and hover steps the
-     background colour instead of drawing an outline (the DSH button feel). */
+     background colour instead of drawing an outline (the DSH button feel).
+     Plain buttons use the light-blue fill; primary / strong / danger stand
+     apart as the few accent actions. */
   button { display: inline-flex; align-items: center; justify-content: center; text-align: center;
            min-height: 32px; padding: 6px 12px; font: inherit; font-size: 12.5px; font-weight: 500;
-           color: var(--text); background: #f3f4f6; border: 1px solid transparent; border-radius: 6px;
+           color: var(--accent-dark); background: var(--accent-weak); border: 1px solid transparent; border-radius: 6px;
            cursor: pointer; transition: background-color .12s ease, color .12s ease; }
-  button:hover:not(:disabled) { background: #e7eaee; }
-  button:active:not(:disabled) { background: #dde1e7; }
+  button:hover:not(:disabled) { background: #e2ebff; }
+  button:active:not(:disabled) { background: #d3e0fb; }
   button:focus-visible { outline: 2px solid #b9cdf6; outline-offset: 1px; }
   button:disabled { opacity: .5; cursor: default; }
   button.primary { color: #fff; background: var(--accent); }
   button.primary:hover:not(:disabled) { background: var(--accent-dark); }
-  button.strong { color: var(--accent-dark); background: var(--accent-weak); }
-  button.strong:hover:not(:disabled) { background: #e2ebff; }
+  button.strong { color: var(--accent-dark); background: #dbeafe; font-weight: 600; }
+  button.strong:hover:not(:disabled) { background: #c9dcfd; }
   button.danger { color: var(--bad); background: #fdf1f0; }
   button.danger:hover:not(:disabled) { background: #f9e3e1; }
   .checks { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; }
@@ -174,15 +177,15 @@
           <button id="refreshProfiles" title="重新读取 .lab-profiles">刷新</button>
         </div>
         <div class="actions">
-          <button id="runVerifyPlugin" class="primary" title="安装或加载插件，生成报告和截图">验证这个插件（出报告截图）</button>
           <button id="runShellPlugin" class="strong" title="打开壳窗口，你自己关">在壳窗口打开（自己关）</button>
           <button id="runShellPluginTimed" title="打开壳窗口，20 秒后自动关闭">在壳窗口打开（20 秒）</button>
           <button id="runShellCompare" title="同一份插件分别跑壳与 web，对比 DOM / token / 像素">壳 vs web 对比</button>
-        </div>
-        <div class="actions">
           <button id="runMatrixPlugin" title="用第二个插件和当前插件一起跑壳窗口">再加一个插件一起验证</button>
           <button id="runRemovePlugin" class="danger" title="只从这个持久 profile 里卸掉该插件">卸载这个插件</button>
-          <button id="runListProfiles" class="span2" title="列出 .lab-profiles 下所有 profile">列出 profile</button>
+          <button id="runListProfiles" title="列出 .lab-profiles 下所有 profile">列出 profile</button>
+        </div>
+        <div class="actions">
+          <button id="runVerifyPlugin" class="primary span2" title="安装或加载插件，生成报告和截图">验证这个插件（出报告截图）</button>
         </div>
         <div class="checks">
           <label class="chk"><input type="checkbox" id="nativeDesktop"> 原生桌面：真实文件夹对话框 + 系统通知</label>
@@ -195,7 +198,7 @@
           <div class="grouphead"><h2>检查</h2></div>
           <div class="actions">
             <button data-args="doctor" title="环境自检，必须 PASS">自检 doctor</button>
-            <button class="strong" data-args="verify" title="不装新插件的快速验证">快速验证</button>
+            <button data-args="verify" title="不装新插件的快速验证">快速验证</button>
             <button data-args="verify|--screenshot|home|--screenshot|settings">验证 + 设置页截图</button>
             <button data-args="verify|--fixture-variant|empty">空会话</button>
             <button data-args="verify|--fixture-variant|long">长会话（12 轮）</button>
