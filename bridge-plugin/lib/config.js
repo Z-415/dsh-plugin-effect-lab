@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { findNodeExecutable } from './node-locator.js';
 
 /**
  * Path resolution for the bridge.
@@ -62,16 +63,6 @@ export function resolveLabEntry(rawValue) {
   return { labRoot: resolved, labEntry: entry };
 }
 
-function resolveNodeExecutable(rawValue) {
-  const value = nonEmptyString(rawValue);
-  if (!value) return process.execPath;
-  const resolved = path.resolve(value);
-  if (!fs.existsSync(resolved)) {
-    throw new LabConfigError(`nodePath 不存在：${resolved}。请指向 node.exe，或留空以使用当前进程的可执行文件。`);
-  }
-  return resolved;
-}
-
 function resolveArtifactsDir(config, env, labRoot) {
   const configured = nonEmptyString(config?.artifactsDir) ?? nonEmptyString(env.DSH_LAB_BRIDGE_ARTIFACTS);
   if (configured) return path.resolve(configured);
@@ -114,7 +105,7 @@ export function resolveBridgeConfig(config = {}, env = process.env, options = {}
   return {
     labRoot,
     labEntry,
-    nodeExe: resolveNodeExecutable(config?.nodePath),
+    nodeExe: findNodeExecutable({ nodePath: config?.nodePath, env }),
     artifactsDir: resolveArtifactsDir(config, env, labRoot),
     profilesRoot: path.resolve(nonEmptyString(env.DSH_LAB_PROFILES) ?? path.join(labRoot, '.lab-profiles')),
     timeoutMs: resolveTimeoutMs(config?.timeoutMs),

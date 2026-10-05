@@ -447,3 +447,56 @@ test('the shell entry accepts a selected profile', async () => {
   assert.equal(ok.status, 202);
   assert.deepEqual(calls, [{ plugin: 'p', online: false, profileLab: 'test1' }]);
 });
+
+test('the launch route requires the token and starts the fixed launcher', async () => {
+  const calls = [];
+  const handler = createBridgeRouteHandler({
+    getConfig: () => ({ artifactsDir: 'a', routePrefix: '/dsh-lab-bridge' }),
+    getToken: () => 'tok-123',
+    launcher: async () => {
+      calls.push('launch');
+      return { pid: 4242, args: ['lab.js', 'gui'] };
+    },
+  });
+  const noToken = await invoke(handler, '/dsh-lab-bridge/launch', 'POST', { host: '127.0.0.1:1' });
+  assert.equal(noToken.status, 401);
+  assert.equal(calls.length, 0);
+
+  const ok = await invoke(
+    handler,
+    '/dsh-lab-bridge/launch',
+    'POST',
+    { host: '127.0.0.1:1', 'x-dsh-lab-token': 'tok-123' },
+  );
+  assert.equal(ok.status, 202);
+  assert.deepEqual(calls, ['launch']);
+  assert.equal(JSON.parse(String(ok.body)).launched.pid, 4242);
+});
+
+test('the launch route maps throttle to 429 and rejects non-loopback', async () => {
+  const throttled = createBridgeRouteHandler({
+    getConfig: () => ({ artifactsDir: 'a', routePrefix: '/dsh-lab-bridge' }),
+    getToken: () => 'tok-123',
+    launcher: async () => {
+      const error = new Error('busy');
+      error.code = 'LAUNCH_THROTTLED';
+      throw error;
+    },
+  });
+  const busy = await invoke(
+    throttled,
+    '/dsh-lab-bridge/launch',
+    'POST',
+    { host: '127.0.0.1:1', 'x-dsh-lab-token': 'tok-123' },
+  );
+  assert.equal(busy.status, 429);
+
+  const denied = await invoke(
+    throttled,
+    '/dsh-lab-bridge/launch',
+    'POST',
+    { host: '127.0.0.1:1', 'x-dsh-lab-token': 'tok-123' },
+    { remoteAddress: '10.0.0.9' },
+  );
+  assert.equal(denied.status, 403);
+});

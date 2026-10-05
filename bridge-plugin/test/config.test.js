@@ -18,11 +18,15 @@ function makeLabRoot() {
   return root;
 }
 
+function withPath(env = {}) {
+  return { PATH: process.env.PATH, ...env };
+}
+
 test('labPath wins over DSH_LAB_HOME', () => {
   const configured = makeLabRoot();
   const envRoot = makeLabRoot();
   try {
-    const config = resolveBridgeConfig({ labPath: configured }, { DSH_LAB_HOME: envRoot });
+    const config = resolveBridgeConfig({ labPath: configured }, withPath({ DSH_LAB_HOME: envRoot }));
     assert.equal(config.labRoot, path.resolve(configured));
     assert.equal(config.labEntry, path.join(path.resolve(configured), 'bin', 'lab.js'));
   } finally {
@@ -34,7 +38,7 @@ test('labPath wins over DSH_LAB_HOME', () => {
 test('DSH_LAB_HOME is used when no labPath is configured', () => {
   const envRoot = makeLabRoot();
   try {
-    const config = resolveBridgeConfig({}, { DSH_LAB_HOME: envRoot });
+    const config = resolveBridgeConfig({}, withPath({ DSH_LAB_HOME: envRoot }));
     assert.equal(config.labRoot, path.resolve(envRoot));
   } finally {
     fs.rmSync(envRoot, { recursive: true, force: true });
@@ -68,7 +72,7 @@ test('the co-located bridge-plugin layout auto-detects its parent lab', () => {
     const packageDir = path.join(root, 'bridge-plugin');
     fs.mkdirSync(packageDir, { recursive: true });
     assert.equal(detectLabRootFromPackage(packageDir), path.resolve(root));
-    const config = resolveBridgeConfig({}, {}, { packageDir });
+    const config = resolveBridgeConfig({}, withPath(), { packageDir });
     assert.equal(config.labRoot, path.resolve(root));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -78,15 +82,15 @@ test('the co-located bridge-plugin layout auto-detects its parent lab', () => {
 test('artifact and timeout defaults are stable and overridable', () => {
   const root = makeLabRoot();
   try {
-    const fallback = resolveBridgeConfig({ labPath: root }, {});
+    const fallback = resolveBridgeConfig({ labPath: root }, withPath());
     assert.equal(path.basename(fallback.artifactsDir), DEFAULT_ARTIFACTS_DIRNAME);
     assert.equal(fallback.timeoutMs, 240_000);
-    assert.equal(fallback.nodeExe, process.execPath);
+    assert.equal(path.basename(fallback.nodeExe).toLowerCase().startsWith('node'), true);
     assert.equal(fallback.routePrefix, '/dsh-lab-bridge');
 
     const explicit = resolveBridgeConfig(
       { labPath: root, artifactsDir: path.join(root, 'artifacts'), timeoutMs: 1000 },
-      {},
+      withPath(),
     );
     assert.equal(explicit.artifactsDir, path.join(path.resolve(root), 'artifacts'));
     assert.equal(explicit.timeoutMs, 1000);
@@ -99,7 +103,7 @@ test('DSH_LAB_BRIDGE_ARTIFACTS overrides the artifact location', () => {
   const root = makeLabRoot();
   const artifacts = path.join(os.tmpdir(), 'dsh-lab-bridge-custom-artifacts');
   try {
-    const config = resolveBridgeConfig({ labPath: root }, { DSH_LAB_BRIDGE_ARTIFACTS: artifacts });
+    const config = resolveBridgeConfig({ labPath: root }, withPath({ DSH_LAB_BRIDGE_ARTIFACTS: artifacts }));
     assert.equal(config.artifactsDir, path.resolve(artifacts));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

@@ -167,7 +167,13 @@ function latestRunName(artifactsDir) {
  * Build the request handler. All config resolution is deferred to request
  * time through `getConfig`, so plugin startup stays cheap.
  */
-export function createBridgeRouteHandler({ getConfig, controller = null, getToken = () => null, shellLauncher = null }) {
+export function createBridgeRouteHandler({
+  getConfig,
+  controller = null,
+  getToken = () => null,
+  shellLauncher = null,
+  launcher = null,
+}) {
   return async function handleBridgeRequest(req, res) {
     let pathname;
     try {
@@ -243,6 +249,24 @@ export function createBridgeRouteHandler({ getConfig, controller = null, getToke
     if (rest === '/verify/cancel' && method === 'POST') {
       if (!authorizeControl(req, res, getToken)) return;
       json(res, 200, { job: publicJobView(controller?.cancel?.() ?? null) });
+      return;
+    }
+    if (rest === '/launch' && method === 'POST') {
+      if (!authorizeControl(req, res, getToken)) return;
+      if (typeof launcher !== 'function') {
+        json(res, 503, { error: 'launcher is not available' });
+        return;
+      }
+      try {
+        const launched = await launcher();
+        json(res, 202, { launched });
+      } catch (error) {
+        if (error?.code === 'LAUNCH_THROTTLED') {
+          json(res, 429, { error: String(error?.message ?? error) });
+          return;
+        }
+        json(res, 500, { error: String(error?.message ?? error) });
+      }
       return;
     }
     if (rest === '/shell' && method === 'POST') {

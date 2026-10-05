@@ -7,6 +7,7 @@ import { runLabVerify, spawnLabShell } from './lab-cli.js';
 import { summarizeReport } from './report-summary.js';
 import { createBridgeRouteHandler } from './routes.js';
 import { createVerifyController } from './verify-controller.js';
+import { createGuiLauncher } from './launch.js';
 
 /**
  * dsh-plugin-effect-lab-bridge — host half.
@@ -146,6 +147,7 @@ export function apply(ctx, config = {}) {
   }
 
   const controller = createVerifyController({ getConfig });
+  const launcher = createGuiLauncher({ getConfig });
 
   const webServer = ctx.webServer;
   if (!webServer || typeof webServer.register !== 'function') {
@@ -158,6 +160,7 @@ export function apply(ctx, config = {}) {
       getConfig,
       controller,
       getToken: () => controlToken,
+      launcher,
       shellLauncher: (input) => {
         const resolved = getConfig();
         return spawnLabShell({
