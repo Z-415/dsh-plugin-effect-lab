@@ -45,7 +45,7 @@ An agent using this tool should:
 19. pass an explicit `--runtime` or `--browser` only when that exact path must
     be used; the command fails if it is missing instead of falling back.
 20. run `test:e2e` with `DSH_LAB_E2E=1`. It executes integration files
-    sequentially and takes about 100 seconds (two concurrent runs plus three
+    sequentially and takes about 140 seconds (two concurrent runs plus three
     stability repeats).
 21. express DOM checks with `--assert-token` / `--assert-slot` /
     `--assert-body-attr` / `--min-slots`; the checks are evaluated by
@@ -64,7 +64,10 @@ An agent using this tool should:
 25. read `report.shell.capabilities` for desktop-only surfaces. Window controls
     and the clipboard round-trip are real; the directory picker is a stub that
     returns the fixture workspace, and notifications are recorded but
-    suppressed. Never expect a native dialog or an OS toast.
+    suppressed. Add `--native-desktop --show` for the real
+    `dialog.showOpenDialog` / `Notification` paths (the OS toast is asserted;
+    the modal folder dialog needs `--probe-native-dialog` and a human). A
+    visible run also creates a real tray (`shell-tray`).
 26. open `report.html` (or `matrix.html`) when a human needs to read a run: it
     embeds the screenshots and the diffs and needs no server. `--no-html` skips
     it. Use `lab shell --show` (optionally `--keep-open`) when someone needs to
@@ -85,6 +88,33 @@ An agent using this tool should:
     never touches the real `~/.dsh`. Adding a plugin audits the whole profile
     (`plugin-profile-audit`), which is the only place an A+B-only conflict
     shows up - a per-run precheck cannot see A. One-shot runs stay the default.
+
+29. use `lab profile remove-plugin <name> <plugin>` to uninstall a single
+    plugin from a persistent profile. Selectors accept a bare name,
+    `name@version`, or the recorded spec; the bundle order and the
+    `link:`/`file:` junction are cleaned up with `removeTreeSafely()`, so the
+    plugin source is never touched.
+30. read both signature sources: `report.signatureHits` (boot logs, deduped
+    with the console) and `report.consoleSignatureHits` (renderer only). When a
+    failed run matches no fatal signature the report carries
+    `report.failureContext` (last 30 boot lines + console/page errors); that is
+    the raw material for a new entry in `src/log-scanner.js`. `lab scan --list`
+    prints the 22-entry library and `--explain` prints the lines around a hit.
+31. use `lab runtimes` to see every official launcher the machine has and its
+    verdict (`verified` / `untested` / `unsupported` / `unknown`). Add installs
+    with `DSH_LAB_RUNTIMES` (semicolon-separated `dsh.cmd` or install dir);
+    `lab matrix --config X --runtime-matrix` runs the same matrix once per
+    supported runtime. Read `docs/VERSION-POLICY.md` before promoting a version:
+    a new 0.2.x passes with an informational note, not a failure.
+32. use `lab clean` (or `--dry-run` first) to remove leftover temp directories
+    **and** reap orphan lab processes. A process is only reaped when its run
+    directory is gone or is being removed, so a concurrent run is safe.
+33. leave `--boot-transport` at its `stdout` default. The `ipc` value is
+    implemented and tested (direct host spawn + `ipc` stdio, typed
+    `{ type: 'ready', url, injections }` rows, packaged-dist index), but the
+    isolated `dsh web` app never sends that message; only the app's private
+    `dsh-desktop-host/lib/index.js` entry does, and the lab must not run it.
+    `shell-boot-globals` / `shell-boot-injections` are the always-on evidence.
 
 Do not attach large screenshots to a model context. `artifacts/**/screenshots`
 are evidence for humans; machine decisions come from the DOM/token JSON.
