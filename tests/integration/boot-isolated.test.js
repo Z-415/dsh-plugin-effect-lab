@@ -20,7 +20,9 @@ test('isolated web boot captures UI, cleans up, and leaves the real home unchang
       assertTokens: ['--dsw-alias-bg-base'],
       artifactsRoot,
     });
-    assert.equal(report.runtime.version, '0.2.0-rc.2');
+    // The installed version can move with an official update; the compatibility
+    // verdict is the stable contract (see docs/VERSION-POLICY.md).
+    assert.equal(report.runtime.compat?.supported, true, JSON.stringify(report.runtime));
     assert.equal(report.cleanup.homeRemoved, true);
     assert.deepEqual(report.cleanup.portsLeft, []);
     assert.equal(report.cleanup.processesLeft, 0);

@@ -4,6 +4,7 @@ Isolated plugin compatibility and effect verification for the official
 DeepSeek Harness Desktop runtime `0.2.0-rc.2`.
 
 > 接手继续开发请看 [docs/HANDOFF-20261005.md](docs/HANDOFF-20261005.md)
+> 官方 DSH 升级后怎么适配请看 [docs/VERSION-POLICY.md](docs/VERSION-POLICY.md)
 > （状态、命令、代码地图、踩过的坑、检查清单）。
 
 ## Desktop GUI
@@ -122,6 +123,8 @@ node bin/lab.js verify --assert-slot conversation.composer --assert-body-attr st
 node bin/lab.js verify --plugin dsh-plugin-wallpaper-engine@1.2.0 --online --route /wallpaper-engine/inventory
 node bin/lab.js matrix --config .\fixtures\matrix\effect-conflict.json
 node bin/lab.js matrix --config .\fixtures\matrix\theme-conflict.json --online
+node bin/lab.js runtimes                       # official DSH versions this machine has
+node bin/lab.js matrix --config .\fixtures\matrix\effect-conflict.json --runtime-matrix
 node bin/lab.js shell
 node bin/lab.js shell --plugin dsh-plugin-wallpaper-engine@1.2.0 --online
 node bin/lab.js shell --show                          # real window, 6s hold

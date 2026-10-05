@@ -485,6 +485,35 @@ Final suite: unit 167/167, integration 15/15.
 
 Final suite: unit 174/174, integration 15/15.
 
+## 0.1.0 - 2026-10-05 (runtime version policy and version matrix)
+
+### Added
+
+- `src/runtime-versions.js`: the single source of truth for which official DSH
+  versions the lab accepts, with four verdicts — `verified` / `untested` /
+  `unsupported` / `unknown`. `doctor`, `verify`/`capture`, and `shell` use it for
+  their `runtime-version` check, so an official 0.2.x update passes with an
+  informational note instead of failing every run; `report.runtime.compat`
+  records the verdict.
+- `lab runtimes [--json]`: every distinct official launcher this machine can
+  see, with its version and verdict. Extra installs come from
+  `DSH_LAB_RUNTIMES` (semicolon-separated `dsh.cmd` or install directory), which
+  also feeds `--runtime` resolution.
+- `lab matrix --config X --runtime-matrix`: runs the same matrix once per
+  discovered supported runtime and writes
+  `artifacts/<id>/runtime-matrix.{json,md}`, with per-version classification and
+  conflict counts. Unsupported runtimes are skipped and listed, never run.
+- `docs/VERSION-POLICY.md`: the verdicts, the promotion procedure, and the list
+  of version-specific assumptions to re-check after an official update.
+
+### Changed
+
+- Tests no longer pin the exact installed version: they assert
+  `report.runtime.compat.supported` and that `readRuntimeVersion` parses a
+  semver, so an official update does not break the suite by itself.
+
+Final suite: unit 182/182, integration 15/15.
+
 ## 0.1.0 - 2026-10-05 (matrix back in the GUI, collapsed)
 
 ### Added

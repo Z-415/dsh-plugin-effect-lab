@@ -1,9 +1,42 @@
-import { runMatrix } from '../matrix-runner.js';
+import { runMatrix, runRuntimeMatrix } from '../matrix-runner.js';
 
 export async function runMatrixCommand(options) {
   if (!options.configFile) {
     process.stderr.write('matrix needs --config <file.json>\n');
     return 2;
+  }
+  if (options.runtimeMatrix === true) {
+    const summary = await runRuntimeMatrix({
+      configFile: options.configFile,
+      artifactsRoot: options.artifactsRoot,
+      browserPath: options.browserPath,
+      online: options.online === true,
+      html: options.html,
+      runtimeTimeoutMs: options.runtimeTimeoutMs,
+    });
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+    } else {
+      process.stdout.write(`DSH 插件效果实验舱 · 版本矩阵: ${summary.ok ? '通过' : '未通过'} (${summary.matrixId})\n`);
+      for (const entry of summary.runtimes) {
+        process.stdout.write(
+          `[${entry.ok ? '通过' : '失败'}] ${entry.version ?? 'unknown'} [${entry.status}]`
+            + ` ${entry.runCount} 个组合: ${entry.runDir}\n`,
+        );
+        if (entry.classification) {
+          process.stdout.write(
+            `[分类] ${entry.version}: coexist=${entry.classification.coexist.length}`
+              + ` manual-review=${entry.classification['manual-review'].length}`
+              + ` high-conflict=${entry.classification['high-conflict'].length}\n`,
+          );
+        }
+      }
+      for (const entry of summary.skipped) {
+        process.stdout.write(`[跳过] ${entry.version ?? 'unknown'}: ${entry.detail ?? entry.error ?? ''}\n`);
+      }
+      process.stdout.write(`汇总: ${summary.artifacts.summaryMd}\n`);
+    }
+    return summary.ok ? 0 : 1;
   }
   const result = await runMatrix({
     configFile: options.configFile,

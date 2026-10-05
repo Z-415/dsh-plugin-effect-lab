@@ -44,6 +44,7 @@ import {
   writeText,
 } from './report-writer.js';
 import { locateRuntime, readRuntimeVersion } from './runtime-locator.js';
+import { classifyRuntimeVersion, isInformationalRuntime } from './runtime-versions.js';
 import { probeRoutes } from './route-probe.js';
 import { makeProfileName, makeRunId, nowIso, sleep, tail } from './util.js';
 
@@ -124,7 +125,11 @@ export async function runLab(options = {}) {
       versionOutput: tail(`${version.stdout}${version.stderr}`, 2000),
     };
     addCheck(checks, 'runtime-located', fs.existsSync(runtime.cmd), runtime.cmd);
-    addCheck(checks, 'runtime-version', version.version === '0.2.0-rc.2', `detected ${version.version ?? 'unknown'}`);
+    const runtimeCompat = classifyRuntimeVersion(version.version);
+    report.runtime.compat = runtimeCompat;
+    addCheck(checks, 'runtime-version', runtimeCompat.supported, runtimeCompat.detail, {
+      informational: isInformationalRuntime(runtimeCompat),
+    });
     progress(`runtime ${version.version ?? 'unknown'}`);
 
     realBefore = snapshotRealHome();

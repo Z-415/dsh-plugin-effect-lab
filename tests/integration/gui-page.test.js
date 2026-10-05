@@ -172,6 +172,12 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(result.calls.some((args) => args[0] === 'profile'), true, JSON.stringify(result.calls));
     assert.equal(result.calls.some((args) => args[0] === 'scan'), true, 'the signature-library button must dispatch scan');
     assert.equal(result.calls.some((args) => args[0] === 'matrix'), true, 'the collapsed 更多 area must dispatch matrix');
+    assert.equal(result.calls.some((args) => args[0] === 'runtimes'), true, 'the collapsed 更多 area must dispatch runtimes');
+    assert.equal(
+      result.calls.some((args) => args[0] === 'matrix' && args.includes('--runtime-matrix')),
+      true,
+      'the cross-version matrix button must pass --runtime-matrix',
+    );
     const themeMatrix = result.calls.find((args) => args[0] === 'matrix' && args.includes('--online'));
     assert.deepEqual(
       themeMatrix.slice(0, 3),

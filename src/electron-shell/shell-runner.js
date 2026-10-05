@@ -18,6 +18,7 @@ import { writeMinimalProfile } from '../profile-builder.js';
 import { diffRealHome, snapshotRealHome } from '../real-home-guard.js';
 import { copyIfExists, prepareArtifacts, renderReportMarkdown, writeJson, writeText } from '../report-writer.js';
 import { locateRuntime, readRuntimeVersion } from '../runtime-locator.js';
+import { classifyRuntimeVersion, isInformationalRuntime } from '../runtime-versions.js';
 import { ensureDir, makeProfileName, makeRunId, nowIso, sleep, tail } from '../util.js';
 import { buildShellRuntime } from './runtime-builder.js';
 import { compareScreenshots } from '../screenshot-diff.js';
@@ -85,7 +86,11 @@ export async function runShell(options = {}) {
     progress(`runtime ${version.version ?? 'unknown'}`);
     report.runtime = { cmd: runtime.cmd, installDir: runtime.installDir, version: version.version };
     addCheck(checks, 'runtime-located', fs.existsSync(runtime.cmd), runtime.cmd);
-    addCheck(checks, 'runtime-version', version.version === '0.2.0-rc.2', version.version ?? 'unknown');
+    const runtimeCompat = classifyRuntimeVersion(version.version);
+    report.runtime.compat = runtimeCompat;
+    addCheck(checks, 'runtime-version', runtimeCompat.supported, runtimeCompat.detail, {
+      informational: isInformationalRuntime(runtimeCompat),
+    });
     realBefore = snapshotRealHome();
     residueBefore = snapshotLabResidue();
     addCheck(checks, 'real-home-baseline', true, `${Object.keys(realBefore.files).length} structural files hashed`);

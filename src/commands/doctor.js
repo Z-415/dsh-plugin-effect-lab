@@ -5,6 +5,7 @@ import { createIsolatedHome } from '../home-manager.js';
 import { runCommand } from '../process-tree.js';
 import { snapshotRealHome } from '../real-home-guard.js';
 import { locateRuntime, readRuntimeVersion } from '../runtime-locator.js';
+import { classifyRuntimeVersion } from '../runtime-versions.js';
 import { tail } from '../util.js';
 
 export async function runDoctor(options = {}) {
@@ -16,7 +17,8 @@ export async function runDoctor(options = {}) {
     add('runtime-located', fs.existsSync(runtime.cmd), runtime.cmd);
 
     const version = await readRuntimeVersion(runtime);
-    add('runtime-version', version.version === '0.2.0-rc.2', `detected ${version.version ?? 'unknown'}`);
+    const compat = classifyRuntimeVersion(version.version);
+    add('runtime-version', compat.supported, compat.detail);
 
     const major = Number(process.versions.node.split('.')[0]);
     add('node-version', major >= 22, `node ${process.versions.node}`);

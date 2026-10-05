@@ -3,6 +3,7 @@ import { runCleanCommand } from './commands/clean.js';
 import { runDoctor } from './commands/doctor.js';
 import { runGuiCommand } from './commands/gui.js';
 import { runProfileCommand } from './commands/profile.js';
+import { runRuntimesCommand } from './commands/runtimes.js';
 import { runMatrixCommand } from './commands/matrix.js';
 import { runScanCommand } from './commands/scan.js';
 import { runShellCommand } from './commands/shell.js';
@@ -25,6 +26,7 @@ const VALUE_FLAGS = new Set([
   'boot-timeout',
   'browser-timeout',
   'install-timeout',
+  'runtime-timeout',
   'log',
   'older-than',
   'config',
@@ -39,7 +41,7 @@ const BOOLEAN_FLAGS = new Set([
   'json', 'offline', 'online', 'no-fixture', 'mock-model', 'strict-console',
   'no-cache', 'no-compare-web', 'dry-run', 'help', 'h',
   'no-html', 'native-desktop', 'probe-native-dialog',
-  'list', 'latest', 'explain',
+  'list', 'latest', 'explain', 'runtime-matrix',
   'rebuild', 'install-shortcut', 'no-open',
 ]);
 
@@ -179,6 +181,13 @@ export async function main(argv) {
         online: flags.online === true,
         artifactsRoot: flags.artifacts,
         html: flags['no-html'] !== true,
+        runtimeMatrix: flags['runtime-matrix'] === true,
+        runtimeTimeoutMs: numberFlag(flags, 'runtime-timeout'),
+      });
+    case 'runtimes':
+      return runRuntimesCommand({
+        ...common,
+        runtimeTimeoutMs: numberFlag(flags, 'runtime-timeout'),
       });
     case 'shell':
       return runShellCommand({
@@ -242,7 +251,8 @@ Usage:
              [--artifacts <dir>] [--browser <exe>] [--no-fixture]
              [--mock-model] [--route /plugin/health] [--no-html] [--json]
   lab capture [same options as verify]
-  lab matrix --config <file.json> [--online] [--json]
+  lab matrix --config <file.json> [--online] [--runtime-matrix] [--json]
+  lab runtimes [--runtime-timeout <ms>] [--json]
   lab shell [--no-cache] [--no-compare-web] [--shell-timeout <ms>]
             [--plugin <spec>] [--with <spec>] [--offline|--online] [--no-fixture]
             [--fixture-variant default|empty|long]
