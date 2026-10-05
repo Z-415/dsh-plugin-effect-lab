@@ -133,18 +133,57 @@ The preload mirrors the official window names so the UI can use them, and
 |---|---|---|
 | window controls | `navigator.windowControlsOverlay` + `titleBarOverlay{height:40}` | real; `shell-window-controls` asserts available + overlay height |
 | clipboard | Electron `clipboard` in the main process | real write/read round-trip; informational because the OS clipboard is shared and another process may own it |
-| directory picker | `window.__DSH_DIRECTORY_PICKER__.pick()` | bridged and **stubbed**: returns the fixture workspace instead of opening a native dialog |
+| directory picker | `window.__DSH_DIRECTORY_PICKER__.pick()` | `stub` (default): returns the fixture workspace; `native`: real `dialog.showOpenDialog` |
 | host paths | `window.__DSH_HOST_PATHS__.pathFor(file)` | bridged stub returning `file.path` |
-| notifications | `window.__dshLabShell.notify()` -> `dsh-lab:notify` | recorded and **suppressed**: no OS toast is raised |
+| notifications | `window.__dshLabShell.notify()` -> `dsh-lab:notify` | `stub` (default): recorded and suppressed; `native`: real `Notification.show()` toast |
 
-`shell-desktop-bridges` reports the stub results; `shell-window-controls` and
-`shell-clipboard` report the real surfaces. Native dialogs and OS toasts are
-deliberately not raised because they cannot be asserted unattended.
+### Desktop modes
+
+Two modes are selected with `--native-desktop`:
+
+- **`stub`** (default). Deterministic: the picker returns the fixture directory
+  and notifications are recorded without an OS toast, so automation never
+  blocks. `shell-desktop-bridges` and `shell-notification` report the stub
+  results as informational.
+- **`native`** (`--native-desktop`, requires `--show` or `--keep-open`). The
+  main process wires the real Electron `dialog.showOpenDialog` and
+  `Notification`. The notification path *is* auto-probed and asserted
+  (`shell-notification` requires `shown >= 1`), so a real toast is raised. The
+  **folder dialog is never auto-probed** because it is modal and would block
+  the run; `shell-desktop-bridges` reports
+  `directoryPicker=native (not auto-probed ...)` and you trigger it from the
+  visible window.
+
+`--native-desktop` without `--show`/`--keep-open` is refused: the run keeps
+going in stub mode and `shell-desktop-mode` fails with the reason, instead of
+opening a modal dialog nobody can answer. `report.shell.desktopBridge` records
+the resolved mode.
+
+The bridge glue lives in `desktop-bridge.cjs` (copied next to `main.js` in the
+cached runtime) so both branches are unit-tested with fake `dialog` /
+`Notification` objects in `tests/unit/desktop-bridge.test.js`.
+
+### Screenshot capture
+
+The automated window is `opacity: 0` + `show: true`, but the Windows
+compositor still occasionally skips painting it: `capturePage()` can reject
+with `UnknownVizError` or return a stale flat frame. `captureWindowFrame()`
+retries a few times (never with `invalidate()`, which hung `capturePage()`),
+and the result's `capture = { attempts, unpainted, error }` is reported;
+`shell-capture-painted` fails if the frame never painted.
+
+The DOM probe refuses to accept an early plateau: `waitForStableShell()` only
+accepts a stable slot count once it has reached `minSlots`, which the runner
+sets to the web baseline's count. `shell-dom-stable` reports that settle.
+
+`compareScreenshots()` keeps the raw `identical` byte-equality flag and adds
+`visuallyIdentical` (`changedRatio <= 0.001`, for Edge-vs-Electron
+antialiasing). `shell-screenshot-diff` is a real check on `visuallyIdentical`,
+so a stale or genuinely divergent frame fails the run.
 
 ## Not covered
 
-- Window controls, clipboard, native file dialogs, notifications, tray, and
-  update UI are not reproduced; they need their own assertions.
+- Tray and update UI are not reproduced; they need their own assertions.
 - The lab does not inject real host boot rows over IPC, so a plugin that relies
   on desktop-only injection rows would need the packaged-dist path.
 - Desktop-only DOM attributes: the minimal launcher exposes desktop facts on

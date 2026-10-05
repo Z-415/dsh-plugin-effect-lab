@@ -38,7 +38,7 @@ const REPEATABLE = new Set(['plugin', 'with', 'screenshot', 'assert-token', 'ass
 const BOOLEAN_FLAGS = new Set([
   'json', 'offline', 'online', 'no-fixture', 'mock-model', 'strict-console',
   'no-cache', 'no-compare-web', 'dry-run', 'help', 'h',
-  'no-html',
+  'no-html', 'native-desktop',
   'rebuild', 'install-shortcut', 'no-open',
 ]);
 
@@ -187,6 +187,7 @@ export async function main(argv) {
         installTimeoutMs: numberFlag(flags, 'install-timeout'),
         assertTokens: flags['assert-token'] ?? ['--dsw-alias-bg-base'],
         compareWeb: flags['no-compare-web'] !== true,
+        nativeDesktop: flags['native-desktop'] === true,
         browserTimeoutMs: numberFlag(flags, 'browser-timeout'),
         html: flags['no-html'] !== true,
         show: flags.show === true || flags['keep-open'] === true,
@@ -237,7 +238,7 @@ Usage:
             [--plugin <spec>] [--with <spec>] [--offline|--online] [--no-fixture]
             [--fixture-variant default|empty|long]
             [--profile-lab <name>]
-            [--show] [--keep-open] [--show-hold <ms>] [--no-html]
+            [--show] [--keep-open] [--native-desktop] [--show-hold <ms>] [--no-html]
             [--browser <exe>] [--browser-timeout <ms>] [--json]
   lab gui [--install-shortcut] [--rebuild] [--no-open] [--json]
   lab profile list|create|remove|path [name] [--json]
@@ -255,6 +256,9 @@ through a minimal Electron shell, then diffs DOM slots, body attributes, and
 the Electron window visible (--show-hold <ms>, default 6000); --keep-open keeps
 it open until you close it, then cleans up. Every run also writes an HTML
 report next to report.md; pass --no-html to skip it.
+The shell bridges the desktop directory picker and notifications as
+deterministic stubs by default; add --native-desktop (with --show or
+--keep-open) to raise the real Electron folder dialog and OS notification.
 
 lab gui copies the official Electron runtime into LOCALAPPDATA\\dsh-plugin-effect-lab
 (once) and opens a desktop launcher whose buttons run the same commands and

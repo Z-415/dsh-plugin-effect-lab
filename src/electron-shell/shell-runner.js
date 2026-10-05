@@ -22,8 +22,10 @@ import { compareScreenshots } from '../screenshot-diff.js';
 import {
   diffMagnitude,
   diffProbeSnapshots,
+  formatDesktopBridges,
   isConnectionLost,
   normalizeProbe,
+  resolveDesktopMode,
   summarizeProbe,
 } from './shell-probe.js';
 
@@ -39,6 +41,9 @@ export async function runShell(options = {}) {
   const runDir = prepareArtifacts(artifactsRoot, runId);
   const checks = [];
   const errors = [];
+  const desktop = resolveDesktopMode(options.nativeDesktop, {
+    show: options.show === true || options.keepOpen === true,
+  });
   const report = {
     ok: false,
     mode: 'shell',
@@ -51,6 +56,7 @@ export async function runShell(options = {}) {
     shell: null,
     pluginValidation: null,
     plugins: [],
+    desktopBridge: desktop,
     checks,
     errors,
     cleanup: { homeRemoved: null, portsLeft: [], processesLeft: 0 },
@@ -239,6 +245,15 @@ export async function runShell(options = {}) {
       fs.existsSync(shell.exe),
       shell.cached ? `cached ${shell.dir}` : `built ${shell.dir} (${shell.bytes} bytes, ${shell.copyMs}ms)`,
     );
+    addCheck(
+      checks,
+      'shell-desktop-mode',
+      desktop.ok,
+      desktop.ok
+        ? `desktop bridges: ${desktop.mode}${desktop.native ? ' (real dialog + OS notification)' : ' (deterministic stub)'}`
+        : desktop.detail,
+      { informational: desktop.ok },
+    );
     progress(`launching Electron shell window${options.keepOpen ? ' (close it to finish)' : ''}`);
 
     const userDataDir = ensureDir(path.join(iso.root, 'electron-userdata'));
@@ -256,6 +271,11 @@ export async function runShell(options = {}) {
       show: options.show === true || options.keepOpen === true,
       keepOpen: options.keepOpen === true,
       showHoldMs: options.showHoldMs ?? 6000,
+      desktopMode: desktop.mode,
+      // Do not accept an early DOM plateau below the web baseline's slot count.
+      minSlots: webProbe?.slotCount ?? 0,
+      // A native folder dialog is modal, so the automated probe must not open it.
+      autoProbeDirectoryPicker: desktop.mode !== 'native',
       assertTokens: options.assertTokens ?? ['--dsw-alias-bg-base'],
     }, null, 2)}\n`, 'utf8');
 
@@ -274,10 +294,28 @@ export async function runShell(options = {}) {
     const result = fs.existsSync(resultFile) ? JSON.parse(fs.readFileSync(resultFile, 'utf8')) : null;
     progress(result ? 'shell result received' : 'shell result missing');
     addCheck(checks, 'shell-result', result?.ok === true, result?.error ?? (result ? 'written' : 'missing'));
+    if (result?.capture) {
+      addCheck(
+        checks,
+        'shell-capture-painted',
+        result.capture.unpainted !== true,
+        `attempts=${result.capture.attempts}${result.capture.unpainted === true ? ', frame still unpainted' : ''}`,
+      );
+    }
     if (result?.dom) {
       const shellProbe = normalizeProbe(result.dom);
       result.dom = shellProbe;
       addCheck(checks, 'shell-ui-ready', shellProbe.slotCount > 0, `${shellProbe.slotCount} slot(s), ${shellProbe.tokenCount} token(s)`);
+      if (result.settle) {
+        addCheck(
+          checks,
+          'shell-dom-stable',
+          result.settle.stable === true,
+          `${result.settle.slots} slot(s) after ${result.settle.waitedMs}ms`
+            + `${result.settle.stable ? '' : `, did not reach minSlots=${result.settle.minSlots ?? 'n/a'}`}`,
+          { informational: result.settle.stable === true },
+        );
+      }
       addCheck(
         checks,
         'shell-token',
@@ -326,10 +364,18 @@ export async function runShell(options = {}) {
         checks,
         'shell-desktop-bridges',
         true,
-        `directoryPicker=${capabilities?.bridged?.directoryPicker ?? 'n/a'}`
-          + ` hostPaths=${capabilities?.bridged?.hostPaths ?? 'n/a'}`
-          + ` notifications=${capabilities?.bridge?.notification?.requested ?? 0} suppressed`,
+        `${formatDesktopBridges(capabilities)}; hostPaths=${capabilities?.bridged?.hostPaths ?? 'n/a'}`,
         { informational: true },
+      );
+      const notificationFacts = capabilities?.bridge?.notification ?? null;
+      addCheck(
+        checks,
+        'shell-notification',
+        desktop.mode !== 'native' || notificationFacts?.shown >= 1,
+        desktop.mode === 'native'
+          ? `native toast shown=${notificationFacts?.shown ?? 0} supported=${notificationFacts?.supported ?? 'n/a'} requested=${notificationFacts?.requested ?? 0}`
+          : `stub: recorded ${notificationFacts?.requested ?? 0}, suppressed (no OS toast)`,
+        { informational: desktop.mode !== 'native' },
       );
 
       if (webProbe) {
@@ -381,11 +427,12 @@ export async function runShell(options = {}) {
           addCheck(
             checks,
             'shell-screenshot-diff',
-            true,
+            shellScreenshotDiff.visuallyIdentical === true,
             `identical=${shellScreenshotDiff.identical}`
-              + ` changedRatio=${(shellScreenshotDiff.pixels?.changedRatio ?? 0).toFixed(4)}`
+              + ` visuallyIdentical=${shellScreenshotDiff.visuallyIdentical === true}`
+              + ` changedRatio=${(shellScreenshotDiff.pixels?.changedRatio ?? 0).toFixed(5)}`
+              + ` tolerance=${shellScreenshotDiff.ratioTolerance}`
               + ` dimensionsMatch=${shellScreenshotDiff.dimensionsMatch}`,
-            { informational: true },
           );
         } catch (error) {
           addCheck(checks, 'shell-screenshot-diff', false, String(error?.message ?? error), { informational: true });

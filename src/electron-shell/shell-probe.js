@@ -27,6 +27,55 @@ export const REMOTE_MUX_PATH = '/api/remote.mux';
 
 export const DEVTOOLS_CONSOLE_ERROR = '[connection] connection lost';
 
+/** The two desktop-bridge behaviours: deterministic `stub` or real `native`. */
+export const DESKTOP_MODES = ['stub', 'native'];
+
+/**
+ * Resolve the requested desktop-bridge mode against the run shape.
+ *
+ * `stub` (the default) returns a fixture path and records notifications
+ * without showing them, so automation is deterministic and never blocks.
+ * `native` wires the real Electron `dialog.showOpenDialog` and
+ * `Notification`. A native folder dialog is modal and must be answered by a
+ * human, so native mode is only allowed with a visible window (`--show` /
+ * `--keep-open`); otherwise the run falls back to the stub and reports why.
+ */
+export function resolveDesktopMode(requested, options = {}) {
+  const native = requested === true || requested === 'native';
+  if (!native) return { mode: 'stub', native: false, ok: true, reason: 'stub-default' };
+  if (!options.show) {
+    return {
+      mode: 'stub',
+      native: false,
+      ok: false,
+      reason: 'native-desktop-requires-show',
+      detail: '--native-desktop needs --show or --keep-open: a native folder dialog is modal and needs a visible window',
+    };
+  }
+  return { mode: 'native', native: true, ok: true, reason: 'native-enabled' };
+}
+
+/**
+ * One-line report text for the desktop bridges. `capabilities` is the shell's
+ * capability payload (`result.capabilities`) and may be null when the shell
+ * failed before probing.
+ */
+export function formatDesktopBridges(capabilities = null) {
+  const bridge = capabilities?.bridge ?? {};
+  const picker = bridge.directoryPicker ?? {};
+  const notification = bridge.notification ?? {};
+  const pickerMode = picker.mode ?? 'stub';
+  const pickerText = picker.autoProbed === false
+    ? `${pickerMode} (not auto-probed: a native dialog would block the run)`
+    : `${pickerMode}${picker.called ? ' (called)' : ''}`;
+  const notificationText = `${notification.mode ?? 'stub'}`
+    + `${notification.requested ? ` requested=${notification.requested}` : ''}`
+    + `${notification.suppressed ? ' suppressed' : ''}`
+    + `${notification.shown ? ` shown=${notification.shown}` : ''}`
+    + `${notification.supported === false ? ' unsupported' : ''}`;
+  return `directoryPicker=${pickerText}; notifications=${notificationText}`;
+}
+
 function stringMap(value) {
   if (!value || typeof value !== 'object') return {};
   const out = {};

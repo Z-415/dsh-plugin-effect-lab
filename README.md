@@ -126,6 +126,7 @@ node bin/lab.js shell
 node bin/lab.js shell --plugin dsh-plugin-wallpaper-engine@1.2.0 --online
 node bin/lab.js shell --show                          # real window, 6s hold
 node bin/lab.js shell --keep-open                     # close it yourself
+node bin/lab.js shell --native-desktop --show         # real folder dialog + OS toast
 node bin/lab.js shell --profile-lab dev --plugin dsh-plugin-wallpaper-engine@1.2.0 --online --show --keep-open
 node bin/lab.js shell --profile-lab dev --show --keep-open   # plugins still installed
 node bin/lab.js profile list

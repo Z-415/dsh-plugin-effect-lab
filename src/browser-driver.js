@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { childEnv, killTree, stopTracked } from './process-tree.js';
 import { ensureDir, sleep } from './util.js';
 
@@ -18,6 +18,33 @@ export function browserCandidates(explicitPath) {
   if (programFiles) out.push(path.join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'));
   if (localAppData) out.push(path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe'));
   return [...new Set(out.map((value) => path.resolve(value)))];
+}
+
+/**
+ * Edge's `msedge.exe` launcher can exit immediately after handing the real
+ * browser to a broker process, so killing the spawned pid is not enough and
+ * the browser tree is left behind (hundreds of processes after a full test
+ * run). Kill every browser process whose command line carries this run's
+ * unique `--user-data-dir`. Returns how many processes were matched.
+ */
+export function reapBrowserProcesses(userDataDir, options = {}) {
+  const { platform = process.platform, name = 'msedge.exe' } = options;
+  if (platform !== 'win32') return { supported: false, matched: 0 };
+  const target = String(userDataDir ?? '');
+  if (!target) return { supported: true, matched: 0 };
+  const quoted = target.replace(/'/g, "''");
+  const script = [
+    `$target = '${quoted}';`,
+    `$p = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq '${name}' -and $_.CommandLine -and $_.CommandLine.Contains($target) });`,
+    'foreach ($proc in $p) { Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue }',
+    '$p.Count',
+  ].join(' ');
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    windowsHide: true,
+    encoding: 'utf8',
+  });
+  const matched = Number.parseInt(String(result.stdout ?? '').trim(), 10);
+  return { supported: true, matched: Number.isFinite(matched) ? matched : 0, status: result.status };
 }
 
 export function findBrowser(explicitPath) {
@@ -467,19 +494,26 @@ export async function openUi(options) {
       networkFailures,
       screenshots: written,
       async close() {
+        try {
+          await client?.send('Browser.close', {}, 3000);
+        } catch {
+          // Older builds may refuse; reapBrowserProcesses is the guarantee.
+        }
         client?.close();
         const stopped = await stopTracked(tracked, { label: 'browser' });
+        const reaped = reapBrowserProcesses(userDataDir);
         try {
           fs.rmSync(userDataDir, { recursive: true, force: true });
         } catch {
           // Windows may keep a lock for a moment; the temp prefix stays cleanable.
         }
-        return stopped;
+        return { ...stopped, reaped };
       },
     };
   } catch (error) {
     client?.close();
     killTree(tracked.pid);
+    reapBrowserProcesses(userDataDir);
     try {
       fs.rmSync(userDataDir, { recursive: true, force: true });
     } catch {
@@ -523,9 +557,15 @@ export async function evaluateOnce(options = {}) {
     await client.send('Runtime.enable');
     return await evaluate(client, expression, timeoutMs);
   } finally {
+    try {
+      await client?.send('Browser.close', {}, 3000);
+    } catch {
+      // Best-effort graceful close before the forced reap.
+    }
     client?.close();
     killTree(tracked.pid);
     await stopTracked(tracked, { label: 'browser' });
+    reapBrowserProcesses(userDataDir);
     try {
       fs.rmSync(userDataDir, { recursive: true, force: true });
     } catch {

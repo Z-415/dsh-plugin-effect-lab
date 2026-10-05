@@ -1,6 +1,7 @@
-const { app, BrowserWindow, clipboard, ipcMain, protocol, session } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, protocol, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
+const { createDesktopBridge } = require('./desktop-bridge.cjs');
 
 const configFile = process.env.DSH_LAB_SHELL_CONFIG;
 const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
@@ -171,15 +172,19 @@ function mergeAssertedTokens(snapshot, extra) {
 
 /**
  * Exercise the desktop-only surfaces the official preload exposes. The
- * directory picker and notifications are bridged but deliberately stubbed
- * (no native dialog, no OS toast) so automation never blocks; the clipboard
- * round-trip is real.
+ * clipboard round-trip is always real. In `stub` mode the directory picker
+ * returns a fixture path and notifications are recorded without an OS toast,
+ * so automation never blocks. In `native` mode the picker's real dialog is
+ * deliberately *not* auto-probed (it is modal and would block this script),
+ * while the notification path does raise a real toast.
  */
 async function probeDesktopCapabilities(window, bridge) {
+  const autoProbePicker = config.autoProbeDirectoryPicker !== false;
   const bridged = await window.webContents.executeJavaScript(`(async () => {
-    const directoryPicker = typeof globalThis.__DSH_DIRECTORY_PICKER__?.pick === 'function'
+    const autoProbe = ${autoProbePicker ? 'true' : 'false'};
+    const directoryPicker = autoProbe && typeof globalThis.__DSH_DIRECTORY_PICKER__?.pick === 'function'
       ? await globalThis.__DSH_DIRECTORY_PICKER__.pick()
-      : null;
+      : { skipped: 'native-modal', reason: 'a native folder dialog is modal; trigger it from the window instead' };
     const hostPaths = typeof globalThis.__DSH_HOST_PATHS__?.pathFor === 'function'
       ? globalThis.__DSH_HOST_PATHS__.pathFor({ path: 'C:/lab/sample.txt', name: 'sample.txt' })
       : null;
@@ -188,6 +193,8 @@ async function probeDesktopCapabilities(window, bridge) {
       : null;
     return { directoryPicker, hostPaths, notification };
   })()`);
+  bridge.directoryPicker.autoProbed = autoProbePicker;
+  bridge.mode = bridge.directoryPicker.mode;
   const token = `lab-clipboard-${Date.now()}`;
   let clipboardResult = { ok: false, tokenLength: token.length, readLength: 0, attempts: 0 };
   try {
@@ -209,9 +216,16 @@ async function probeDesktopCapabilities(window, bridge) {
   return { bridged, clipboard: clipboardResult, bridge };
 }
 
-/** Wait until the slot count stops changing so shell and web probes agree. */
+/**
+ * Wait until the slot count stops changing so shell and web probes agree.
+ *
+ * A fully transparent window can be throttled by the compositor, so the app
+ * sometimes pauses at an early plateau (e.g. 24 slots) for longer than
+ * `stableMs` before the conversation view mounts. `minSlots` (the web
+ * baseline's slot count) stops that early plateau from being accepted.
+ */
 async function waitForStableShell(window, options = {}) {
-  const { stableMs = 1500, timeoutMs = 25_000, intervalMs = 500 } = options;
+  const { stableMs = 1500, timeoutMs = 25_000, intervalMs = 500, minSlots = 0 } = options;
   const started = Date.now();
   let last = -1;
   let stableSince = Date.now();
@@ -225,12 +239,70 @@ async function waitForStableShell(window, options = {}) {
     if (current !== last) {
       last = current;
       stableSince = Date.now();
-    } else if (Date.now() - stableSince >= stableMs) {
+    } else if (current >= minSlots && Date.now() - stableSince >= stableMs) {
       return { stable: true, slots: current, waitedMs: Date.now() - started };
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
-  return { stable: false, slots: current, waitedMs: Date.now() - started };
+  return { stable: false, slots: current, waitedMs: Date.now() - started, minSlots };
+}
+
+/**
+ * True when a captured frame is essentially one flat colour, i.e. the window
+ * was never painted. An opacity-0 window is occasionally skipped by the
+ * Windows compositor even though the DOM is complete.
+ */
+function isUnpaintedFrame(image) {
+  let bitmap;
+  try {
+    bitmap = image.toBitmap();
+  } catch {
+    return true;
+  }
+  if (!bitmap || bitmap.length < 64) return true;
+  const stride = Math.max(4, Math.floor(bitmap.length / 4096 / 4) * 4);
+  let first = null;
+  let same = 0;
+  let samples = 0;
+  for (let offset = 0; offset + 3 < bitmap.length; offset += stride) {
+    const key = (bitmap[offset] << 16) | (bitmap[offset + 1] << 8) | bitmap[offset + 2];
+    if (first === null) first = key;
+    if (key === first) same += 1;
+    samples += 1;
+  }
+  return samples > 0 && same / samples > 0.995;
+}
+
+/**
+ * Capture the window, retrying when the compositor is not ready.
+ *
+ * An opacity-0 window is sometimes skipped by the Windows compositor: the
+ * first `capturePage()` can reject with `UnknownVizError`, or hand back a
+ * stale flat frame. Retrying with a short delay recovers both without
+ * `invalidate()`, which was tried and made `capturePage()` hang.
+ */
+async function captureWindowFrame(window, retries = 4) {
+  let lastImage = null;
+  let lastError = null;
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      const image = await window.webContents.capturePage();
+      if (!image.isEmpty() && !isUnpaintedFrame(image)) {
+        return { image, attempts: attempt, unpainted: false };
+      }
+      lastImage = image;
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < retries) await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+  }
+  if (lastImage) return { image: lastImage, attempts: retries, unpainted: true };
+  return {
+    image: null,
+    attempts: retries,
+    unpainted: true,
+    error: String(lastError?.message ?? lastError ?? 'capturePage failed'),
+  };
 }
 
 /** Only the main `dsh-app://app/` frame may talk to the shell IPC bridge. */
@@ -308,19 +380,22 @@ app.whenReady().then(async () => {
     pageErrors.push(`boot-failed: ${String(message ?? '').slice(0, 1000)}`);
     return null;
   });
-  const desktopBridge = {
-    directoryPicker: { bridged: true, stubbed: true, fixtureDir: config.fixtureDir ?? null, called: false },
-    notification: { bridged: true, suppressed: true, requested: 0 },
-  };
-  ipcMain.handle('dsh-lab:pick-directory', (event) => {
+  const desktop = createDesktopBridge({
+    mode: config.desktopMode,
+    fixtureDir: config.fixtureDir ?? null,
+    autoProbe: config.autoProbeDirectoryPicker !== false,
+    dialog,
+    Notification,
+    getWindow: () => mainWindow,
+  });
+  const desktopBridge = desktop.record;
+  ipcMain.handle('dsh-lab:pick-directory', async (event) => {
     assertAppSender(event);
-    desktopBridge.directoryPicker.called = true;
-    return config.fixtureDir ?? null;
+    return desktop.pickDirectory();
   });
   ipcMain.handle('dsh-lab:notify', (event, title, body) => {
     assertAppSender(event);
-    desktopBridge.notification.requested += 1;
-    return { suppressed: true, title: String(title ?? ''), body: String(body ?? '') };
+    return desktop.notify(title, body);
   });
   protocol.handle('dsh-app', (request) => {
     const url = new URL(request.url);
@@ -340,6 +415,8 @@ app.whenReady().then(async () => {
     // A fully hidden window does not composite on Windows, so capturePage()
     // returns a blank surface. An opacity-0 visible window renders normally
     // and stays invisible to the user; --show makes it a normal window.
+    // `capture.unpainted` in the shell result flags a stale frame when the
+    // compositor still skips it.
     show: true,
     opacity: config.show ? 1 : 0,
     skipTaskbar: !config.show,
@@ -369,16 +446,19 @@ app.whenReady().then(async () => {
   window.webContents.on('did-fail-load', (_event, code, description, url) => pageErrors.push(`did-fail-load ${code} ${description} ${url}`));
   try {
     await window.loadURL('dsh-app://app/');
-    const settle = await waitForStableShell(window);
+    const settle = await waitForStableShell(window, { minSlots: Number(config.minSlots) || 0 });
     const dom = await probeDom(window);
     const capabilities = await probeDesktopCapabilities(window, desktopBridge);
-    const image = await window.webContents.capturePage();
-    fs.mkdirSync(path.dirname(config.screenshotFile), { recursive: true });
-    fs.writeFileSync(config.screenshotFile, image.toPNG());
+    const frame = await captureWindowFrame(window);
+    if (frame.image) {
+      fs.mkdirSync(path.dirname(config.screenshotFile), { recursive: true });
+      fs.writeFileSync(config.screenshotFile, frame.image.toPNG());
+    }
     const payload = {
       dom,
       settle,
       capabilities,
+      capture: { attempts: frame.attempts, unpainted: frame.unpainted, error: frame.error ?? null },
       title: window.getTitle(),
       webContents: { url: window.webContents.getURL(), userAgent: window.webContents.getUserAgent() },
       screenshotFile: config.screenshotFile,

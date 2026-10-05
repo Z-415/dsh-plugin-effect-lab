@@ -28,6 +28,9 @@ export const COPY_FILES = [
 
 export const COPY_DIRS = ['locales'];
 
+/** Files copied into the cached app dir; refreshed when their source changes. */
+export const APP_FILES = ['main.js', 'preload.js', 'desktop-bridge.cjs'];
+
 function directorySize(dir) {
   let total = 0;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -49,15 +52,13 @@ export async function buildShellRuntime(officialInstallDir, options = {}) {
   const appDir = path.join(dir, 'resources', 'app');
   const exe = path.join(dir, 'DeepSeek Harness.exe');
   const stamp = path.join(dir, '.dsh-lab-ready');
-  const sourceMain = fs.readFileSync(path.join(here, 'main.js'));
-  const sourcePreload = fs.readFileSync(path.join(here, 'preload.js'));
-  const cachedMainPath = path.join(appDir, 'main.js');
-  const cachedPreloadPath = path.join(appDir, 'preload.js');
-  if (!force && fs.existsSync(stamp) && fs.existsSync(exe) && fs.existsSync(cachedMainPath) && fs.existsSync(cachedPreloadPath)) {
-    const cachedMain = fs.readFileSync(cachedMainPath);
-    if (!cachedMain.equals(sourceMain)) fs.writeFileSync(cachedMainPath, sourceMain);
-    const cachedPreload = fs.readFileSync(cachedPreloadPath);
-    if (!cachedPreload.equals(sourcePreload)) fs.writeFileSync(cachedPreloadPath, sourcePreload);
+  const sources = new Map(APP_FILES.map((name) => [name, fs.readFileSync(path.join(here, name))]));
+  const cachedFiles = new Map(APP_FILES.map((name) => [name, path.join(appDir, name)]));
+  if (!force && fs.existsSync(stamp) && fs.existsSync(exe) && APP_FILES.every((name) => fs.existsSync(cachedFiles.get(name)))) {
+    for (const name of APP_FILES) {
+      const cached = fs.readFileSync(cachedFiles.get(name));
+      if (!cached.equals(sources.get(name))) fs.writeFileSync(cachedFiles.get(name), sources.get(name));
+    }
     return { dir, exe, appDir, version, cached: true, bytes: 0, copyMs: 0 };
   }
   const started = Date.now();
@@ -76,8 +77,7 @@ export async function buildShellRuntime(officialInstallDir, options = {}) {
     fs.cpSync(source, path.join(dir, name), { recursive: true });
     bytes += directorySize(source);
   }
-  fs.writeFileSync(cachedMainPath, sourceMain);
-  fs.writeFileSync(cachedPreloadPath, sourcePreload);
+  for (const name of APP_FILES) fs.writeFileSync(cachedFiles.get(name), sources.get(name));
   fs.writeFileSync(
     path.join(appDir, 'package.json'),
     `${JSON.stringify({ name: 'dsh-lab-electron-shell', version: '0.1.0', private: true, main: 'main.js' }, null, 2)}\n`,

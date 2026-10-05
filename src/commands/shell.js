@@ -7,6 +7,9 @@ export async function runShellCommand(options) {
   } else if (progress && options.show) {
     progress('--show: a real Electron window will open in a few seconds.');
   }
+  if (progress && options.nativeDesktop) {
+    progress('--native-desktop: the shell will use the real folder dialog and a real OS notification.');
+  }
   const report = await runShell({
     onProgress: progress,
     runtimePath: options.runtimePath,
@@ -25,6 +28,7 @@ export async function runShellCommand(options) {
     html: options.html,
     show: options.show,
     keepOpen: options.keepOpen,
+    nativeDesktop: options.nativeDesktop,
     showHoldMs: options.showHoldMs,
     browserPath: options.browserPath,
     browserTimeoutMs: options.browserTimeoutMs,

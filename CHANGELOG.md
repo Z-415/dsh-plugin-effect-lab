@@ -314,3 +314,55 @@ Final suite: unit 96/96, integration 12/12.
   so a local-directory plugin can be removed by package name.
 
 Final suite: unit 103/103, integration 15/15.
+
+## 0.1.0 - 2026-10-05 (real desktop dialog and notification)
+
+### Added
+
+- `lab shell --native-desktop`: drive the Electron shell with the real
+  `dialog.showOpenDialog` folder picker and `Notification.show()` toast instead
+  of the deterministic stubs. It requires `--show`/`--keep-open`; without a
+  visible window the run stays in stub mode and `shell-desktop-mode` fails with
+  the reason rather than opening a modal nobody can answer.
+- `src/electron-shell/desktop-bridge.cjs`: the picker/notification glue, copied
+  next to `main.js` into the cached runtime, unit-tested with fake `dialog` /
+  `Notification` objects (`tests/unit/desktop-bridge.test.js`).
+- `shell-notification` and `shell-desktop-mode` checks, plus
+  `report.shell.desktopBridge` recording the resolved mode;
+  `shell-desktop-bridges` now names the mode and whether the picker ran.
+
+### Changed
+
+- The native folder dialog is deliberately not auto-probed (it is modal and
+  would block the run); the report shows it as wired but not auto-probed. The
+  notification path is auto-probed and asserted in native mode.
+- `runtime-builder.js` copies and refreshes its app files from an `APP_FILES`
+  list instead of hard-coding `main.js` + `preload.js`.
+
+Final suite: unit 116/116, integration 15/15.
+
+### Fixed
+
+- **Headless Edge leaked a process tree per run.** Edge's `msedge.exe`
+  launcher exits as soon as it hands the real browser to a broker process, so
+  `stopTracked` saw `exitCode !== null` and skipped the tree kill; a single
+  `npm run test:e2e` left ~180 `msedge` processes and 19 temp dirs behind,
+  which then slowed every later run and caused slot-count/pixel flakiness.
+  Both browser paths now send CDP `Browser.close` and then
+  `reapBrowserProcesses()` kills every `msedge` whose command line carries the
+  run's unique `--user-data-dir`. Unit coverage in
+  `tests/unit/browser-reap.test.js`; a suite run now leaves 0 extra processes.
+- **Shell screenshot could be a stale/unpainted frame.**
+  `captureWindowFrame()` retries `capturePage()` when it rejects
+  (`UnknownVizError`) or returns a flat frame, without `invalidate()` (which
+  hung `capturePage()`). `report.shell.result.capture` records the attempts and
+  whether the frame stayed unpainted, and `shell-capture-painted` fails when it
+  did.
+- The shell probe now refuses to accept an early DOM plateau below the web
+  baseline's slot count (`minSlots`), so a 24-slot pre-mount frame is no longer
+  treated as "stable". `shell-dom-stable` reports the settle result.
+- `compareScreenshots()` reports `visuallyIdentical` next to the raw
+  `identical` flag, using a 0.001 changed-ratio tolerance for Edge-vs-Electron
+  antialiasing; `shell-screenshot-diff` is now a real check on it.
+
+Final suite: unit 120/120, integration 15/15.

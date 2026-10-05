@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  DESKTOP_MODES,
   diffMagnitude,
   diffProbeSnapshots,
+  formatDesktopBridges,
   isConnectionLost,
   normalizeProbe,
+  resolveDesktopMode,
   summarizeProbe,
 } from '../../src/electron-shell/shell-probe.js';
 
@@ -78,4 +81,52 @@ test('desktopOnly captures a changed body attribute value, not only added ones',
   assert.deepStrictEqual(diff.desktopOnly.bodyAttributes, ['data-we-adapter']);
   assert.deepStrictEqual(diff.desktopOnly.hintedBodyAttributes, ['data-we-adapter']);
   assert.equal(diff.bodyAttributes.changed['data-we-adapter'].after, 'desktop-official');
+});
+
+test('resolveDesktopMode defaults to the deterministic stub', () => {
+  assert.deepEqual(DESKTOP_MODES, ['stub', 'native']);
+  assert.deepEqual(resolveDesktopMode(undefined), { mode: 'stub', native: false, ok: true, reason: 'stub-default' });
+  assert.deepEqual(resolveDesktopMode(false, { show: true }), { mode: 'stub', native: false, ok: true, reason: 'stub-default' });
+});
+
+test('resolveDesktopMode refuses native without a visible window', () => {
+  const refused = resolveDesktopMode(true, { show: false });
+  assert.equal(refused.mode, 'stub');
+  assert.equal(refused.ok, false);
+  assert.equal(refused.native, false);
+  assert.equal(refused.reason, 'native-desktop-requires-show');
+  assert.match(refused.detail, /--native-desktop needs --show or --keep-open/);
+});
+
+test('resolveDesktopMode enables native with a visible window', () => {
+  assert.deepEqual(resolveDesktopMode('native', { show: true }), { mode: 'native', native: true, ok: true, reason: 'native-enabled' });
+  assert.equal(resolveDesktopMode(true, { show: true }).native, true);
+});
+
+test('formatDesktopBridges reports both stub outcomes', () => {
+  const text = formatDesktopBridges({
+    bridge: {
+      directoryPicker: { mode: 'stub', called: true, autoProbed: true },
+      notification: { mode: 'stub', requested: 1, suppressed: true, shown: 0 },
+    },
+  });
+  assert.match(text, /directoryPicker=stub \(called\)/);
+  assert.match(text, /notifications=stub requested=1 suppressed/);
+});
+
+test('formatDesktopBridges marks a native run whose picker was not auto-probed', () => {
+  const text = formatDesktopBridges({
+    bridge: {
+      directoryPicker: { mode: 'native', called: false, autoProbed: false },
+      notification: { mode: 'native', requested: 1, suppressed: false, shown: 1, supported: true },
+    },
+  });
+  assert.match(text, /directoryPicker=native \(not auto-probed: a native dialog would block the run\)/);
+  assert.match(text, /notifications=native requested=1 shown=1/);
+});
+
+test('formatDesktopBridges tolerates a missing capability payload', () => {
+  const text = formatDesktopBridges(null);
+  assert.match(text, /directoryPicker=stub/);
+  assert.match(text, /notifications=stub/);
 });

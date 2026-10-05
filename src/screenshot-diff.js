@@ -5,6 +5,8 @@ import { evaluateOnce } from './browser-driver.js';
 const PNG_SIGNATURE = '89504e470d0a1a0a';
 const DEFAULT_GRID = { cols: 64, rows: 40 };
 const PIXEL_THRESHOLD = 24;
+/** Edge and the Electron shell can differ by a few antialiased pixels. */
+const DEFAULT_RATIO_TOLERANCE = 0.001;
 
 /** Cheap PNG facts: hash, byte size, and IHDR dimensions. */
 export function pngStats(file) {
@@ -85,7 +87,14 @@ function diffExpression(beforeBase64, afterBase64, grid) {
  * overall changed ratio plus a coarse grid for evidence.
  */
 export async function compareScreenshots(options = {}) {
-  const { before, after, browserPath, grid = DEFAULT_GRID, timeoutMs = 90_000 } = options;
+  const {
+    before,
+    after,
+    browserPath,
+    grid = DEFAULT_GRID,
+    timeoutMs = 90_000,
+    ratioTolerance = DEFAULT_RATIO_TOLERANCE,
+  } = options;
   const left = pngStats(before);
   const right = pngStats(after);
   const result = {
@@ -93,13 +102,18 @@ export async function compareScreenshots(options = {}) {
     after: right,
     identical: left.sha256 === right.sha256,
     dimensionsMatch: left.width === right.width && left.height === right.height,
+    ratioTolerance,
     grid,
   };
   if (result.identical) {
     result.pixels = { changedPixels: 0, changedRatio: 0, width: left.width, height: left.height, cells: [] };
+    result.visuallyIdentical = result.dimensionsMatch;
     return result;
   }
-  if (!left.isPng || !right.isPng || !result.dimensionsMatch) return result;
+  if (!left.isPng || !right.isPng || !result.dimensionsMatch) {
+    result.visuallyIdentical = false;
+    return result;
+  }
   const beforeBase64 = fs.readFileSync(before).toString('base64');
   const afterBase64 = fs.readFileSync(after).toString('base64');
   const raw = await evaluateOnce({
@@ -108,5 +122,6 @@ export async function compareScreenshots(options = {}) {
     expression: diffExpression(beforeBase64, afterBase64, grid),
   });
   result.pixels = JSON.parse(raw);
+  result.visuallyIdentical = (result.pixels.changedRatio ?? 1) <= ratioTolerance;
   return result;
 }
