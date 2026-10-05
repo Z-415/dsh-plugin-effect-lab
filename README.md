@@ -130,6 +130,53 @@ node bin/lab.js clean --dry-run   # show leftover temp dirs and orphan lab proce
 node bin/lab.js clean             # remove them
 ```
 
+## DSH Desktop plugin (launcher)
+
+The repo also ships a tiny DSH plugin, `dsh-plugin-effect-lab-bridge`
+(`bridge-plugin/`). It installs into a DSH profile while **the lab itself stays
+outside the profile**: the plugin's settings section holds a single
+**启动实验舱** button that starts the lab's own Electron GUI as a separate
+process, so the DSH window is never replaced or disturbed. The host half also
+registers the agent-facing `lab_verify_plugin` tool.
+
+DSH Desktop manages its own profile, so `dsh plugin add` refuses it
+(`profile "desktop" is managed exclusively by the Electron application`).
+Install it by editing the profile:
+
+1. Quit DSH Desktop completely (including the tray).
+2. In `profiles/desktop/package.json`, add
+   `"dsh-plugin-effect-lab-bridge": "file:<repo>/bridge-plugin"` to
+   `dependencies`, and `"dsh-plugin-effect-lab-bridge"` to
+   `dsh.profile.bundles`.
+3. In `profiles/desktop/cordis.patch.yml`, point the plugin at the lab checkout:
+
+   ```yaml
+   - id: effect-lab-bridge
+     config:
+       labPath: '<path to the lab repo>'
+   ```
+
+4. Install with the runtime's own pnpm, then start the app again:
+
+   ```powershell
+   cd <profile>
+   node "D:\DeepSeek Harness\resources\runtime\pnpm\bin\pnpm.mjs" install --offline
+   ```
+
+Requirements and caveats:
+
+- A real `node.exe` must be on `PATH`, or set `nodePath` in the same config
+  block. The plugin never uses the Electron binary as Node.
+- `file:` dependencies are **copied** into `node_modules`, so after changing
+  `bridge-plugin/` you must re-run `pnpm install --offline` to refresh the copy
+  the profile actually loads.
+- `POST /dsh-lab-bridge/launch` is loopback-only and requires the per-host nonce
+  injected into the renderer; it runs the fixed command `bin/lab.js gui` and
+  never accepts caller-supplied arguments.
+- More detail: [bridge-plugin/README.md](bridge-plugin/README.md),
+  [docs/TASK-BRIDGE-LAUNCHER.md](docs/TASK-BRIDGE-LAUNCHER.md),
+  [docs/BRIDGE-PLUGIN-RESULTS.md](docs/BRIDGE-PLUGIN-RESULTS.md).
+
 ## Command reference
 
 | Command | What it does |

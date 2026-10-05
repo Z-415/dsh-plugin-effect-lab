@@ -125,6 +125,48 @@ node bin/lab.js clean --dry-run   # 先看有哪些残留临时目录和游离 l
 node bin/lab.js clean             # 再删除
 ```
 
+## DSH 桌面版插件（启动器）
+
+仓库里还带了一个很小的 DSH 插件 `dsh-plugin-effect-lab-bridge`
+（`bridge-plugin/`）。它装进 DSH 的 profile，但**实验舱本体不进 profile**：插件在设置页
+只有一个「启动实验舱」按钮，点击后在外部启动实验舱自己的 Electron GUI——DSH 界面不会被替换，
+也不会被打断。宿主半区另外注册了面向 agent 的工具 `lab_verify_plugin`。
+
+DSH 桌面版自己管理 profile，所以 `dsh plugin add` 会拒绝它
+（`profile "desktop" is managed exclusively by the Electron application`）。
+安装方式是直接改 profile：
+
+1. 完全退出 DSH 桌面版（含托盘）。
+2. 在 `profiles/desktop/package.json` 的 `dependencies` 里加
+   `"dsh-plugin-effect-lab-bridge": "file:<仓库路径>/bridge-plugin"`，
+   并在 `dsh.profile.bundles` 里加 `"dsh-plugin-effect-lab-bridge"`。
+3. 在 `profiles/desktop/cordis.patch.yml` 里把实验舱路径告诉插件：
+
+   ```yaml
+   - id: effect-lab-bridge
+     config:
+       labPath: '<实验舱仓库路径>'
+   ```
+
+4. 用 runtime 自带的 pnpm 安装，然后重新启动桌面版：
+
+   ```powershell
+   cd <profile>
+   node "D:\DeepSeek Harness\resources\runtime\pnpm\bin\pnpm.mjs" install --offline
+   ```
+
+要求与注意事项：
+
+- `PATH` 里必须有真正的 `node.exe`，或者在同一段配置里设置 `nodePath`。插件不会拿
+  Electron 可执行文件当 Node 用。
+- `file:` 依赖是被**拷贝**进 `node_modules` 的，所以改完 `bridge-plugin/` 后必须重跑
+  一次 `pnpm install --offline`，否则 profile 加载的还是旧副本。
+- `POST /dsh-lab-bridge/launch` 只接受 loopback，并校验注入到渲染层的每宿主 nonce；
+  它固定执行 `bin/lab.js gui`，不接受任何调用方参数。
+- 更多细节：[bridge-plugin/README.md](bridge-plugin/README.md)、
+  [docs/TASK-BRIDGE-LAUNCHER.md](docs/TASK-BRIDGE-LAUNCHER.md)、
+  [docs/BRIDGE-PLUGIN-RESULTS.md](docs/BRIDGE-PLUGIN-RESULTS.md)。
+
 ## 命令速查
 
 | 命令 | 作用 |
