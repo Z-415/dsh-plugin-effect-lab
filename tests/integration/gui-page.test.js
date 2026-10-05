@@ -284,6 +284,26 @@ const MENUS = `(() => {
   });
 })()`;
 
+/** A long output must scroll inside the log pane, not squeeze the controls. */
+const LONG_LOG = `(() => {
+  const log = document.getElementById('log');
+  const controls = document.getElementById('controls');
+  const wrap = document.querySelector('.logwrap');
+  const footer = document.querySelector('footer');
+  const height = (el) => Math.round(el.getBoundingClientRect().height);
+  const before = { controls: height(controls), log: height(wrap) };
+  log.textContent = Array.from({ length: 600 }, (_, i) => 'line ' + i + ' ' + 'x'.repeat(80)).join('\\n');
+  const after = { controls: height(controls), log: height(wrap) };
+  return JSON.stringify({
+    before,
+    after,
+    logScrolls: log.scrollHeight > log.clientHeight + 1,
+    logAboveFooter: wrap.getBoundingClientRect().bottom <= footer.getBoundingClientRect().top + 1,
+    bodyClipped: document.body.scrollHeight > window.innerHeight + 1,
+    errors: window.__rendererErrors,
+  });
+})()`;
+
 test('every GUI button dispatches a lab command without a renderer error', {
   skip: !enabled,
   timeout: 180_000,
@@ -307,6 +327,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
         design: DESIGN,
         theme: THEME,
         menus: MENUS,
+        longLog: LONG_LOG,
       },
     });
     const result = JSON.parse(ui.extra.clickAll);
@@ -316,6 +337,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
     const design = JSON.parse(ui.extra.design);
     const theme = JSON.parse(ui.extra.theme);
     const menus = JSON.parse(ui.extra.menus);
+    const longLog = JSON.parse(ui.extra.longLog);
 
     assert.deepEqual(result.errors, [], `renderer errors: ${JSON.stringify(result.errors)}`);
     assert.deepEqual(result.thrown, [], `click handlers threw: ${JSON.stringify(result.thrown)}`);
@@ -410,6 +432,14 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(menus.remainingOpen, 0, JSON.stringify(menus));
     assert.deepEqual(menus.calls, menus.actions, JSON.stringify(menus.calls));
     assert.deepEqual(menus.errors, []);
+
+    // A long output scrolls inside the log pane and leaves the controls alone.
+    assert.equal(longLog.logScrolls, true, JSON.stringify(longLog));
+    assert.equal(longLog.after.controls >= longLog.before.controls - 1, true, JSON.stringify(longLog));
+    assert.equal(longLog.after.log <= longLog.before.log + 1, true, JSON.stringify(longLog));
+    assert.equal(longLog.logAboveFooter, true, JSON.stringify(longLog));
+    assert.equal(longLog.bodyClipped, false, JSON.stringify(longLog));
+    assert.deepEqual(longLog.errors, []);
   } finally {
     if (ui) await ui.close();
     fs.rmSync(page.dir, { recursive: true, force: true });

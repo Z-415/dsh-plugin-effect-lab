@@ -30,6 +30,10 @@
 - Adding a new GUI app file no longer forces the 346 MB runtime copy (and no
   longer needs the window closed): the cached build refreshes app files one by
   one, including files a newer build added.
+- A long log output no longer squeezes the controls above it: the log pane is
+  `flex-basis: 0`, so it only takes the space left over and scrolls internally.
+  A regression probe fills it with 600 lines and asserts the controls keep
+  their height at both window sizes.
 
 ### Tests
 
