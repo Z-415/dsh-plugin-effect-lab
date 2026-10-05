@@ -122,6 +122,31 @@ function latestReport() {
   return found[0]?.file ?? null;
 }
 
+/**
+ * Existing lab profiles, for the profile dropdown. Uses the same CLI the rest
+ * of the launcher does (`profile list --json`) so the path resolution and the
+ * name rules stay in one place.
+ */
+function listProfiles() {
+  const result = spawnSync(process.execPath, [path.join(repo, 'bin', 'lab.js'), 'profile', 'list', '--json'], {
+    cwd: repo,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', DSH_LAB_GUI: '1' },
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 30_000,
+  });
+  if (result.error) return { profiles: [], root: null, error: String(result.error.message ?? result.error) };
+  if (result.status !== 0) {
+    return { profiles: [], root: null, error: (result.stderr || '').trim() || `exit ${result.status}` };
+  }
+  try {
+    const parsed = JSON.parse(result.stdout);
+    return { profiles: parsed.profiles ?? [], root: parsed.root ?? null };
+  } catch (error) {
+    return { profiles: [], root: null, error: String(error?.message ?? error) };
+  }
+}
+
 ipcMain.handle('lab:run', (_event, args) => runLab(Array.isArray(args) ? args.map(String) : []));
 ipcMain.handle('lab:stop', () => stopLab());
 ipcMain.handle('lab:open-report', async () => {
@@ -147,6 +172,8 @@ ipcMain.handle('lab:notify', (_event, payload) => {
     return { shown: false, supported, error: String(error?.message ?? error) };
   }
 });
+
+ipcMain.handle('lab:profiles', () => listProfiles());
 
 ipcMain.handle('lab:info', () => ({
   repo,

@@ -415,6 +415,27 @@ Final suite: unit 145/145, integration 15/15.
 
 Final suite: unit 148/148, integration 15/15.
 
+## 0.1.0 - 2026-10-05 (leaner GUI, profile dropdown)
+
+### Changed
+
+- The launcher is down to three groups. The old **Electron 壳** and
+  **插件与主题** groups are gone: the shell buttons and the desktop checkboxes
+  moved into the main **插件 / 持久 profile** group, and the wallpaper /
+  matrix presets were dropped (the `matrix` command is still on the CLI).
+  **检查** and **清理** stay as compact groups.
+- The profile field is now a dropdown of the existing `.lab-profiles` entries,
+  with `一次性运行（跑完删除）` and `新建 profile…` options. It is filled by a new
+  `lab:profiles` IPC that runs `profile list --json`, refreshes after every run
+  and from the 刷新 button, and shows each profile's installed specs in the
+  option label.
+- At the real 1080x760 window everything now fits without scrolling
+  (controls 371px, log 197px), and
+  `tests/integration/gui-page.test.js` asserts the dropdown wiring alongside
+  the layout and banner checks.
+
+Final suite: unit 148/148, integration 15/15.
+
 ## 0.1.0 - 2026-10-05 (mouse-driven entries for the new features)
 
 ### Added

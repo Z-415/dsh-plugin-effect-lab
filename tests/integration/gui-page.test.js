@@ -25,6 +25,13 @@ window.labGui = {
   openReport: async () => ({ opened: false, reason: 'stub' }),
   openArtifacts: async () => ({ opened: false }),
   notify: async (payload) => { window.__notifyCalls.push(payload); return { shown: true }; },
+  profiles: async () => ({
+    root: 'stub',
+    profiles: [
+      { name: 'dev', plugins: [{ spec: 'dsh-plugin-wallpaper-engine@1.2.0' }, { spec: 'dsh-ui-tweaks@0.20.0' }] },
+      { name: 'plain', plugins: [] },
+    ],
+  }),
   info: async () => ({ electron: 'stub', node: 'stub', repo: 'stub' }),
   onStarted: (handler) => { window.__handlers.started = handler; },
   onOutput: (handler) => { window.__handlers.output = handler; },
@@ -63,12 +70,32 @@ const CLICK_DESKTOP = `(() => {
   document.getElementById('probeDialog').checked = true;
   window.__calls = [];
   // The previous pass left every button disabled (setBusy until onDone).
-  for (const id of ['shellKeepOpen', 'shellCompare']) {
+  for (const id of ['runShellPlugin', 'runShellCompare']) {
     const button = document.getElementById(id);
     button.disabled = false;
     button.click();
   }
   return JSON.stringify({ calls: window.__calls, errors: window.__rendererErrors });
+})()`;
+
+const PROFILE_SELECT = `(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  const select = document.getElementById('profileSelect');
+  const options = [...select.options].map((option) => option.value);
+  window.__calls = [];
+  select.value = 'dev';
+  select.dispatchEvent(new Event('change'));
+  const shellButton = document.getElementById('runShellPlugin');
+  shellButton.disabled = false;
+  shellButton.click();
+  select.value = '__new__';
+  select.dispatchEvent(new Event('change'));
+  const newVisible = document.getElementById('profileNew').hidden === false;
+  document.getElementById('profileNew').value = 'fresh1';
+  const verifyButton = document.getElementById('runVerifyPlugin');
+  verifyButton.disabled = false;
+  verifyButton.click();
+  return JSON.stringify({ options, calls: window.__calls, newVisible, errors: window.__rendererErrors });
 })()`;
 
 const LAYOUT_AND_BANNER = `(() => {
@@ -111,11 +138,18 @@ test('every GUI button dispatches a lab command without a renderer error', {
       // Match the real launcher window (gui/main.js) so layout regressions that
       // only show up at this size are caught.
       viewport: { width: 1080, height: 760 },
-      probes: { clickAll: CLICK_ALL, desktop: CLICK_DESKTOP, layout: LAYOUT_AND_BANNER },
+      probes: {
+        clickAll: CLICK_ALL,
+        desktop: CLICK_DESKTOP,
+        profiles: PROFILE_SELECT,
+        layout: LAYOUT_AND_BANNER,
+      },
     });
     const result = JSON.parse(ui.extra.clickAll);
     const desktop = JSON.parse(ui.extra.desktop);
+    const profiles = JSON.parse(ui.extra.profiles);
     const layout = JSON.parse(ui.extra.layout);
+
     assert.deepEqual(result.errors, [], `renderer errors: ${JSON.stringify(result.errors)}`);
     assert.deepEqual(result.thrown, [], `click handlers threw: ${JSON.stringify(result.thrown)}`);
     assert.equal(result.calls.length > 0, true, 'no button dispatched a command');
@@ -141,11 +175,21 @@ test('every GUI button dispatches a lab command without a renderer error', {
     const compare = desktop.calls.find((args) => args[0] === 'shell' && !args.includes('--keep-open'));
     assert.equal(compare.includes('--show'), true, 'the dialog probe needs a visible window');
 
+    // The profile dropdown lists the existing profiles and drives --profile-lab.
+    assert.deepEqual(profiles.options, ['', 'dev', 'plain', '__new__']);
+    assert.equal(profiles.calls.length, 2, JSON.stringify(profiles.calls));
+    const selected = profiles.calls[0];
+    assert.equal(selected.includes('--profile-lab'), true, JSON.stringify(selected));
+    assert.equal(selected[selected.indexOf('--profile-lab') + 1], 'dev');
+    assert.equal(profiles.newVisible, true, 'choosing 新建 must reveal the name field');
+    const created = profiles.calls[1];
+    assert.equal(created[created.indexOf('--profile-lab') + 1], 'fresh1');
+
     // The log pane must stay on screen; adding controls must not squeeze it out.
     assert.equal(layout.layoutOk, true, JSON.stringify(layout));
     assert.equal(layout.logHeight >= 120, true, JSON.stringify(layout));
     assert.equal(layout.bodyClipped, false, JSON.stringify(layout));
-    assert.equal(layout.controls.content > layout.controls.visible, true, 'the controls area must scroll');
+    assert.equal(layout.controls.visible >= 100, true, JSON.stringify(layout));
     // A failed run must show the banner and raise a desktop notification.
     assert.equal(layout.bannerHidden, false, JSON.stringify(layout));
     assert.match(layout.bannerText, /失败/);

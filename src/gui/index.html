@@ -12,31 +12,35 @@
   h1 { margin: 0; font-size: 16px; font-weight: 650; }
   .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
   main { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 14px 18px 18px; gap: 12px; }
+  /* Controls scroll on their own so the log pane below always keeps its height. */
+  #controls { flex: 0 1 auto; min-height: 0; overflow-y: auto; display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-content: start; padding-right: 2px; }
+  #pluginGroup { grid-column: 1 / -1; }
   .group { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
   .group h2 { margin: 0 0 10px; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); font-weight: 650; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   button { font: inherit; padding: 7px 13px; border-radius: 6px; border: 1px solid var(--line); background: #fff; color: var(--text); cursor: pointer; }
   button:hover:not(:disabled) { border-color: #b9c0c9; background: #fafbfc; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button.primary:hover:not(:disabled) { background: #2a63bb; }
   button:disabled { opacity: .45; cursor: default; }
-  #controls { flex: 0 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 2px; }
   .logwrap { flex: 1 1 auto; min-height: 220px; display: flex; flex-direction: column; background: #10141a; border-radius: 8px; overflow: hidden; }
-  .banner { border-radius: 8px; padding: 8px 12px; font-weight: 600; border: 1px solid transparent; }
-  .banner.ok { background: #e8f5ee; border-color: #a6d9bd; color: #0a5c30; }
-  .banner.bad { background: #fdecea; border-color: #f3b6b0; color: #8f1d14; }
-  .banner[hidden] { display: none; }
   .logbar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #171c24; color: #c8d0da; font-size: 12px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: #7c8794; }
   .dot.run { background: #e0a23a; } .dot.ok { background: #35b06a; } .dot.bad { background: #e0544a; }
   pre { margin: 0; padding: 12px; overflow: auto; flex: 1; color: #d7dee7; font: 12px/1.55 Consolas, "Cascadia Mono", monospace; white-space: pre-wrap; }
   footer { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
   footer .spacer { flex: 1; }
-  input[type="text"] { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); }
-  input[type="text"]:focus { outline: 2px solid #c7d9f5; outline-offset: 1px; }
+  input[type="text"], select { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); }
+  input[type="text"]:focus, select:focus { outline: 2px solid #c7d9f5; outline-offset: 1px; }
+  select { max-width: 340px; }
   .note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
   label.chk { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-size: 12px; }
   label.chk input { margin: 0; }
+  .banner { border-radius: 8px; padding: 8px 12px; font-weight: 600; border: 1px solid transparent; }
+  .banner.ok { background: #e8f5ee; border-color: #a6d9bd; color: #0a5c30; }
+  .banner.bad { background: #fdecea; border-color: #f3b6b0; color: #8f1d14; }
+  .banner[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -46,62 +50,52 @@
   </header>
   <main id="root">
     <section id="controls">
-    <div class="group">
-      <h2>自定义插件 / 持久 profile</h2>
-      <div class="row">
-        <input type="text" id="plugin" style="flex:1;min-width:240px" placeholder="插件：dsh-plugin-x@1.2.3 或 C:\path\to\my-plugin">
-        <input type="text" id="profile" style="width:220px" placeholder="profile 名（留空=一次性，跑完删）">
+      <div class="group" id="pluginGroup">
+        <h2>插件 / 持久 profile</h2>
+        <div class="row">
+          <input type="text" id="plugin" style="flex:1;min-width:260px" placeholder="插件：dsh-plugin-x@1.2.3 或 C:\path\to\my-plugin（留空=只用 profile 里已装的）">
+          <select id="profileSelect" title="选择已保存的 profile"></select>
+          <input type="text" id="profileNew" placeholder="新 profile 名" hidden>
+          <button id="refreshProfiles" title="重新读取 .lab-profiles">刷新</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button id="runVerifyPlugin">验证这个插件（出报告截图）</button>
+          <button id="runShellPlugin" class="primary">在壳窗口打开（自己关）</button>
+          <button id="runShellPluginTimed">在壳窗口打开（20 秒）</button>
+          <button id="runShellCompare">壳 vs web 对比</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button id="runMatrixPlugin">再加一个插件一起验证</button>
+          <button id="runRemovePlugin">卸载这个插件</button>
+          <button id="runListProfiles">列出 profile</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label class="chk"><input type="checkbox" id="nativeDesktop"> 原生桌面：真实文件夹对话框 + 系统通知</label>
+          <label class="chk"><input type="checkbox" id="probeDialog"> 启动时弹出文件夹对话框（需勾左边）</label>
+        </div>
+        <p class="note">profile 选「一次性」= 跑完删除；选已有 profile = 连同它已装的插件一起加载、跑完保留；选「新建 profile」再填名字。卸载：profile 选好 + 插件框填插件名，点「卸载这个插件」。</p>
       </div>
-      <div class="row" style="margin-top:8px">
-        <button id="runVerifyPlugin">验证这个插件</button>
-        <button id="runShellPlugin" class="primary">在壳窗口打开（自己关）</button>
-        <button id="runShellPluginTimed">在壳窗口打开（20 秒）</button>
-        <button id="runMatrixPlugin">和另一个插件一起验证</button>
-        <button id="runListProfiles">列出 profile</button>
-        <button id="runRemovePlugin">卸载 profile 里的这个插件</button>
+      <div class="group">
+        <h2>检查</h2>
+        <div class="row">
+          <button data-args="doctor">自检 doctor</button>
+          <button class="primary" data-args="verify">快速验证</button>
+          <button data-args="verify|--screenshot|home|--screenshot|settings">验证 + 设置页截图</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button data-args="verify|--fixture-variant|empty">空会话</button>
+          <button data-args="verify|--fixture-variant|long">长会话（12 轮）</button>
+          <button data-args="scan|--list">失败签名库</button>
+          <button data-args="scan|--latest">扫描最近一次日志</button>
+        </div>
       </div>
-      <p class="note" id="cmdPreview">填了 profile 名会保留安装结果，下次不带插件也能打开；再填第二个插件即可检验两者的相互影响。要卸载单个插件：profile 名 + 插件名都填好，再点「卸载 profile 里的这个插件」（不用填版本号也行）。</p>
-    </div>
-    <div class="group">
-      <h2>检查</h2>
-      <div class="row">
-        <button data-args="doctor">自检 doctor</button>
-        <button class="primary" data-args="verify">快速验证</button>
-        <button data-args="verify|--screenshot|home|--screenshot|settings">验证 + 设置页截图</button>
-        <button data-args="verify|--fixture-variant|empty">空会话</button>
-        <button data-args="verify|--fixture-variant|long">长会话（12 轮）</button>
-        <button data-args="scan|--list">查看失败签名库</button>
-        <button data-args="scan|--latest">扫描最近一次运行的日志</button>
+      <div class="group">
+        <h2>清理</h2>
+        <div class="row">
+          <button data-args="clean|--dry-run">查看残留（不改动）</button>
+          <button data-args="clean">清理残留临时目录</button>
+        </div>
       </div>
-    </div>
-    <div class="group">
-      <h2>Electron 壳</h2>
-      <div class="row">
-        <button id="shellTimed">打开壳窗口（20 秒）</button>
-        <button id="shellKeepOpen">打开壳窗口（自己关）</button>
-        <button id="shellCompare">壳 vs web 对比</button>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <label class="chk"><input type="checkbox" id="nativeDesktop"> 原生桌面：真实文件夹对话框 + 系统通知</label>
-        <label class="chk"><input type="checkbox" id="probeDialog"> 启动时弹出文件夹对话框（需勾选左边）</label>
-      </div>
-      <p class="note">不勾选＝确定性桩：目录选择返回夹具路径、通知只记录不弹。勾「原生桌面」后会弹真实系统通知；再勾右边才会打开真实的选择目录对话框，窗口会等你选一个目录或点取消，然后继续跑完。</p>
-    </div>
-    <div class="group">
-      <h2>插件与主题</h2>
-      <div class="row">
-        <button data-args="verify|--plugin|dsh-plugin-wallpaper-engine@1.2.0|--online">验证 wallpaper 插件</button>
-        <button data-args="matrix|--config|fixtures/matrix/theme-conflict.json|--online">主题冲突矩阵</button>
-        <button data-args="matrix|--config|fixtures/matrix/effect-conflict.json">效果探针矩阵</button>
-      </div>
-    </div>
-    <div class="group">
-      <h2>清理</h2>
-      <div class="row">
-        <button data-args="clean|--dry-run">查看残留（不改动）</button>
-        <button data-args="clean">清理残留临时目录</button>
-      </div>
-    </div>
     </section>
     <div id="banner" class="banner" hidden></div>
     <div class="logwrap">
@@ -125,7 +119,8 @@
   const allButtons = [...document.querySelectorAll('button')].filter((b) => !['stop', 'report', 'artifacts'].includes(b.id));
   const presetButtons = [...document.querySelectorAll('button[data-args]')];
   const pluginInput = document.getElementById('plugin');
-  const profileInput = document.getElementById('profile');
+  const profileSelect = document.getElementById('profileSelect');
+  const profileNew = document.getElementById('profileNew');
   const nativeDesktop = document.getElementById('nativeDesktop');
   const probeDialog = document.getElementById('probeDialog');
   const banner = document.getElementById('banner');
@@ -170,9 +165,21 @@
   function networkFlag(spec) {
     return isLocalSpec(spec) ? '--offline' : '--online';
   }
+  function pluginField() {
+    return pluginInput.value.trim();
+  }
+  function currentProfile() {
+    if (profileSelect.value === '__new__') return profileNew.value.trim();
+    return profileSelect.value;
+  }
   function withProfile(args) {
-    const profile = profileInput.value.trim();
+    const profile = currentProfile();
     return profile ? [...args, '--profile-lab', profile] : args;
+  }
+  function syncProfileNew() {
+    const isNew = profileSelect.value === '__new__';
+    profileNew.hidden = !isNew;
+    if (isNew) profileNew.focus();
   }
   function desktopFlags() {
     if (!nativeDesktop.checked) return [];
@@ -187,11 +194,44 @@
     const base = needsShow ? [...args, '--show', '--show-hold', '20000'] : [...args];
     return [...base, ...flags];
   }
-  function pluginField() {
-    return pluginInput.value.trim();
-  }
   function noteNoPlugin() {
-    append('[gui] 插件输入框是空的：这次不装新插件，直接用当前环境（一次性空环境，或 profile 里已装的插件）。\n');
+    append('[gui] 插件输入框是空的：这次不装新插件，直接用当前 profile（一次性空环境，或 profile 里已装的插件）。\n');
+  }
+
+  function shortSpecs(profile) {
+    const specs = (profile.plugins ?? []).map((entry) => entry.spec);
+    if (!specs.length) return '空';
+    const text = specs.join(', ');
+    return text.length > 48 ? `${text.slice(0, 45)}…` : text;
+  }
+  async function refreshProfiles() {
+    const previous = profileSelect.value;
+    let list = [];
+    try {
+      if (typeof window.labGui.profiles === 'function') {
+        const result = await window.labGui.profiles();
+        list = result.profiles ?? [];
+      }
+    } catch {
+      list = [];
+    }
+    profileSelect.innerHTML = '';
+    const oneShot = document.createElement('option');
+    oneShot.value = '';
+    oneShot.textContent = '一次性运行（跑完删除）';
+    profileSelect.appendChild(oneShot);
+    for (const profile of list) {
+      const option = document.createElement('option');
+      option.value = profile.name;
+      option.textContent = `${profile.name}（${shortSpecs(profile)}）`;
+      profileSelect.appendChild(option);
+    }
+    const create = document.createElement('option');
+    create.value = '__new__';
+    create.textContent = '新建 profile…';
+    profileSelect.appendChild(create);
+    if ([...profileSelect.options].some((option) => option.value === previous)) profileSelect.value = previous;
+    syncProfileNew();
   }
 
   for (const button of presetButtons) {
@@ -211,52 +251,53 @@
     const spec = pluginField();
     if (!spec) noteNoPlugin();
     const pluginArgs = spec ? ['--plugin', spec, networkFlag(spec)] : [];
-    runWithArgs(withDesktop(withProfile(['shell', '--no-compare-web', ...pluginArgs, '--keep-open'])), spec ? `shell keep-open · ${spec}` : 'shell keep-open（当前环境）');
+    runWithArgs(withDesktop(withProfile(['shell', '--no-compare-web', ...pluginArgs, '--keep-open'])), spec ? `shell keep-open · ${spec}` : 'shell keep-open（当前 profile）');
   });
   document.getElementById('runShellPluginTimed').addEventListener('click', () => {
     const spec = pluginField();
     if (!spec) noteNoPlugin();
     const pluginArgs = spec ? ['--plugin', spec, networkFlag(spec)] : [];
-    runWithArgs(withDesktop(withProfile(['shell', '--no-compare-web', ...pluginArgs, '--show', '--show-hold', '20000'])), spec ? `shell 20s · ${spec}` : 'shell 20s（当前环境）');
+    runWithArgs(withDesktop(withProfile(['shell', '--no-compare-web', ...pluginArgs, '--show', '--show-hold', '20000'])), spec ? `shell 20s · ${spec}` : 'shell 20s（当前 profile）');
+  });
+  document.getElementById('runShellCompare').addEventListener('click', () => {
+    const spec = pluginField();
+    const pluginArgs = spec ? ['--plugin', spec, networkFlag(spec)] : [];
+    runWithArgs(withDesktop(withProfile(['shell', ...pluginArgs])), spec ? `壳 vs web · ${spec}` : '壳 vs web 对比');
   });
   document.getElementById('runMatrixPlugin').addEventListener('click', () => {
     const spec = pluginField();
     if (!spec) {
-      append('[gui] 先在插件输入框填第一个插件，再用「和另一个插件一起验证」。\n');
+      append('[gui] 先在插件输入框填第一个插件，再用「再加一个插件一起验证」。\n');
       return;
     }
     const other = window.prompt('要和它一起验证的第二个插件（包名@版本 或本地路径）：');
     if (!other) return;
-    runWithArgs(withProfile([
+    runWithArgs(withDesktop(withProfile([
       'shell', '--no-compare-web',
       '--plugin', spec, networkFlag(spec),
       '--with', other, networkFlag(other),
       '--show', '--show-hold', '20000',
-    ]), `两个插件一起 · ${spec} + ${other}`);
-  });
-  document.getElementById('runListProfiles').addEventListener('click', () => runWithArgs(['profile', 'list'], 'profile list'));
-  document.getElementById('shellTimed').addEventListener('click', () => {
-    runWithArgs(withDesktop(['shell', '--no-compare-web', '--show', '--show-hold', '20000']), '壳窗口 20 秒');
-  });
-  document.getElementById('shellKeepOpen').addEventListener('click', () => {
-    runWithArgs(withDesktop(['shell', '--no-compare-web', '--keep-open']), '壳窗口（自己关）');
-  });
-  document.getElementById('shellCompare').addEventListener('click', () => {
-    runWithArgs(withDesktop(['shell']), '壳 vs web 对比');
+    ])), `两个插件一起 · ${spec} + ${other}`);
   });
   document.getElementById('runRemovePlugin').addEventListener('click', () => {
-    const profile = profileInput.value.trim();
+    const profile = currentProfile();
     const spec = pluginField();
     if (!profile) {
-      append('[gui] 先在「profile 名」输入框填名字，再点卸载。\n');
+      append('[gui] 「卸载」要先在下拉里选一个已有 profile（一次性运行没有可卸载的对象）。\n');
       return;
     }
     if (!spec) {
-      append('[gui] 先在「插件」输入框填要卸载的插件名或 spec（不带版本号也行）。\n');
+      append('[gui] 先在插件输入框填要卸载的插件名或 spec（不带版本号也行）。\n');
       return;
     }
     runWithArgs(['profile', 'remove-plugin', profile, spec], `profile remove-plugin · ${profile} / ${spec}`);
   });
+  document.getElementById('runListProfiles').addEventListener('click', async () => {
+    await runWithArgs(['profile', 'list'], 'profile list');
+    await refreshProfiles();
+  });
+  document.getElementById('refreshProfiles').addEventListener('click', () => refreshProfiles());
+  profileSelect.addEventListener('change', syncProfileNew);
 
   document.getElementById('stop').addEventListener('click', async () => {
     await window.labGui.stop();
@@ -284,8 +325,10 @@
         body: `${runLabel} · 退出码 ${code} · 用时 ${elapsed}s`,
       });
     }
+    refreshProfiles();
   });
 
+  refreshProfiles();
   window.labGui.info().then((info) => {
     document.getElementById('env').textContent =
       `electron ${info.electron} · node ${info.node} · ${info.repo}`;
