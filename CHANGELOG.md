@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.0 - 2026-10-05 (flat, grid-aligned GUI)
+
+### Changed
+
+- Reworked the desktop GUI into a flat two-column layout: the plugin workflow
+  on the left, 检查 / 清理 on the right. Buttons now sit on equal-width,
+  equal-height 2-column action grids instead of ragged flex rows, with a single
+  filled primary, a tinted strong style, and a tinted danger style. The new
+  `profileTag` badge mirrors the current profile dropdown selection.
+- Moved **查看已装的 DSH 版本** (`runtimes`) out of the collapsed disclosure
+  into the main 检查 grid; 更多 now holds only the three slow `matrix` presets.
+- The default 1080x760 window fits the whole control area without scrolling;
+  below 900px wide the columns stack and the control area scrolls on its own
+  while the log pane keeps at least 200px.
+
+### Tests
+
+- `tests/integration/gui-page.test.js` gained a design probe (grid rows have
+  equal cell sizes, labels do not overflow their buttons, controls do not
+  overlap or spill out of their rows, and the page has no horizontal scroll)
+  plus a second case that runs the same probe at the minimum 820x560 window
+  size. Full suite: unit 186/186, integration 16/16.
+
 ## 0.1.0 - 2026-10-04
 
 Phase 4 (Electron shell) completed.

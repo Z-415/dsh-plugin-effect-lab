@@ -31,16 +31,22 @@ only read. Set `DSH_LAB_GUI_HOME` to relocate the copied runtime.
 
 ## Layout
 
-Three groups, in this order:
+Flat two-column grid; every button sits on a 2-column action grid so cells stay
+the same width and height instead of ragged flex wrapping:
 
-1. **插件 / 持久 profile** — the main group: plugin field, profile dropdown,
-   and every plugin-related action (verify, open the shell window, uninstall,
-   list, two plugins together, desktop-mode switches).
-2. **检查** — `doctor`, the plain `verify` presets, and the failure-signature
-   tools. A collapsed **更多（矩阵 / 版本）** disclosure holds the two `matrix`
-   presets plus **查看已装的 DSH 版本** and the cross-version matrix, so they
-   cost no height until opened.
-3. **清理** — dry-run and clean of the leaked temp directories.
+- **Left column — 插件 / 持久 profile** (the main workflow): plugin field,
+  profile dropdown, a profile tag that mirrors the current selection, the
+  plugin actions (verify, open the shell window, uninstall, list, two plugins
+  together), and the desktop-mode switches.
+- **Right column — 检查 / 清理**: `doctor`, the `verify` presets, the
+  failure-signature tools and **查看已装的 DSH 版本**; then dry-run/clean of
+  leaked temp directories. A collapsed **更多：矩阵（较慢）** disclosure holds
+  the three `matrix` presets (including the cross-version matrix), so they cost
+  no height until opened.
+
+At the 1080×760 default size the whole layout fits without scrolling; below
+900px wide the two columns stack and the control area scrolls on its own. The
+log pane keeps a minimum height, and the window can shrink to 820×560.
 
 Below the groups: the result banner, the always-visible log pane, and the
 footer (open report / open artifacts / abort).
@@ -63,9 +69,9 @@ footer (open report / open artifacts / abort).
 | 检查 | 空会话 / 长会话 | `verify --fixture-variant empty\|long` |
 | 检查 | 失败签名库 | `scan --list` |
 | 检查 | 扫描最近一次日志 | `scan --latest` |
+| 检查 | 查看已装的 DSH 版本 | `runtimes` |
 | 检查（更多 ▾） | 主题冲突矩阵 | `matrix --config fixtures/matrix/theme-conflict.json --online` |
 | 检查（更多 ▾） | 效果探针矩阵 | `matrix --config fixtures/matrix/effect-conflict.json` |
-| 检查（更多 ▾） | 查看已装的 DSH 版本 | `runtimes` |
 | 检查（更多 ▾） | 跨版本矩阵 | `matrix --config fixtures/matrix/effect-conflict.json --runtime-matrix` |
 | 清理 | 查看残留（不改动） | `clean --dry-run`（残留目录 + 游离的 lab 进程） |
 | 清理 | 清理残留临时目录 | `clean`（先回收游离进程，再删目录） |
@@ -118,7 +124,7 @@ browser, or the `artifacts/` folder. **中止** kills the running child tree.
 ## 运行输出去哪看
 
 窗口下半部分是**常驻日志区**：命令的 stdout/stderr 实时流进来，跑完自动滚到最新。
-上方按钮区放不下时会自己滚动，不会再把日志区挤没（日志区固定至少 220px）。
+上方按钮区放不下时会自己滚动，不会再把日志区挤没（日志区固定至少 200px）。
 
 命令结束时还有两道提示，不用去翻报告：
 

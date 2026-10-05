@@ -4,46 +4,89 @@
 <meta charset="utf-8">
 <title>DSH Plugin Effect Lab</title>
 <style>
-  :root { --bg: #f5f6f8; --panel: #fff; --line: #dfe3e8; --text: #1b1e24; --muted: #5d6570; --accent: #2f6fd0; --ok: #0a7b3e; --bad: #b42318; }
+  :root {
+    --bg: #f2f4f7;
+    --panel: #ffffff;
+    --line: #e5e7eb;
+    --line-strong: #d2d6dd;
+    --text: #1f2329;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-dark: #1d4ed8;
+    --accent-weak: #f2f6ff;
+    --ok: #15803d;
+    --ok-bg: #eef8f1;
+    --bad: #c0271c;
+    --bad-bg: #fdf2f1;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; height: 100vh; display: flex; flex-direction: column;
-         font: 13px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; color: var(--text); background: var(--bg); }
-  header { padding: 14px 18px 10px; border-bottom: 1px solid var(--line); background: var(--panel); }
-  h1 { margin: 0; font-size: 16px; font-weight: 650; }
-  .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
-  main { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 14px 18px 18px; gap: 12px; }
+  html, body { height: 100%; }
+  body { margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+         font: 13px/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  header { display: flex; align-items: baseline; gap: 12px; padding: 12px 18px;
+           background: var(--panel); border-bottom: 1px solid var(--line); }
+  h1 { margin: 0; font-size: 15px; font-weight: 650; }
+  .sub { margin-left: auto; min-width: 0; color: var(--muted); font-size: 11.5px;
+         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  main { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px 18px 14px; }
   /* Controls scroll on their own so the log pane below always keeps its height. */
-  #controls { flex: 0 1 auto; min-height: 0; overflow-y: auto; display: grid;
-              grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-content: start; padding-right: 2px; }
-  #pluginGroup { grid-column: 1 / -1; }
-  .group { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
-  .group h2 { margin: 0 0 10px; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); font-weight: 650; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  button { font: inherit; padding: 7px 13px; border-radius: 6px; border: 1px solid var(--line); background: #fff; color: var(--text); cursor: pointer; }
-  button:hover:not(:disabled) { border-color: #b9c0c9; background: #fafbfc; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button.primary:hover:not(:disabled) { background: #2a63bb; }
-  button:disabled { opacity: .45; cursor: default; }
-  .logwrap { flex: 1 1 auto; min-height: 220px; display: flex; flex-direction: column; background: #10141a; border-radius: 8px; overflow: hidden; }
-  .logbar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #171c24; color: #c8d0da; font-size: 12px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: #7c8794; }
-  .dot.run { background: #e0a23a; } .dot.ok { background: #35b06a; } .dot.bad { background: #e0544a; }
-  pre { margin: 0; padding: 12px; overflow: auto; flex: 1; color: #d7dee7; font: 12px/1.55 Consolas, "Cascadia Mono", monospace; white-space: pre-wrap; }
-  footer { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
-  footer .spacer { flex: 1; }
-  input[type="text"], select { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); }
-  input[type="text"]:focus, select:focus { outline: 2px solid #c7d9f5; outline-offset: 1px; }
-  select { max-width: 340px; }
-  .note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
-  label.chk { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-size: 12px; }
-  label.chk input { margin: 0; }
-  details { margin-top: 8px; }
-  summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+  #controls { flex: 0 1 auto; min-height: 0; overflow-y: auto; display: grid; align-content: start;
+              grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; padding-right: 2px; }
+  .side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .group { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .grouphead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .grouphead h2 { margin: 0; font-size: 11.5px; font-weight: 650; color: #4b5563; letter-spacing: 0; }
+  .tag { margin-left: auto; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+         padding: 1px 8px; border-radius: 999px; background: #f3f4f6; color: var(--muted); font-size: 11px; }
+  .fieldrow { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .fieldrow input[type="text"] { flex: 1; min-width: 0; }
+  input[type="text"], select { font: inherit; min-height: 32px; padding: 6px 10px; color: var(--text);
+                               background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px; }
+  input[type="text"]::placeholder { color: #9aa1ab; }
+  input[type="text"]:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .12); }
+  select { max-width: 100%; }
+  .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .actions + .actions { margin-top: 8px; }
+  .actions > .span2 { grid-column: 1 / -1; }
+  button { display: inline-flex; align-items: center; justify-content: center; text-align: center;
+           min-height: 32px; padding: 6px 12px; font: inherit; font-size: 12.5px; font-weight: 500;
+           color: var(--text); background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px;
+           cursor: pointer; transition: background-color .12s ease, border-color .12s ease, color .12s ease; }
+  button:hover:not(:disabled) { background: #f5f7fa; border-color: #bfc5cf; }
+  button:active:not(:disabled) { background: #eceff3; }
+  button:focus-visible { outline: 2px solid #b9cdf6; outline-offset: 1px; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { color: #fff; background: var(--accent); border-color: var(--accent); }
+  button.primary:hover:not(:disabled) { background: var(--accent-dark); border-color: var(--accent-dark); }
+  button.strong { color: var(--accent-dark); background: var(--accent-weak); border-color: #c3d5fb; }
+  button.strong:hover:not(:disabled) { background: #e7eeff; border-color: #a9c4f8; }
+  button.danger { color: var(--bad); border-color: #ecc9c5; }
+  button.danger:hover:not(:disabled) { background: var(--bad-bg); border-color: #dda8a2; }
+  .checks { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; }
+  label.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #374151; }
+  label.chk input { width: 14px; height: 14px; margin: 0; accent-color: var(--accent); }
+  .note { margin: 8px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.55; }
+  details { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+  details[open] summary { margin-bottom: 8px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 11.5px; }
   summary:hover { color: var(--text); }
-  .banner { border-radius: 8px; padding: 8px 12px; font-weight: 600; border: 1px solid transparent; }
-  .banner.ok { background: #e8f5ee; border-color: #a6d9bd; color: #0a5c30; }
-  .banner.bad { background: #fdecea; border-color: #f3b6b0; color: #8f1d14; }
+  .logwrap { flex: 1 1 auto; min-height: 200px; display: flex; flex-direction: column;
+             background: #11151b; border: 1px solid #1d232b; border-radius: 8px; overflow: hidden; }
+  .logbar { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+            background: #171c23; border-bottom: 1px solid #232a33; color: #c3cbd6; font-size: 11.5px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; }
+  .dot.run { background: #e0a23a; } .dot.ok { background: #35b06a; } .dot.bad { background: #e0544a; }
+  pre { flex: 1; margin: 0; padding: 12px 14px; overflow: auto; color: #d6dde6;
+        font: 12px/1.55 Consolas, "Cascadia Mono", monospace; white-space: pre-wrap; word-break: break-word; }
+  footer { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+  footer .spacer { flex: 1; }
+  .banner { padding: 8px 12px; border: 1px solid transparent; border-radius: 8px; font-size: 12.5px; font-weight: 600; }
+  .banner.ok { color: #116033; background: var(--ok-bg); border-color: #bfe3ca; }
+  .banner.bad { color: #8f1d14; background: var(--bad-bg); border-color: #f0c3bd; }
   .banner[hidden] { display: none; }
+  @media (max-width: 900px) {
+    #controls { grid-template-columns: minmax(0, 1fr); }
+  }
 </style>
 </head>
 <body>
@@ -54,67 +97,68 @@
   <main id="root">
     <section id="controls">
       <div class="group" id="pluginGroup">
-        <h2>插件 / 持久 profile</h2>
-        <div class="row">
-          <input type="text" id="plugin" style="flex:1;min-width:260px" placeholder="插件：dsh-plugin-x@1.2.3 或 C:\path\to\my-plugin（留空=只用 profile 里已装的）">
-          <select id="profileSelect" title="选择已保存的 profile"></select>
-          <input type="text" id="profileNew" placeholder="新 profile 名" hidden>
+        <div class="grouphead">
+          <h2>插件 / 持久 profile</h2>
+          <span class="tag" id="profileTag">一次性运行</span>
+        </div>
+        <div class="fieldrow">
+          <input type="text" id="plugin" placeholder="插件：dsh-plugin-x@1.2.3 或 C:\path\to\my-plugin（留空 = 只用 profile 里已装的）">
+          <select id="profileSelect" title="选择已保存的 profile" aria-label="profile"></select>
+          <input type="text" id="profileNew" placeholder="新 profile 名" aria-label="新 profile 名" hidden>
           <button id="refreshProfiles" title="重新读取 .lab-profiles">刷新</button>
         </div>
-        <div class="row" style="margin-top:8px">
-          <button id="runVerifyPlugin">验证这个插件（出报告截图）</button>
-          <button id="runShellPlugin" class="primary">在壳窗口打开（自己关）</button>
-          <button id="runShellPluginTimed">在壳窗口打开（20 秒）</button>
-          <button id="runShellCompare">壳 vs web 对比</button>
+        <div class="actions">
+          <button id="runVerifyPlugin" class="primary" title="安装或加载插件，生成报告和截图">验证这个插件（出报告截图）</button>
+          <button id="runShellPlugin" class="strong" title="打开壳窗口，你自己关">在壳窗口打开（自己关）</button>
+          <button id="runShellPluginTimed" title="打开壳窗口，20 秒后自动关闭">在壳窗口打开（20 秒）</button>
+          <button id="runShellCompare" title="同一份插件分别跑壳与 web，对比 DOM / token / 像素">壳 vs web 对比</button>
         </div>
-        <div class="row" style="margin-top:8px">
-          <button id="runMatrixPlugin">再加一个插件一起验证</button>
-          <button id="runRemovePlugin">卸载这个插件</button>
-          <button id="runListProfiles">列出 profile</button>
+        <div class="actions">
+          <button id="runMatrixPlugin" title="用第二个插件和当前插件一起跑壳窗口">再加一个插件一起验证</button>
+          <button id="runRemovePlugin" class="danger" title="只从这个持久 profile 里卸掉该插件">卸载这个插件</button>
+          <button id="runListProfiles" class="span2" title="列出 .lab-profiles 下所有 profile">列出 profile</button>
         </div>
-        <div class="row" style="margin-top:8px">
+        <div class="checks">
           <label class="chk"><input type="checkbox" id="nativeDesktop"> 原生桌面：真实文件夹对话框 + 系统通知</label>
           <label class="chk"><input type="checkbox" id="probeDialog"> 启动时弹出文件夹对话框（需勾左边）</label>
         </div>
         <p class="note">profile 选「一次性」= 跑完删除；选已有 profile = 连同它已装的插件一起加载、跑完保留；选「新建 profile」再填名字。卸载：profile 选好 + 插件框填插件名，点「卸载这个插件」。</p>
       </div>
-      <div class="group">
-        <h2>检查</h2>
-        <div class="row">
-          <button data-args="doctor">自检 doctor</button>
-          <button class="primary" data-args="verify">快速验证</button>
-          <button data-args="verify|--screenshot|home|--screenshot|settings">验证 + 设置页截图</button>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <button data-args="verify|--fixture-variant|empty">空会话</button>
-          <button data-args="verify|--fixture-variant|long">长会话（12 轮）</button>
-          <button data-args="scan|--list">失败签名库</button>
-          <button data-args="scan|--latest">扫描最近一次日志</button>
-        </div>
-        <details id="moreChecks">
-          <summary>更多（矩阵 / 版本）</summary>
-          <div class="row" style="margin-top:8px">
-            <button data-args="matrix|--config|fixtures/matrix/theme-conflict.json|--online">主题冲突矩阵</button>
-            <button data-args="matrix|--config|fixtures/matrix/effect-conflict.json">效果探针矩阵</button>
-          </div>
-          <div class="row" style="margin-top:8px">
+      <div class="side">
+        <div class="group">
+          <div class="grouphead"><h2>检查</h2></div>
+          <div class="actions">
+            <button data-args="doctor" title="环境自检，必须 PASS">自检 doctor</button>
+            <button class="strong" data-args="verify" title="不装新插件的快速验证">快速验证</button>
+            <button data-args="verify|--screenshot|home|--screenshot|settings">验证 + 设置页截图</button>
+            <button data-args="verify|--fixture-variant|empty">空会话</button>
+            <button data-args="verify|--fixture-variant|long">长会话（12 轮）</button>
+            <button data-args="scan|--list">失败签名库</button>
+            <button data-args="scan|--latest">扫描最近一次日志</button>
             <button data-args="runtimes">查看已装的 DSH 版本</button>
-            <button data-args="matrix|--config|fixtures/matrix/effect-conflict.json|--runtime-matrix">跨版本矩阵（每个版本各跑一遍）</button>
           </div>
-          <p class="note">矩阵会给每个组合各跑一次完整验证（较慢），结果写进 artifacts 里的 matrix.html。跨版本矩阵需要机器上有多个官方版本：用环境变量 DSH_LAB_RUNTIMES 或直接给 lab.js --runtime 指定，详见 docs/VERSION-POLICY.md。需要联网的组合已经带了 --online。</p>
-        </details>
-      </div>
-      <div class="group">
-        <h2>清理</h2>
-        <div class="row">
-          <button data-args="clean|--dry-run">查看残留（不改动）</button>
-          <button data-args="clean">清理残留临时目录</button>
+          <details id="moreChecks">
+            <summary>更多：矩阵（较慢）</summary>
+            <div class="actions">
+              <button data-args="matrix|--config|fixtures/matrix/theme-conflict.json|--online">主题冲突矩阵</button>
+              <button data-args="matrix|--config|fixtures/matrix/effect-conflict.json">效果探针矩阵</button>
+              <button data-args="matrix|--config|fixtures/matrix/effect-conflict.json|--runtime-matrix">跨版本矩阵（每个版本各跑一遍）</button>
+            </div>
+            <p class="note">矩阵会给每个组合各跑一次完整验证（较慢），结果写进 artifacts 里的 matrix.html。跨版本矩阵需要机器上有多个官方版本：用环境变量 DSH_LAB_RUNTIMES 或直接给 lab.js --runtime 指定，详见 docs/VERSION-POLICY.md。需要联网的组合已经带了 --online。</p>
+          </details>
+        </div>
+        <div class="group">
+          <div class="grouphead"><h2>清理</h2></div>
+          <div class="actions">
+            <button data-args="clean|--dry-run" title="只查看残留，不改动">查看残留（不改动）</button>
+            <button class="danger" data-args="clean" title="先回收游离进程，再删残留临时目录">清理残留临时目录</button>
+          </div>
         </div>
       </div>
     </section>
-    <div id="banner" class="banner" hidden></div>
+    <div id="banner" class="banner" role="status" aria-live="polite" hidden></div>
     <div class="logwrap">
-      <div class="logbar"><span class="dot" id="dot"></span><span id="status">空闲</span><span style="flex:1"></span><span id="hint"></span></div>
+      <div class="logbar"><span class="dot" id="dot"></span><span id="status" role="status" aria-live="polite">空闲</span><span style="flex:1"></span><span id="hint"></span></div>
       <pre id="log">选择上面的按钮开始。所有操作都在隔离的 DSH_HOME 里进行，不会碰你的真实配置。
 </pre>
     </div>
@@ -195,6 +239,12 @@
     const isNew = profileSelect.value === '__new__';
     profileNew.hidden = !isNew;
     if (isNew) profileNew.focus();
+    const tag = document.getElementById('profileTag');
+    if (tag) {
+      if (isNew) tag.textContent = '新建 profile';
+      else if (profileSelect.value) tag.textContent = `profile：${profileSelect.value}`;
+      else tag.textContent = '一次性运行';
+    }
   }
   function desktopFlags() {
     if (!nativeDesktop.checked) return [];
