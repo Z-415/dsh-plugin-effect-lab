@@ -253,10 +253,16 @@ cwd 下读不到 → `result=null`。默认 artifacts（`<cwd>/artifacts`，绝�
    走 `taskkill /PID <pid> /T /F`。
 3. **面板闭环**：插件规格输入 + 允许联网 + 开始验证 + 取消 + 进行中（已用时间）+ 完成摘要
    + 自动内嵌报告；空态给出可操作提示。
+4. **打开壳界面入口**：面板新增「打开壳界面」按钮，走 `POST /dsh-lab-bridge/shell`
+   （同样 token + loopback）。host 以 detached / stdio=ignore 启动
+   `node <lab>/bin/lab.js shell --show --no-compare-web [--plugin <spec>] [--keep-open]`；
+   不传 `--profile-lab`，并对 verify 与 shell 都剥离宿主真实 `DSH_HOME`/`DSH_AGENTS_HOME`，
+   壳仍使用实验舱的临时隔离 home。规格为空时打开普通 DSH 壳，窗口自己关。
 
 验证：
 
-- `npm test` → **252** 通过；`$env:DSH_LAB_E2E='1'; npm run test:e2e` → **25** 通过。
+- `npm test` → **259** 通过；`$env:DSH_LAB_E2E='1'; npm run test:e2e` → **25** 通过（含面板
+  「打开壳界面」点击后显示已打开壳窗口的断言）。
 - 面板集成测试：无 `/dsh-lab-bridge` anchor、点击后 `window.location.href` 不变、
   `window.open` 收到 `http://127.0.0.1:<port>/...`；开始 → 进行中 → 完成 → 摘要 → iframe
   的闭环全部断言通过。
@@ -271,3 +277,8 @@ cwd 下读不到 → `result=null`。默认 artifacts（`<cwd>/artifacts`，绝�
   证明新控制面已在真实桌面版加载。已启动官方桌面版供人工点击「设置 → 实验舱桥接」确认
   输入规格 → 开始 → 进行中 → 摘要 + 内嵌报告；原生窗口无法由本 AI 自动化点击，最后一步
   的观感确认需人工完成。
+
+补充（2026-10-05 续二）：桥接已经是指向仓库的链接；重启官方桌面版后，真实宿主 19387
+上 `POST /dsh-lab-bridge/shell` 无 token → **401**（旧代码该路径是 404），证明新增的
+「打开壳界面」控制路由已在真实桌面版加载。面板按钮会以当前规格打开实验舱的 Electron
+壳窗口；壳使用临时隔离 home，关掉窗口即结束。
