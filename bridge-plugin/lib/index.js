@@ -1,10 +1,12 @@
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { resolveBridgeConfig } from './config.js';
 import { runLabVerify } from './lab-cli.js';
 import { summarizeReport } from './report-summary.js';
 import { createBridgeRouteHandler } from './routes.js';
+import { createVerifyController } from './verify-controller.js';
 
 /**
  * dsh-plugin-effect-lab-bridge — host half.
@@ -122,6 +124,24 @@ export function apply(ctx, config = {}) {
     return cached;
   };
 
+  // Per-host-process control token. It reaches the renderer through the
+  // standard index-injection channel (the desktop host forwards
+  // collectIndexInjections() over IPC), so the client can authenticate the
+  // control routes without a separate handshake.
+  const controlToken = randomBytes(32).toString('base64url');
+  if (typeof ctx.on === 'function') {
+    const off = ctx.on('webserver/index-inject', (table) => {
+      table.push({
+        kind: 'global',
+        name: '__DSH_LAB_BRIDGE__',
+        value: { token: controlToken },
+      });
+    });
+    if (typeof off === 'function') disposers.push(off);
+  }
+
+  const controller = createVerifyController({ getConfig });
+
   const webServer = ctx.webServer;
   if (!webServer || typeof webServer.register !== 'function') {
     throw new Error('dsh-plugin-effect-lab-bridge: webServer service is missing despite inject');
@@ -129,7 +149,7 @@ export function apply(ctx, config = {}) {
   disposers.push(webServer.register({
     kind: 'prefix',
     path: BRIDGE_ROUTE_PREFIX,
-    handler: createBridgeRouteHandler({ getConfig }),
+    handler: createBridgeRouteHandler({ getConfig, controller, getToken: () => controlToken }),
   }));
 
   const tools = ctx.tools;

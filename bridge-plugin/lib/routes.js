@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { timingSafeEqual } from 'node:crypto';
 import { readArtifactFile, readLatestReport } from './artifacts-store.js';
 import { summarizeReport } from './report-summary.js';
+import { BridgeBusyError, publicJobView } from './verify-controller.js';
 
 /**
  * Same-origin report routes.
@@ -72,6 +74,62 @@ function html(res, status, body) {
   res.end(body);
 }
 
+/** Only actual loopback peers may reach any bridge route. */
+export function isLoopbackRequest(req) {
+  const address = String(req?.socket?.remoteAddress ?? '');
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+}
+
+function tokenFromRequest(req) {
+  const header = req?.headers?.['x-dsh-lab-token'];
+  if (typeof header === 'string' && header.length > 0) return header;
+  const auth = req?.headers?.authorization;
+  if (typeof auth === 'string' && auth.startsWith('Bearer ')) return auth.slice('Bearer '.length);
+  return null;
+}
+
+export function tokensMatch(actual, expected) {
+  if (typeof actual !== 'string' || typeof expected !== 'string') return false;
+  if (actual.length === 0 || actual.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+}
+
+/** Control routes require both a loopback peer and the injected token. */
+function authorizeControl(req, res, getToken) {
+  if (!isLoopbackRequest(req)) {
+    json(res, 403, { error: 'control plane is loopback-only' });
+    return false;
+  }
+  if (!tokensMatch(tokenFromRequest(req), getToken?.())) {
+    json(res, 401, { error: 'missing or invalid control token' });
+    return false;
+  }
+  return true;
+}
+
+function readJsonBody(req, limit = 16 * 1024) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    let tooLarge = false;
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > limit) tooLarge = true;
+    });
+    req.on('end', () => {
+      if (tooLarge) {
+        reject(new Error('request body too large'));
+        return;
+      }
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(new Error('invalid JSON body'));
+      }
+    });
+    req.on('error', (error) => reject(error));
+  });
+}
+
 function placeholderPage(message) {
   const text = String(message ?? '').replace(/[<>&]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[ch]));
   return `<!doctype html>
@@ -108,15 +166,8 @@ function latestRunName(artifactsDir) {
  * Build the request handler. All config resolution is deferred to request
  * time through `getConfig`, so plugin startup stays cheap.
  */
-export function createBridgeRouteHandler({ getConfig }) {
+export function createBridgeRouteHandler({ getConfig, controller = null, getToken = () => null }) {
   return async function handleBridgeRequest(req, res) {
-    const method = (req.method || 'GET').toUpperCase();
-    if (method !== 'GET' && method !== 'HEAD') {
-      res.statusCode = 405;
-      res.setHeader('Allow', 'GET, HEAD');
-      res.end('method not allowed');
-      return;
-    }
     let pathname;
     try {
       pathname = new URL(req.url ?? '/', 'http://bridge.local').pathname;
@@ -137,6 +188,60 @@ export function createBridgeRouteHandler({ getConfig }) {
     if (rest === null) {
       res.statusCode = 404;
       res.end('not found');
+      return;
+    }
+    if (!isLoopbackRequest(req)) {
+      json(res, 403, { error: 'dsh-lab-bridge is loopback-only' });
+      return;
+    }
+    const method = (req.method || 'GET').toUpperCase();
+
+    // --- Control plane (POST + token + loopback) -------------------------
+    if (rest === '/verify' && method === 'POST') {
+      if (!authorizeControl(req, res, getToken)) return;
+      if (!controller) {
+        json(res, 503, { error: 'control plane is not available' });
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        json(res, 400, { error: String(error?.message ?? error) });
+        return;
+      }
+      const plugin = typeof body?.plugin === 'string' ? body.plugin.trim() : '';
+      if (!plugin || plugin.length > 4096) {
+        json(res, 400, { error: 'plugin must be a non-empty spec string (<= 4096 chars)' });
+        return;
+      }
+      try {
+        const job = controller.start({ plugin, online: body?.online === true });
+        json(res, 202, { job: publicJobView(job) });
+      } catch (error) {
+        if (error instanceof BridgeBusyError) {
+          json(res, 409, { error: error.message });
+          return;
+        }
+        json(res, 500, { error: String(error?.message ?? error) });
+      }
+      return;
+    }
+    if (rest === '/verify/status' && (method === 'GET' || method === 'HEAD')) {
+      if (!authorizeControl(req, res, getToken)) return;
+      json(res, 200, { job: publicJobView(controller?.status?.() ?? null) });
+      return;
+    }
+    if (rest === '/verify/cancel' && method === 'POST') {
+      if (!authorizeControl(req, res, getToken)) return;
+      json(res, 200, { job: publicJobView(controller?.cancel?.() ?? null) });
+      return;
+    }
+
+    if (method !== 'GET' && method !== 'HEAD') {
+      res.statusCode = 405;
+      res.setHeader('Allow', 'GET, HEAD');
+      res.end('method not allowed');
       return;
     }
     if (rest === '' || rest === '/') {

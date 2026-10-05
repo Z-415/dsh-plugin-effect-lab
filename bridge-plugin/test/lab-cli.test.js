@@ -120,6 +120,43 @@ test('killProcessTree falls back to SIGKILL off win32', () => {
   assert.equal(signal, 'SIGKILL');
 });
 
+test('an already-aborted signal resolves aborted without spawning', async () => {
+  let spawned = false;
+  const controller = new AbortController();
+  controller.abort();
+  const outcome = await runLabVerify({
+    nodeExe: 'node',
+    labEntry: 'lab.js',
+    pluginSpec: 'p',
+    artifactsDir: 'a',
+    timeoutMs: 1000,
+    signal: controller.signal,
+    spawnImpl: () => { spawned = true; return fakeChild({ code: 0 }); },
+  });
+  assert.equal(outcome.aborted, true);
+  assert.equal(spawned, false);
+});
+
+test('aborting mid-run kills the process tree and resolves aborted', async () => {
+  const controller = new AbortController();
+  let killed = 0;
+  const promise = runLabVerify({
+    nodeExe: 'node',
+    labEntry: 'lab.js',
+    pluginSpec: 'p',
+    artifactsDir: 'a',
+    timeoutMs: 60_000,
+    signal: controller.signal,
+    spawnImpl: () => fakeChild({ code: null }),
+    killTreeImpl: () => { killed += 1; },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.abort();
+  const outcome = await promise;
+  assert.equal(outcome.aborted, true);
+  assert.equal(killed, 1);
+});
+
 test('a spawn failure resolves instead of throwing', async () => {
   const outcome = await runLabVerify({
     nodeExe: 'node',

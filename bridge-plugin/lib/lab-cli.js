@@ -76,12 +76,17 @@ export function runLabVerify(options) {
     env,
     spawnImpl = spawn,
     killTreeImpl = killProcessTree,
+    signal,
   } = options;
   const args = buildVerifyArgs({ labEntry, pluginSpec, online, artifactsDir });
+  if (signal?.aborted) {
+    return Promise.resolve({ exitCode: null, timedOut: false, aborted: true, stdout: '', stderr: '', report: null });
+  }
   return new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let aborted = false;
     let settled = false;
     let killTimer = null;
     let child;
@@ -96,12 +101,23 @@ export function runLabVerify(options) {
       resolve({ exitCode: null, timedOut: false, stdout: '', stderr: String(error?.message ?? error), report: null, spawnError: true });
       return;
     }
+    const onAbort = () => {
+      if (aborted || settled) return;
+      aborted = true;
+      try {
+        killTreeImpl(child);
+      } catch {
+        try { child.kill(); } catch { /* best effort */ }
+      }
+      killTimer = setTimeout(() => finish(child.exitCode ?? null), 1000);
+    };
     const finish = (exitCode) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       if (killTimer) clearTimeout(killTimer);
-      resolve({ exitCode, timedOut, stdout, stderr, report: parseJsonOutput(stdout) });
+      if (signal?.removeEventListener) signal.removeEventListener('abort', onAbort);
+      resolve({ exitCode, timedOut, aborted, stdout, stderr, report: aborted ? null : parseJsonOutput(stdout) });
     };
     const timer = setTimeout(() => {
       timedOut = true;
@@ -120,5 +136,9 @@ export function runLabVerify(options) {
       finish(null);
     });
     child.on('close', (code) => finish(code));
+    if (signal) {
+      signal.addEventListener('abort', onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    }
   });
 }
