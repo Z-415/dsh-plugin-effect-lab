@@ -229,10 +229,45 @@ cwd 下读不到 → `result=null`。默认 artifacts（`<cwd>/artifacts`，绝�
    `bridge-plugin` 会回落到显式配置错误，这是刻意行为。
 5. **默认 artifacts 在 `os.tmpdir()`**：同机多次实验共用 `dsh-lab-bridge-artifacts`，
    “latest”按 mtime 取最新；并发多实例需显式 `DSH_LAB_BRIDGE_ARTIFACTS` 隔离。
-6. **插件路由无 cookie 实测 200**：`/dsh-lab-bridge/latest/*` 不在宿主 auth fence 之后，
-   同机进程可无 cookie 读取报告；当前只绑 loopback，风险有限，但后续若加入 HTTP 控制面
-   必须加 token 并拒绝非 loopback。
+6. **读路由仍无 token**：`/dsh-lab-bridge/latest/*` 只做 loopback 限制（非 loopback 403），
+   同机进程可无 cookie 读取报告；控制路由已自带 token + loopback（无 token 401）。读报告
+   的暴露面有限，若要保护需另加 token。
 7. **boot-listening 已 fail fast**：宿主“打印 URL 但端口未监听”的既有 flake 根因未在官方
    宿主侧修复，现在只是更快、更清楚地失败，并保留 boot 日志末尾。
 8. **相对 artifacts 的壳结果写错目录已修**：同类风险是任何以自定义 cwd spawn 的子进程
    若拿到相对路径都可能写到别处；`prepareArtifacts` 现在统一输出绝对路径。
+
+## 7. UX 修复与真实桌面版闭环（2026-10-05 续）
+
+现场：面板只有只读报告，普通 `<a href>` 点击后整页导航、无返回入口，且没有发起验证的入口。
+
+修复：
+
+1. **不再整页导航**：client 删除普通 `<a href>`；host 在 `latest.json` 里按请求 Host 返回
+   `loopbackReportUrl`（只接受 `127.0.0.1` / `localhost` / `[::1]`），client 用
+   `window.open` 把它交给系统浏览器，不硬编码端口。
+2. **控制面**：`POST /dsh-lab-bridge/verify`（202 / 409）、`GET /verify/status`、
+   `POST /verify/cancel`；所有 bridge 路由只接受 loopback，控制路由额外要求 host 每进程
+   生成的 32 字节 token（`x-dsh-lab-token` 或 Bearer，constant-time 比较），token 经
+   `webserver/index-inject` 的 global 行注入渲染进程；`runLabVerify` 支持 abort，Windows
+   走 `taskkill /PID <pid> /T /F`。
+3. **面板闭环**：插件规格输入 + 允许联网 + 开始验证 + 取消 + 进行中（已用时间）+ 完成摘要
+   + 自动内嵌报告；空态给出可操作提示。
+
+验证：
+
+- `npm test` → **252** 通过；`$env:DSH_LAB_E2E='1'; npm run test:e2e` → **25** 通过。
+- 面板集成测试：无 `/dsh-lab-bridge` anchor、点击后 `window.location.href` 不变、
+  `window.open` 收到 `http://127.0.0.1:<port>/...`；开始 → 进行中 → 完成 → 摘要 → iframe
+  的闭环全部断言通过。
+- 控制面集成测试：真实宿主注入 token；无 token / 错 token → 401；带 token → 200；
+  真实启动一次 `runLabVerify` 并轮询到 done + 真实报告。
+- 反向验证：恢复 `<a href>` → anchor 断言红；202 不进入 running → runningSeen 红；
+  移除 token 校验 → 401 红；loopback 恒真 → 403 红。
+- **真实桌面版**：用官方 CLI 重新安装后，`profiles/desktop` deps 26 / bundles 24，
+  `dsh-plugin-effect-lab-bridge` 链接到仓库，`dsh-plugin-effect-lab` 不在 profile；真实宿主
+  端口 19387 上 `GET /dsh-lab-bridge/latest.json` → 200、
+  `GET /dsh-lab-bridge/verify/status` → 401（无 token）、`POST /verify` 无 token → 401，
+  证明新控制面已在真实桌面版加载。已启动官方桌面版供人工点击「设置 → 实验舱桥接」确认
+  输入规格 → 开始 → 进行中 → 摘要 + 内嵌报告；原生窗口无法由本 AI 自动化点击，最后一步
+  的观感确认需人工完成。
