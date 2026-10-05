@@ -57,7 +57,9 @@ Below the groups: the result banner, the always-visible log pane, and the
 footer (open report / open artifacts / abort).
 
 The whole window is one flat light palette: white page, white panels, and a
-white log pane with dark text.
+white log pane with dark text. Buttons are borderless: the fill carries the
+state and hovering steps the background colour (no outline), the way DSH's own
+buttons behave.
 
 ### Title bar and menu
 

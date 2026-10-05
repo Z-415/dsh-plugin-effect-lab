@@ -19,6 +19,9 @@
   帮助 - while Electron still draws the minimise/maximise/close buttons. The
   dark console became a white log pane with dark text, so the page is one flat
   light palette.
+- Buttons lost their outlines: they are filled (`#f3f4f6`) and hovering steps
+  the background colour instead of drawing a border, like DSH's own buttons.
+  The primary / strong / danger variants keep their fills and are borderless too.
 
 ### Fixed
 

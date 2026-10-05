@@ -63,20 +63,22 @@
   .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .actions + .actions { margin-top: 8px; }
   .actions > .span2 { grid-column: 1 / -1; }
+  /* Borderless buttons: the fill carries the state and hover steps the
+     background colour instead of drawing an outline (the DSH button feel). */
   button { display: inline-flex; align-items: center; justify-content: center; text-align: center;
            min-height: 32px; padding: 6px 12px; font: inherit; font-size: 12.5px; font-weight: 500;
-           color: var(--text); background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px;
-           cursor: pointer; transition: background-color .12s ease, border-color .12s ease, color .12s ease; }
-  button:hover:not(:disabled) { background: #f5f7fa; border-color: #bfc5cf; }
-  button:active:not(:disabled) { background: #eceff3; }
+           color: var(--text); background: #f3f4f6; border: 1px solid transparent; border-radius: 6px;
+           cursor: pointer; transition: background-color .12s ease, color .12s ease; }
+  button:hover:not(:disabled) { background: #e7eaee; }
+  button:active:not(:disabled) { background: #dde1e7; }
   button:focus-visible { outline: 2px solid #b9cdf6; outline-offset: 1px; }
   button:disabled { opacity: .5; cursor: default; }
-  button.primary { color: #fff; background: var(--accent); border-color: var(--accent); }
-  button.primary:hover:not(:disabled) { background: var(--accent-dark); border-color: var(--accent-dark); }
-  button.strong { color: var(--accent-dark); background: var(--accent-weak); border-color: #c3d5fb; }
-  button.strong:hover:not(:disabled) { background: #e7eeff; border-color: #a9c4f8; }
-  button.danger { color: var(--bad); border-color: #ecc9c5; }
-  button.danger:hover:not(:disabled) { background: var(--bad-bg); border-color: #dda8a2; }
+  button.primary { color: #fff; background: var(--accent); }
+  button.primary:hover:not(:disabled) { background: var(--accent-dark); }
+  button.strong { color: var(--accent-dark); background: var(--accent-weak); }
+  button.strong:hover:not(:disabled) { background: #e2ebff; }
+  button.danger { color: var(--bad); background: #fdf1f0; }
+  button.danger:hover:not(:disabled) { background: #f9e3e1; }
   .checks { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; }
   label.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #374151; }
   label.chk input { width: 14px; height: 14px; margin: 0; accent-color: var(--accent); }

@@ -304,6 +304,22 @@ const LONG_LOG = `(() => {
   });
 })()`;
 
+/** Buttons carry their state with a fill, not an outline. */
+const BUTTONS = `(() => {
+  const read = (selector) => {
+    const cs = getComputedStyle(document.querySelector(selector));
+    const transparent = cs.borderTopColor === 'rgba(0, 0, 0, 0)' || cs.borderTopColor === 'transparent';
+    return { bg: cs.backgroundColor, borderless: transparent };
+  };
+  return JSON.stringify({
+    normal: read('#runShellPluginTimed'),
+    primary: read('#runVerifyPlugin'),
+    danger: read('#runRemovePlugin'),
+    menu: read('.menu-btn'),
+    errors: window.__rendererErrors,
+  });
+})()`;
+
 test('every GUI button dispatches a lab command without a renderer error', {
   skip: !enabled,
   timeout: 180_000,
@@ -328,6 +344,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
         theme: THEME,
         menus: MENUS,
         longLog: LONG_LOG,
+        buttons: BUTTONS,
       },
     });
     const result = JSON.parse(ui.extra.clickAll);
@@ -338,6 +355,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
     const theme = JSON.parse(ui.extra.theme);
     const menus = JSON.parse(ui.extra.menus);
     const longLog = JSON.parse(ui.extra.longLog);
+    const buttons = JSON.parse(ui.extra.buttons);
 
     assert.deepEqual(result.errors, [], `renderer errors: ${JSON.stringify(result.errors)}`);
     assert.deepEqual(result.thrown, [], `click handlers threw: ${JSON.stringify(result.thrown)}`);
@@ -440,6 +458,14 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(longLog.logAboveFooter, true, JSON.stringify(longLog));
     assert.equal(longLog.bodyClipped, false, JSON.stringify(longLog));
     assert.deepEqual(longLog.errors, []);
+
+    // Buttons are borderless and filled; the primary keeps the accent fill.
+    for (const [name, style] of Object.entries(buttons)) {
+      if (name === 'errors') continue;
+      assert.equal(style.borderless, true, `${name} keeps a border: ${JSON.stringify(buttons)}`);
+    }
+    assert.notEqual(buttons.normal.bg, 'rgb(255, 255, 255)', JSON.stringify(buttons));
+    assert.equal(buttons.primary.bg, 'rgb(37, 99, 235)', JSON.stringify(buttons));
   } finally {
     if (ui) await ui.close();
     fs.rmSync(page.dir, { recursive: true, force: true });
