@@ -21,10 +21,15 @@ The first build copies the official Electron runtime (about 346 MB on
 ```text
 <project>\gui-runtime\gui-<electron-version>\
   DSH Plugin Effect Lab.exe      <- renamed copy of the official Electron exe
-  resources\app\{main.js,preload.js,index.html,gui-config.json}
+  resources\app\{main.js,preload.js,index.html,app-sync.cjs,gui-config.json}
   userdata\gui-config.json
   userdata\gui.log
 ```
+
+The launcher re-checks `src/gui` on every start (`app-sync.cjs`) and copies any
+changed app file into the runtime, so an existing Desktop shortcut shows the
+current UI without re-running `lab gui`. `index.html` and `preload.js` changes
+apply to that launch; a changed `main.js` applies on the next launch.
 
 `gui-runtime/` is git-ignored. The official install (`D:\DeepSeek Harness`) is
 only read. Set `DSH_LAB_GUI_HOME` to relocate the copied runtime.

@@ -15,13 +15,22 @@
   below 900px wide the columns stack and the control area scrolls on its own
   while the log pane keeps at least 200px.
 
+### Fixed
+
+- A Desktop shortcut kept launching the stale `gui-runtime` copy of the UI
+  until `lab gui` ran again. The launcher now re-syncs
+  `index.html` / `main.js` / `preload.js` / `app-sync.cjs` from `src/gui` at
+  every start (`src/gui/app-sync.cjs`), so the shortcut follows the source.
+
 ### Tests
 
 - `tests/integration/gui-page.test.js` gained a design probe (grid rows have
   equal cell sizes, labels do not overflow their buttons, controls do not
   overlap or spill out of their rows, and the page has no horizontal scroll)
   plus a second case that runs the same probe at the minimum 820x560 window
-  size. Full suite: unit 186/186, integration 16/16.
+  size. `tests/unit/gui-app-sync.test.js` covers the startup sync (copy changed
+  files, leave identical ones, tolerate missing paths, log a failed copy).
+  Full suite: unit 190/190, integration 16/16.
 
 ## 0.1.0 - 2026-10-04
 

@@ -7,7 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 /** The copied executable is renamed so the shortcut is self-explanatory. */
 export const GUI_EXE_NAME = 'DSH Plugin Effect Lab.exe';
-export const GUI_APP_FILES = ['main.js', 'preload.js', 'index.html'];
+export const GUI_APP_FILES = ['main.js', 'preload.js', 'index.html', 'app-sync.cjs'];
 
 /**
  * Home for the copied runtime. It deliberately lives *inside the project*

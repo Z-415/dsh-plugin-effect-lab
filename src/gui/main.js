@@ -14,6 +14,15 @@ const { spawnSync, spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
+// The built runtime keeps a copy of this app. Refresh it from src/gui at every
+// start, so an existing Desktop shortcut picks up UI edits without a rebuild.
+let syncAppFiles = null;
+try {
+  ({ syncAppFiles } = require('./app-sync.cjs'));
+} catch {
+  // An older build may not ship the helper; run with whatever is on disk.
+}
+
 /**
  * The GUI is launched both by `lab gui` (which sets DSH_LAB_GUI_CONFIG) and by
  * double-clicking the shortcut / exe (which sets nothing). Fall back to the
@@ -184,6 +193,9 @@ ipcMain.handle('lab:info', () => ({
 }));
 
 app.whenReady().then(() => {
+  if (syncAppFiles) {
+    syncAppFiles({ sourceDir: path.join(repo, 'src', 'gui'), appDir: __dirname, log: appendLog });
+  }
   window = new BrowserWindow({
     width: 1080,
     height: 760,
