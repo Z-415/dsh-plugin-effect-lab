@@ -298,3 +298,36 @@ cwd 下读不到 → `result=null`。默认 artifacts（`<cwd>/artifacts`，绝�
 下拉后，可显式选择 `dev`/`test1` 等持久 profile。真实宿主上 `GET /dsh-lab-bridge/profiles`
 无 token → **401**，证明新路由已加载；持久 profile 只在实验舱 `.lab-profiles/<name>` 下，
 桥接仍不设置真实 `DSH_HOME`，`desktop` 名称被拒绝。
+
+## 8. 形态变更：启动器（2026-10-06）
+
+内嵌报告面板在真实桌面版体验不可用后，桥接改为**启动器**形态。**§1–§7 里关于报告面板、
+`/latest*`、`/verify*`、`/profiles`、`/shell` 与 profile 选择的描述自此为历史记录**；它们
+对应的代码、路由与测试已经删除。
+
+现在：
+
+1. **client 半区**只保留一个「启动实验舱」按钮 + 一行状态；没有报告链接、没有 iframe、
+   没有任何顶层跳转（`window.location` 不变）。
+2. **host 半区**只保留 `POST /dsh-lab-bridge/launch`：固定执行
+   `node <lab>/bin/lab.js gui`，不接受任何调用方 argv，不是任意命令执行接口。
+   - `nodePath` 优先，否则从 PATH 找真正的 `node.exe`；**绝不回退 `process.execPath`**
+     （DSH 宿主里它是 `DeepSeek Harness.exe`）。
+   - spawn 前剥离 `ELECTRON_RUN_AS_NODE`/`DSH_HOME`/`DSH_AGENTS_HOME`；`detached` +
+     `stdio=ignore` + `unref`；cwd 为实验舱仓库根目录；5 秒节流防连点。
+   - 鉴权沿用 host 每进程生成、经 `webserver/index-inject` 注入的 nonce；只接受 loopback。
+3. `lab_verify_plugin` agent 工具保留（一直不用报告 UI，零 UI 成本），并恢复
+   “永不传 `--profile-lab`”的红线；报告写在实验舱 artifacts 目录，由实验舱 GUI 自己查看。
+
+验证（真实输出）：
+
+- `npm test` → **249** 通过；`$env:DSH_LAB_E2E='1'; npm run test:e2e` → **24** 通过。
+- 集成断言：面板无 `/dsh-lab-bridge` anchor、无 iframe、点击后 `location` 不变、请求体为 `{}`、
+  带注入 nonce；真实宿主 `POST /launch` 无 nonce → 401、`GET /launch` → 405、旧
+  `/latest.json` → 404。
+- 反向验证：回退 `process.execPath`、保留 `ELECTRON_RUN_AS_NODE`、移除 `detached`、移除
+  nonce、移除节流、恢复报告 `<a href>`，各自断言变红。
+- 真实桌面版：`pnpm install --offline` 刷新 profile 后重启，真实宿主 19387 上
+  `GET /dsh-lab-bridge/launch` → 405、`POST /launch` 无 nonce → 401、旧
+  `GET /dsh-lab-bridge/latest.json` → 404，证明启动器形态已加载；面板按钮点击后的外部
+  GUI 窗口由人工确认。
