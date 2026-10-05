@@ -503,28 +503,21 @@ export async function openUi(options) {
         return true;
       })()`;
       const mountExpression = `!!document.querySelector('[data-slot="conversation.chat.node"], [data-slot="conversation.session"]')`;
-      // Under load the sidebar can take a while to render, and clicking too
-      // early silently leaves the hero/empty state mounted (the old 37-slot
-      // drift). Poll through the full deadline and re-select the workspace if
-      // the session row never showed up.
-      const deadline = Date.now() + 45_000;
-      clickedSession = false;
-      let lastWorkspaceClickAt = clicked === true ? Date.now() : 0;
-      while (Date.now() < deadline) {
-        const clickedNow = (await waitFor(sessionRowExpression, { timeoutMs: 12_000 })) === true;
-        if (!clickedNow) {
-          if (!clickText) break;
-          if (Date.now() - lastWorkspaceClickAt > 5_000) {
-            lastWorkspaceClickAt = Date.now();
-            if ((await waitFor(workspaceClickExpression, { timeoutMs: 8_000 })) === true) clicked = true;
-          }
-          continue;
-        }
+      // The conversation only counts as mounted once the seeded turn view is
+      // present; a hero/onboarding page has no conversation.session slot.
+      const waitForConversation = async (rowTimeoutMs) => {
+        const clickedNow = (await waitFor(sessionRowExpression, { timeoutMs: rowTimeoutMs })) === true;
+        if (!clickedNow) return false;
         clickedSession = true;
-        // The conversation only counts as mounted once the seeded turn view is
-        // present; a hero/onboarding page has no conversation.session slot.
-        const mounted = await waitFor(mountExpression, { timeoutMs: 15_000 });
-        if (mounted) break;
+        return (await waitFor(mountExpression, { timeoutMs: 20_000 })) === true;
+      };
+      // One long, uninterrupted wait: clicking a workspace every few seconds
+      // can keep collapsing/re-rendering the panel, so the session row never
+      // settles. Only re-select once if the whole first window saw no row.
+      clickedSession = false;
+      if (!(await waitForConversation(40_000)) && clickText) {
+        if ((await waitFor(workspaceClickExpression, { timeoutMs: 8_000 })) === true) clicked = true;
+        await waitForConversation(20_000);
       }
     }
     for (const name of screenshotsAfter) await capture(name);
