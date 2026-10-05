@@ -1,0 +1,128 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+import { bootWeb } from '../../src/boot-supervisor.js';
+import { openUi } from '../../src/browser-driver.js';
+import { createIsolatedHome } from '../../src/home-manager.js';
+import { installProfilePlugins } from '../../src/plugin-install.js';
+import { mintAuthCookie } from '../../src/port-and-token.js';
+import { writeMinimalProfile } from '../../src/profile-builder.js';
+import { locateRuntime, readRuntimeVersion } from '../../src/runtime-locator.js';
+
+const enabled = process.env.DSH_LAB_E2E === '1';
+const bridgeDir = path.resolve('bridge-plugin');
+
+/**
+ * Click the bridge settings section, wait for its summary fetch, then click the
+ * inline-preview button and inspect the sandboxed srcdoc iframe.
+ */
+const BRIDGE_SECTION_PROBE = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const nav = [...document.querySelectorAll('[data-slot="settings.section"]')]
+    .find((el) => el.textContent.includes('实验舱桥接'))
+    ?? [...document.querySelectorAll('button, [role="button"], a')].find((el) => el.textContent.includes('实验舱桥接'));
+  if (!nav) return JSON.stringify({ found: false });
+  (nav.closest('button, [role="button"], a') ?? nav).click();
+  await wait(2000);
+  const textAfterNav = document.body.innerText;
+  const previewButton = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('内嵌查看报告'));
+  if (previewButton) previewButton.click();
+  await wait(2000);
+  const iframe = document.querySelector('iframe[title="实验舱报告"]');
+  return JSON.stringify({
+    found: true,
+    hasRunId: textAfterNav.includes('b2-client-run'),
+    hasPreviewButton: Boolean(previewButton),
+    hasIframe: Boolean(iframe),
+    iframeHasReport: Boolean(iframe && iframe.srcdoc && iframe.srcdoc.includes('B2 inline report')),
+  });
+})()`;
+
+test('the bridge settings section shows the latest summary and previews the report inline', {
+  skip: !enabled,
+  timeout: 300_000,
+}, async () => {
+  const runtime = locateRuntime();
+  const version = (await readRuntimeVersion(runtime)).version;
+  const iso = createIsolatedHome({ withAgents: true });
+  const seededRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-bridge-seed-'));
+  const uiArtifacts = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-bridge-ui-'));
+  let boot = null;
+  let ui = null;
+  try {
+    const runDir = path.join(seededRoot, 'b2-client-run');
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(path.join(runDir, 'report.json'), JSON.stringify({
+      ok: true,
+      runId: 'b2-client-run',
+      checks: [{ name: 'runtime-located', pass: true }],
+      artifacts: { reportHtml: path.join(runDir, 'report.html') },
+    }), 'utf8');
+    fs.writeFileSync(
+      path.join(runDir, 'report.html'),
+      '<!doctype html><html><body><h1>B2 inline report</h1></body></html>',
+      'utf8',
+    );
+
+    const profileName = 'lab-bridge-client';
+    const profileDir = iso.profileDir(profileName);
+    writeMinimalProfile(profileDir, { name: profileName });
+    const env = {
+      DSH_HOME: iso.home,
+      DSH_AGENTS_HOME: iso.agents,
+      TEMP: iso.tmp,
+      TMP: iso.tmp,
+    };
+    const install = await installProfilePlugins({
+      runtime,
+      env,
+      profileDir,
+      profileName,
+      version,
+      plugins: [bridgeDir],
+      fixture: false,
+    });
+    assert.equal(install.stage, 'postcheck', JSON.stringify(install.validation?.summary ?? install));
+
+    boot = await bootWeb({
+      runtime,
+      home: iso.home,
+      agentsHome: iso.agents,
+      profileDir,
+      profileName,
+      tmpDir: iso.tmp,
+      env: { DSH_LAB_BRIDGE_ARTIFACTS: seededRoot },
+    });
+    const auth = await mintAuthCookie(boot.url);
+    assert.equal(auth.status, 303);
+
+    ui = await openUi({
+      baseUrl: boot.url,
+      screenshots: [],
+      screenshotsSettings: ['settings'],
+      openSettings: true,
+      probesAfter: { bridgeSection: BRIDGE_SECTION_PROBE },
+      assertTokens: ['--dsw-alias-bg-base'],
+      artifactsDir: uiArtifacts,
+    });
+    const probe = JSON.parse(ui.extraAfter.bridgeSection);
+    assert.equal(probe.found, true, 'the 实验舱桥接 settings section must be present');
+    assert.equal(probe.hasRunId, true, 'the section must show the latest seeded runId');
+    assert.equal(probe.hasPreviewButton, true, 'the section must expose the inline preview button');
+    assert.equal(probe.hasIframe, true, 'clicking preview must mount the report iframe');
+    assert.equal(probe.iframeHasReport, true, 'the iframe must contain the seeded report HTML');
+    assert.equal(ui.settingsProbe?.totalSlots > 0, true);
+  } finally {
+    if (ui) {
+      try { await ui.close(); } catch { /* ignore */ }
+    }
+    if (boot) {
+      try { await boot.stop(); } catch { /* ignore */ }
+    }
+    await iso.dispose();
+    fs.rmSync(seededRoot, { recursive: true, force: true });
+    fs.rmSync(uiArtifacts, { recursive: true, force: true });
+  }
+});

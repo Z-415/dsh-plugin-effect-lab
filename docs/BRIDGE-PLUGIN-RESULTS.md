@@ -122,22 +122,32 @@ node bin/lab.js verify --plugin .\bridge-plugin --offline --route /dsh-lab-bridg
 
 `profilePackages` 里没有 `dsh-plugin-effect-lab`：实验舱本体没有进 profile。
 
+另外补测了**不带 cookie** 的同源路由：`cookie:false` 访问
+`/dsh-lab-bridge/latest/report.html` 实测 `status 200 (ok)`
+（测试日志：`[bridge] no-cookie report.html -> status 200 (ok)`）。宿主 index 无 token 会
+401，但插件路由不在宿主 auth fence 之后；在 loopback 上可被同机进程无 cookie 读取，
+已列入残余风险。
+
 ## 4. 自动化验证 / 人工验证
 
 已自动化验证：
 
 - `node bin/lab.js doctor` → PASS（0.2.0-rc.2 verified）。
-- `npm test` → **225** 通过（基线 203 + 桥接单测 22）：配置优先级、缺失报错、命令构造
-  （默认 `--offline`、绝不含 `--profile-lab`）、`--json` 退出码 1 仍解析、非 JSON 输出、
-  超时、报告摘要（失败项/关键词/报告路径）、路径穿越防护、无报告占位页。
-- `$env:DSH_LAB_E2E='1'; npm run test:e2e` → **19** 通过（基线 17 + 桥接 2）：
-  - `installing the bridge never puts the lab itself into the isolated profile`：断言
-    profile `package.json` 有桥接、`node_modules` 有桥接、**没有** `dsh-plugin-effect-lab`，
-    且桥接自身 `dependencies == {}`、不引用实验舱；
-  - `lab verify installs the bridge and the same-origin report route answers 200`：真实起
-    隔离 Host 并探测 `/dsh-lab-bridge/latest/report.html`。
-- `node bin/lab.js verify --plugin .\bridge-plugin --offline` 系列：插件合同 0 blocker /
-  0 warning，路由探测 200，工具名被声明扫描器识别，client 半区加载无 console/page error。
+- `npm test` → **237** 通过（基线 203 + 桥接/实验舱修复单测 34）：桥接的配置优先级、
+  缺失报错、命令构造（默认 `--offline`、绝不含 `--profile-lab`）、`--json` 退出码 1 仍解析、
+  非 JSON、超时（进程树 kill）、报告摘要、路径穿越、无报告占位；shell-result 缺失的可读
+  结论；`prepareArtifacts` 绝对化；boot-readiness；MIME/CSP/nosniff。
+- `$env:DSH_LAB_E2E='1'; npm run test:e2e` → **23** 通过（基线 17 + 新增 6）：
+  - 桥接进 profile / 实验舱不进 profile；
+  - bridge 同源路由 200（含 no-cookie 200）；
+  - 壳缺 `shell-result.json` 时可读失败；
+  - 相对 `--artifacts` 根目录下壳仍能把结果写回 runner 读取的位置；
+  - 发布 URL 但端口未监听时 `boot-listening` fail fast；
+  - B2：设置页出现「实验舱桥接」，点击后显示种子 runId、出现「内嵌查看报告」按钮，
+    点击后挂载 `iframe[title="实验舱报告"]` 且 srcdoc 含种子报告 HTML。
+- `node bin/lab.js verify --plugin .\bridge-plugin --offline --route /dsh-lab-bridge/latest/report.html`
+  （相对 `--artifacts artifacts/bridge-final`）→ `ok=true`、route 200、runDir 为绝对路径、
+  profile 无实验舱、console/page error 0。
 - `node bin/lab.js clean --dry-run` → `would remove 0 dir(s), would reap 0 of 0 lab process(es)`。
 
 反向验证（把实现回退后断言变红）：
@@ -148,21 +158,53 @@ node bin/lab.js verify --plugin .\bridge-plugin --offline --route /dsh-lab-bridg
 4. 移除路径穿越防护 → `path traversal is rejected` 变红。
 5. 把实验舱临时声明为桥接依赖 → `installing the bridge never puts the lab itself into the
    isolated profile` 变红。
+6. 移除 `prepareArtifacts` 的 `path.resolve` → 相对 `--artifacts` 壳集成测试变红。
+7. 移除 `result?.derivedInjections` 的 `?.` → 缺结果集成测试变红（report.shell 为 null）。
+8. 强制 `boot-readiness` 的 `listeningPass=true` → boot-readiness 单测与 fail-fast 集成
+   断言变红，并复现约 95s 的 `fetch failed` 级联。
+9. 移除 SVG 的 CSP 分支 → svg 路由单测变红；移除 Windows `taskkill` 分支 → taskkill 单测变红。
+
+### 4.1 `shell-result.json` 为 null 的根因与修复
+
+**现象**：`lab shell --profile-lab ... --show` 报告 `shell-result: missing`，随后
+`result.derivedInjections` 抛 TypeError，掩盖了本来正确的 missing 结论。
+
+**排查**：壳子进程 exitCode=0、stderr 为空，但 `%TEMP%\dsh-lab-electron-44.0.0\artifacts\...`
+下能看到每一次“失败”运行写出的 `shell-result.json` 和 `shell.png`。
+
+**根因**：`--artifacts` 传相对路径时，`prepareArtifacts` 生成相对 `runDir`，
+`shell-config.json` 里的 `resultFile`/`screenshotFile` 也是相对路径；壳子进程的 cwd 是复制出的
+运行时目录（`%TEMP%\dsh-lab-electron-*`），于是它把结果写到了自己的 cwd 下，父进程在仓库
+cwd 下读不到 → `result=null`。默认 artifacts（`<cwd>/artifacts`，绝对）或显式绝对
+`--artifacts` 不受影响。
+
+**修复**：`prepareArtifacts` 把 artifactsRoot 解析为绝对路径；`shell-runner` 对 result 加可选链，
+`shell-run` 失败描述引用 `shell-result` 并带壳进程 exitCode/stderr；`report.shell` 增加
+`childExitCode`。修复后原始命令
+`node bin/lab.js shell --profile-lab bridge-dev --plugin .\bridge-plugin --offline --show --show-hold 10000`
+实测 `ok=true`、壳结果写回、console/page error 0。
+
+### 4.2 B2 实机与前端验证
+
+- 真实可见壳：`lab shell --profile-lab bridge-dev --plugin .\bridge-plugin --offline --show --show-hold 10000`
+  → `ok=true`，壳结果写回，`consoleErrors=[]`、`pageErrors=[]`，
+  截图 `artifacts/20261005T135819Z-913e26/screenshots/shell.png`。
+- 设置页分区：`lab verify --plugin .\bridge-plugin --offline --screenshot settings` 打开真实前端
+  设置页，截图 `artifacts/b2-settings/20261005T140608Z-9e3783/screenshots/settings.png`
+  中可见左侧导航项**「实验舱桥接」**；`settings-ui` 检查通过、console/page error 0。
+- 摘要刷新 + 内嵌预览：集成测试 `tests/integration/bridge-client-settings.test.js` 在隔离 Host
+  里预置一份报告，点击「实验舱桥接」后断言摘要显示该 runId、出现「内嵌查看报告」按钮，
+  点击后挂载 `iframe[title="实验舱报告"]` 且 srcdoc 含预置报告 HTML。该测试随 e2e 全绿。
 
 只能人工验证 / 本轮未完成：
 
 - **工具被 agent 真正调用**：需要真实 DSH 会话里让模型调用 `lab_verify_plugin`，本轮未做
-  （自动化隔离 Host 不驱动模型工具调用）。
-- **client 槽位视觉效果**：注册已被声明扫描器识别、client 加载无报错，但“打开设置页看到
-  摘要 + 内嵌报告”的观感未做视觉验收。
-- **持久 profile 的 `lab shell` 人工冒烟**：本轮尝试了
-  `node bin/lab.js shell --profile-lab bridge-dev --plugin .\bridge-plugin --offline --show --show-hold 10000`
-  以及无插件对照运行，都在 Electron 壳写回结果前失败：
-  `TypeError: Cannot read properties of null (reading 'derivedInjections')`
-  （`src/electron-shell/shell-runner.js:559`，`result` 为 null，即未生成 `shell-result.json`）。
-  **不带桥接插件的对照运行同样失败**，且仓库自带 shell e2e（直接调用 `runShell`）全部通过，
-  因此这是 `lab shell` CLI 路径的既有缺陷，与桥接插件无关；本轮未修改实验舱核心。
-- **真实 `dsh-app://app` iframe 渲染**：只做了源码级结论，未在壳里实际渲染。
+  （自动化隔离 Host 不驱动模型工具调用）；工具命令构造与报告解析有单测，路由与摘要/预览
+  有集成测试。
+- **真实 `dsh-app://app` iframe 渲染**：只做了源码级结论；client 用 srcdoc 预览规避了
+  dsh-app iframe 这一未实测路径。
+- **`--show --keep-open` 的人工交互**：可见壳已成功启动并截图，但“人手动点击”的完整
+  keep-open 流程未在本轮由人操作；B2 的分区/摘要/预览已由 §4.2 的自动化测试覆盖。
 
 ## 5. 红线遵守情况
 
@@ -179,13 +221,18 @@ node bin/lab.js verify --plugin .\bridge-plugin --offline --route /dsh-lab-bridg
 
 1. **JSON 契约未带版本号**：桥接按 `runId/ok/checks/signatureHits/artifacts` 读取；实验舱
    升级若改字段名，工具会退化为“摘要缺项”。建议后续在 report 顶层加 `schemaVersion`。
-2. **超时只杀直接子进程**：`runLabVerify` 超时用 `child.kill()`，Windows 上实验舱的
-   Electron/Edge 孙进程不保证随之退出；实验中应配合 `lab clean`。生产化需要进程树回收。
+2. **超时已改用进程树 kill**：`runLabVerify` 超时在 Windows 走 `taskkill /PID <pid> /T /F`，
+   非 Windows 走 `SIGKILL`；若 taskkill 因权限/时序失败，仍应配合 `lab clean` 兜底。
 3. **`@deepseek-ai/cordis` peer 范围不被 validator 校验**：名称不匹配
    `^@deepseek-ai/dsh-`；实际运行时按 `~4.0.4` 声明。
 4. **自动探测是“就近”语义**：同仓布局下桥接自动把父目录当实验舱；单独拷走
    `bridge-plugin` 会回落到显式配置错误，这是刻意行为。
 5. **默认 artifacts 在 `os.tmpdir()`**：同机多次实验共用 `dsh-lab-bridge-artifacts`，
    “latest”按 mtime 取最新；并发多实例需显式 `DSH_LAB_BRIDGE_ARTIFACTS` 隔离。
-6. **`lab shell` CLI 既有缺陷**见 §4，会挡住“持久 profile + 可见壳”的人工冒烟；
-   不影响 `lab verify` 与 e2e shell 路径。
+6. **插件路由无 cookie 实测 200**：`/dsh-lab-bridge/latest/*` 不在宿主 auth fence 之后，
+   同机进程可无 cookie 读取报告；当前只绑 loopback，风险有限，但后续若加入 HTTP 控制面
+   必须加 token 并拒绝非 loopback。
+7. **boot-listening 已 fail fast**：宿主“打印 URL 但端口未监听”的既有 flake 根因未在官方
+   宿主侧修复，现在只是更快、更清楚地失败，并保留 boot 日志末尾。
+8. **相对 artifacts 的壳结果写错目录已修**：同类风险是任何以自定义 cwd spawn 的子进程
+   若拿到相对路径都可能写到别处；`prepareArtifacts` 现在统一输出绝对路径。
