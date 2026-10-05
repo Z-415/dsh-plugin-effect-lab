@@ -91,6 +91,40 @@ function numberFlag(flags, name) {
   return value;
 }
 
+/**
+ * Options shared by `verify` and `capture` (the help says "capture [same
+ * options as verify]"). Building them in one place keeps `--profile-lab` from
+ * being silently dropped by either command.
+ */
+export function browserCommandOptions(flags, common) {
+  return {
+    ...common,
+    plugins: flags.plugin ?? [],
+    withPlugins: flags.with ?? [],
+    fixture: flags['no-fixture'] !== true,
+    fixtureVariant: flags['fixture-variant'] ?? 'default',
+    profileLab: flags['profile-lab'],
+    mockModel: flags['mock-model'] === true,
+    online: flags.online === true,
+    screenshots: flags.screenshot ?? ['home'],
+    assertTokens: flags['assert-token'] ?? ['--dsw-alias-bg-base'],
+    assertSlots: flags['assert-slot'] ?? [],
+    assertBodyAttributes: flags['assert-body-attr'] ?? [],
+    minSlots: numberFlag(flags, 'min-slots'),
+    routes: (flags.route ?? []).map((url) => ({ name: url, url, cookie: true, expect: ['ok', 'auth-fence', 'redirect'] })),
+    artifactsRoot: flags.artifacts,
+    bootTimeoutMs: numberFlag(flags, 'boot-timeout'),
+    bootTransport: flags['boot-transport'],
+    browserTimeoutMs: numberFlag(flags, 'browser-timeout'),
+    installTimeoutMs: numberFlag(flags, 'install-timeout'),
+    strictConsole: flags['strict-console'] === true,
+    html: flags['no-html'] !== true,
+  };
+}
+
+/** Indirection so a unit test can assert what `main` forwards without booting a runtime. */
+export const browserRunners = { verify: runVerifyCommand, capture: runCaptureCommand };
+
 export async function main(argv) {
   if (!argv.length || argv[0] === '--help' || argv[0] === '-h') {
     process.stdout.write(helpText());
@@ -106,62 +140,13 @@ export async function main(argv) {
     runtimePath: flags.runtime,
     browserPath: flags.browser,
   };
-  const domAssertions = {
-    assertTokens: flags['assert-token'] ?? ['--dsw-alias-bg-base'],
-    assertSlots: flags['assert-slot'] ?? [],
-    assertBodyAttributes: flags['assert-body-attr'] ?? [],
-    minSlots: numberFlag(flags, 'min-slots'),
-  };
-  const fixtureOptions = {
-    fixture: flags['no-fixture'] !== true,
-    fixtureVariant: flags['fixture-variant'] ?? 'default',
-  };
-  const persistentOptions = {
-    profileLab: flags['profile-lab'],
-  };
   switch (command) {
     case 'doctor':
       return runDoctor(common);
     case 'verify':
-      return runVerifyCommand({
-        ...common,
-        plugins: flags.plugin ?? [],
-        withPlugins: flags.with ?? [],
-        ...fixtureOptions,
-        ...persistentOptions,
-        ...persistentOptions,
-        mockModel: flags['mock-model'] === true,
-        online: flags.online === true,
-        screenshots: flags.screenshot ?? ['home'],
-        ...domAssertions,
-        routes: (flags.route ?? []).map((url) => ({ name: url, url, cookie: true, expect: ['ok', 'auth-fence', 'redirect'] })),
-        artifactsRoot: flags.artifacts,
-        bootTimeoutMs: numberFlag(flags, 'boot-timeout'),
-        bootTransport: flags['boot-transport'],
-        browserTimeoutMs: numberFlag(flags, 'browser-timeout'),
-        installTimeoutMs: numberFlag(flags, 'install-timeout'),
-        strictConsole: flags['strict-console'] === true,
-        html: flags['no-html'] !== true,
-      });
+      return browserRunners.verify(browserCommandOptions(flags, common));
     case 'capture':
-      return runCaptureCommand({
-        ...common,
-        plugins: flags.plugin ?? [],
-        withPlugins: flags.with ?? [],
-        ...fixtureOptions,
-        mockModel: flags['mock-model'] === true,
-        online: flags.online === true,
-        screenshots: flags.screenshot ?? ['home'],
-        ...domAssertions,
-        routes: (flags.route ?? []).map((url) => ({ name: url, url, cookie: true, expect: ['ok', 'auth-fence', 'redirect'] })),
-        artifactsRoot: flags.artifacts,
-        bootTimeoutMs: numberFlag(flags, 'boot-timeout'),
-        bootTransport: flags['boot-transport'],
-        browserTimeoutMs: numberFlag(flags, 'browser-timeout'),
-        installTimeoutMs: numberFlag(flags, 'install-timeout'),
-        strictConsole: flags['strict-console'] === true,
-        html: flags['no-html'] !== true,
-      });
+      return browserRunners.capture(browserCommandOptions(flags, common));
     case 'scan':
       return runScanCommand({
         ...common,

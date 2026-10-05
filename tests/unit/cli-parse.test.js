@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { main, parseArgv } from '../../src/cli.js';
+import { browserRunners, main, parseArgv } from '../../src/cli.js';
 
 test('--assert-token accepts token names that themselves start with --', () => {
   const { flags } = parseArgv([
@@ -68,4 +68,27 @@ test('profile remove-plugin keeps the profile name and the plugin selectors posi
 test('profile remove-plugin without a name fails without touching a runtime', async () => {
   const code = await main(['profile', 'remove-plugin']);
   assert.equal(code, 2);
+});
+
+test('capture and verify both forward --profile-lab to their runner', async () => {
+  const original = { ...browserRunners };
+  const seen = {};
+  browserRunners.verify = async (options) => {
+    seen.verify = options;
+    return 0;
+  };
+  browserRunners.capture = async (options) => {
+    seen.capture = options;
+    return 0;
+  };
+  try {
+    assert.equal(await main(['verify', '--profile-lab', 'dev', '--no-html']), 0);
+    assert.equal(await main(['capture', '--profile-lab', 'dev', '--no-html']), 0);
+  } finally {
+    Object.assign(browserRunners, original);
+  }
+  assert.equal(seen.verify.profileLab, 'dev');
+  assert.equal(seen.capture.profileLab, 'dev', 'capture must reuse the persistent profile like verify');
+  assert.equal(seen.capture.html, false);
+  assert.deepStrictEqual(seen.capture.plugins, []);
 });
