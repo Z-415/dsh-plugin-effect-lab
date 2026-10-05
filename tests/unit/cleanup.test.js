@@ -32,6 +32,27 @@ test('listLabResidue reports real lab homes and skips the electron cache', () =>
   }
 });
 
+test('listOrphanLabHomes skips a lab dir that vanishes between readdir and stat', () => {
+  const vanished = makeTemp('dsh-lab-vanish-');
+  const originalStat = fs.statSync;
+  try {
+    fs.statSync = (target, ...args) => {
+      if (String(target).toLowerCase().includes('dsh-lab-vanish-')) {
+        const error = new Error('ENOENT: no such file or directory');
+        error.code = 'ENOENT';
+        throw error;
+      }
+      return originalStat(target, ...args);
+    };
+    assert.doesNotThrow(() => listLabResidue());
+    const paths = listLabResidue().map((item) => item.path.toLowerCase());
+    assert.equal(paths.includes(path.resolve(vanished).toLowerCase()), false);
+  } finally {
+    fs.statSync = originalStat;
+    fs.rmSync(vanished, { recursive: true, force: true });
+  }
+});
+
 test('verifyNoResidue passes when the root is gone and no port listens', async () => {
   const missing = path.join(os.tmpdir(), `dsh-lab-missing-${Date.now()}`);
   // Pin `after` to `before`: other test files create lab homes concurrently.

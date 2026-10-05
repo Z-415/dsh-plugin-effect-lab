@@ -124,9 +124,15 @@ export function listOrphanLabHomes() {
     .filter((entry) => entry.isDirectory() && entry.name.toLowerCase().startsWith(TEMP_PREFIX))
     .map((entry) => {
       const full = path.join(tempRoot, entry.name);
-      const stat = fs.statSync(full);
-      return { path: full, mtimeMs: stat.mtimeMs };
+      try {
+        const stat = fs.statSync(full);
+        return { path: full, mtimeMs: stat.mtimeMs };
+      } catch {
+        // Another test/run may remove its temp dir between readdir and stat.
+        return null;
+      }
     })
+    .filter(Boolean)
     .filter((entry) => {
       const name = path.basename(entry.path).toLowerCase();
       return name.startsWith(`${TEMP_PREFIX}browser-`)
