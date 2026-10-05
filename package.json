@@ -14,7 +14,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test tests/unit/*.test.js",
+    "test": "node --test tests/unit/*.test.js bridge-plugin/test/*.test.js",
+    "test:bridge": "node --test bridge-plugin/test/*.test.js",
     "test:e2e": "node --test --test-concurrency=1 tests/integration/*.test.js",
     "ci": "node scripts/ci.mjs"
   },

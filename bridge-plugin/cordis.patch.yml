@@ -1,0 +1,8 @@
+# dsh-plugin-effect-lab-bridge bundle patch.
+#
+# ONE host row. The row name resolves through node_modules to the bridge package;
+# the plugin reaches the lab only by spawning `node <lab>/bin/lab.js` at tool-call
+# time. The lab itself is deliberately NOT a dependency and never enters the profile.
+- insert:
+    - id: effect-lab-bridge
+      name: 'dsh-plugin-effect-lab-bridge'
