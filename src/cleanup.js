@@ -42,9 +42,10 @@ export function diffResidue(before, after) {
  * Verify a finished run left nothing behind: the isolated root is gone, no new
  * lab home appeared, and every port the run owned is free.
  *
- * Only `isolated-root-removed` and `ports-released` gate `ok`. A new lab home
- * is reported as `advisory` because concurrent lab runs legitimately create
- * their own homes while this one finishes.
+ * `isolated-root-removed`, `ports-released`, and `browser-temp-removed` gate
+ * `ok`. A new lab home is reported as `advisory` because concurrent lab runs
+ * legitimately create their own homes while this one finishes; this run's own
+ * browser scratch directories are passed in `browserDirs` and must be gone.
  */
 export async function verifyNoResidue(options = {}) {
   const {
@@ -53,6 +54,7 @@ export async function verifyNoResidue(options = {}) {
     before = null,
     after = snapshotLabResidue(),
     processPlan = null,
+    browserDirs = [],
   } = options;
   const isolatedRootRemoved = isolatedRoot ? !fs.existsSync(isolatedRoot) : true;
   const { newHomes } = before ? diffResidue(before, after) : { newHomes: [] };
@@ -61,9 +63,11 @@ export async function verifyNoResidue(options = {}) {
     if (port === undefined || port === null) continue;
     if (await canConnect(port)) portsStillListening.push(port);
   }
+  const browserStillPresent = (browserDirs ?? []).filter((dir) => fs.existsSync(dir));
   const checks = {
     'isolated-root-removed': isolatedRootRemoved,
     'ports-released': portsStillListening.length === 0,
+    'browser-temp-removed': browserStillPresent.length === 0,
   };
   // A lab process with no run directory left is an orphan; a concurrent run
   // keeps its own directory and is therefore not reported.
@@ -80,6 +84,7 @@ export async function verifyNoResidue(options = {}) {
     advisory,
     failures,
     newHomes,
+    browserStillPresent,
     portsStillListening,
     labProcesses: { matched: processes?.matched ?? 0, orphans: orphanProcesses },
     residueAfter: after,

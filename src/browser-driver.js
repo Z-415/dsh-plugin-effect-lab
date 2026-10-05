@@ -34,6 +34,38 @@ export function reapBrowserProcesses(userDataDir, options = {}) {
   return { supported: result.supported, matched: result.matched };
 }
 
+/**
+ * Remove a scratch directory, retrying briefly while Windows still holds a
+ * handle on a just-killed browser. Unlike the old best-effort `try/catch`, a
+ * failed delete is reported so the no-residue check can gate on it.
+ *
+ * Returns `{ removed, dir, attempts, error }`.
+ */
+export async function removeDirWithRetry(dir, options = {}) {
+  const {
+    attempts = 6,
+    delayMs = 300,
+    rm = fs.rmSync,
+    exists = fs.existsSync,
+  } = options;
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      rm(dir, { recursive: true, force: true });
+    } catch (error) {
+      lastError = error;
+    }
+    if (!exists(dir)) return { removed: true, dir, attempts: attempt, error: null };
+    await sleep(delayMs);
+  }
+  return {
+    removed: !exists(dir),
+    dir,
+    attempts,
+    error: lastError ? String(lastError) : null,
+  };
+}
+
 export function findBrowser(explicitPath) {
   if (explicitPath && !fs.existsSync(explicitPath)) {
     throw new Error(`browser not found at the explicit path: ${path.resolve(explicitPath)}`);
@@ -543,6 +575,7 @@ export async function openUi(options) {
     }
     return {
       browser,
+      userDataDir,
       ui,
       settle,
       settleAfter,
@@ -566,23 +599,15 @@ export async function openUi(options) {
         client?.close();
         const stopped = await stopTracked(tracked, { label: 'browser' });
         const reaped = reapBrowserProcesses(userDataDir);
-        try {
-          fs.rmSync(userDataDir, { recursive: true, force: true });
-        } catch {
-          // Windows may keep a lock for a moment; the temp prefix stays cleanable.
-        }
-        return { ...stopped, reaped };
+        const removed = await removeDirWithRetry(userDataDir);
+        return { ...stopped, reaped, removed };
       },
     };
   } catch (error) {
     client?.close();
     killTree(tracked.pid);
     reapBrowserProcesses(userDataDir);
-    try {
-      fs.rmSync(userDataDir, { recursive: true, force: true });
-    } catch {
-      // Best-effort cleanup.
-    }
+    await removeDirWithRetry(userDataDir);
     throw error;
   }
 }
@@ -630,10 +655,6 @@ export async function evaluateOnce(options = {}) {
     killTree(tracked.pid);
     await stopTracked(tracked, { label: 'browser' });
     reapBrowserProcesses(userDataDir);
-    try {
-      fs.rmSync(userDataDir, { recursive: true, force: true });
-    } catch {
-      // Best-effort cleanup.
-    }
+    await removeDirWithRetry(userDataDir);
   }
 }

@@ -99,7 +99,7 @@ export async function runLab(options = {}) {
     noise: [],
     routes: [],
     browser: null,
-    cleanup: { homeRemoved: null, portsLeft: [], homeCleanup: null, processesLeft: 0 },
+    cleanup: { homeRemoved: null, portsLeft: [], homeCleanup: null, processesLeft: 0, browserTempDirs: [] },
     realHome: null,
     errors,
     artifacts: {},
@@ -447,6 +447,7 @@ export async function runLab(options = {}) {
       timeoutMs: options.browserTimeoutMs ?? DEFAULT_BROWSER_TIMEOUT_MS,
       browserPath: options.browserPath,
     });
+    if (browser.userDataDir) report.cleanup.browserTempDirs.push(browser.userDataDir);
     addCheck(checks, 'ui-ready', browser.ui.ready, JSON.stringify(browser.ui).slice(0, 500));
     if (fixtureEnabled) {
       addCheck(
@@ -532,7 +533,8 @@ export async function runLab(options = {}) {
     let processesLeft = 0;
     if (browser) {
       try {
-        await browser.close();
+        const closed = await browser.close();
+        report.cleanup.browserCleanup = closed.removed ?? null;
       } catch (error) {
         processesLeft += 1;
         errors.push(`browser cleanup failed: ${String(error)}`);
@@ -599,6 +601,7 @@ export async function runLab(options = {}) {
         isolatedRoot: iso?.persistent ? null : (iso?.root ?? null),
         ports: boot?.port ? [boot.port] : [],
         before: residueBefore,
+        browserDirs: report.cleanup.browserTempDirs,
       });
       report.cleanup.residue = residue;
       addCheck(

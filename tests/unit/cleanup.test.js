@@ -93,3 +93,40 @@ test('an orphan lab process is advisory, not a hard failure', async () => {
   assert.equal(result.advisory['no-lab-processes'], false);
   assert.deepStrictEqual(result.labProcesses.orphans.map((entry) => entry.pid), [7]);
 });
+
+test("verifyNoResidue fails when this run's browser temp dir remains", async () => {
+  const missing = path.join(os.tmpdir(), `dsh-lab-missing-${Date.now()}`);
+  const browserDir = makeTemp('dsh-lab-browser-');
+  const before = snapshotLabResidue();
+  try {
+    const result = await verifyNoResidue({
+      isolatedRoot: missing,
+      ports: [],
+      before,
+      after: before,
+      processPlan: { matched: 0, orphans: [] },
+      browserDirs: [browserDir],
+    });
+    assert.equal(result.ok, false);
+    assert.deepStrictEqual(result.failures, ['browser-temp-removed']);
+    assert.deepStrictEqual(result.browserStillPresent, [browserDir]);
+  } finally {
+    fs.rmSync(browserDir, { recursive: true, force: true });
+  }
+});
+
+test("verifyNoResidue passes once this run's browser temp dir is gone", async () => {
+  const missing = path.join(os.tmpdir(), `dsh-lab-missing-${Date.now()}`);
+  const gone = path.join(os.tmpdir(), `dsh-lab-browser-gone-${Date.now()}`);
+  const result = await verifyNoResidue({
+    isolatedRoot: missing,
+    ports: [],
+    before: { homes: [] },
+    after: { homes: [] },
+    processPlan: { matched: 0, orphans: [] },
+    browserDirs: [gone],
+  });
+  assert.equal(result.ok, true);
+  assert.deepStrictEqual(result.failures, []);
+  assert.deepStrictEqual(result.browserStillPresent, []);
+});
