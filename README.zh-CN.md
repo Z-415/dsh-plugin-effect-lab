@@ -184,3 +184,7 @@ npm run ci
 - [docs/ELECTRON-SHELL.md](docs/ELECTRON-SHELL.md) —— 壳保真模式
 - [docs/FIXTURES.md](docs/FIXTURES.md) / [docs/MOCK-MODEL.md](docs/MOCK-MODEL.md) —— 夹具与回环 provider
 - [docs/VERSION-POLICY.md](docs/VERSION-POLICY.md) —— 官方 DSH 升级后的适配流程
+
+## 许可证
+
+MIT —— 见 [LICENSE](LICENSE)。

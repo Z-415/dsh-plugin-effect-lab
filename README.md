@@ -191,3 +191,7 @@ alive and the command will not finish.
 - [docs/ELECTRON-SHELL.md](docs/ELECTRON-SHELL.md) — shell fidelity mode
 - [docs/FIXTURES.md](docs/FIXTURES.md) / [docs/MOCK-MODEL.md](docs/MOCK-MODEL.md) — fixtures and the loopback provider
 - [docs/VERSION-POLICY.md](docs/VERSION-POLICY.md) — adapting to a new official DSH runtime
+
+## License
+
+MIT — see [LICENSE](LICENSE).
