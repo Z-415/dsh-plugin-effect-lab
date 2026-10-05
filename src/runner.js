@@ -202,11 +202,15 @@ export async function runLab(options = {}) {
       'plugin-precheck',
       pluginPipeline.stage !== 'precheck',
       pluginPipeline.stage === 'precheck'
-        ? `${pluginPipeline.summary.blockers.length} blocker(s)`
-        : `${pluginPipeline.entries.length} package(s) checked`,
+        ? `${pluginPipeline.summary.blockers.length} blocker(s) (stage=precheck)`
+        : pluginPipeline.stage === 'install'
+          ? `${pluginPipeline.entries.length} package(s) validated; install failed (stage=install)`
+          : `${pluginPipeline.entries.length} package(s) checked (stage=${pluginPipeline.stage})`,
     );
+    // Keep the validation evidence even when a later stage throws, so
+    // report.json / plugin-validation.json still describe what was checked.
+    report.pluginValidation = pluginPipeline.validation;
     if (pluginPipeline.stage === 'precheck') {
-      report.pluginValidation = pluginPipeline.validation;
       throw new Error(`plugin precheck failed: ${pluginPipeline.summary.blockers.map((item) => `${item.plugin}:${item.id}`).join(', ')}`);
     }
     if (pluginPipeline.install) {
@@ -230,7 +234,6 @@ export async function runLab(options = {}) {
       writeText(runDir, 'install.log', '(no plugins requested)\n');
       addCheck(checks, 'plugin-install', true, 'no plugins requested');
     }
-    report.pluginValidation = pluginPipeline.validation;
     report.plugins = pluginPipeline.pluginList;
     if (pluginPipeline.profileAudit) {
       const audit = pluginPipeline.profileAudit;

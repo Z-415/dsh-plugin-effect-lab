@@ -58,6 +58,35 @@ test('duplicate slot declarations fail before boot without residue', {
   }
 });
 
+test('an install failure keeps pluginValidation and reports the stage', {
+  skip: !enabled,
+  timeout: 180_000,
+}, async () => {
+  const root = artifactsRoot('dsh-lab-install-e2e-');
+  try {
+    const report = await runLab({
+      // An unknown npm spec has no manifest to precheck, so precheck passes and
+      // the offline `dsh plugin add` is what fails.
+      plugins: ['dsh-lab-nonexistent-install-fixture-20261005@1.0.0'],
+      fixture: false,
+      artifactsRoot: root,
+    });
+    assert.equal(report.ok, false);
+    // The manifest precheck succeeded, so the failure is at install: the
+    // validation evidence must survive the throw.
+    assert.equal(report.pluginValidation?.stage, 'install', JSON.stringify(report.pluginValidation));
+    const precheck = (report.checks ?? []).find((check) => check.name === 'plugin-precheck');
+    assert.equal(precheck?.pass, true, JSON.stringify(precheck));
+    assert.match(precheck?.detail ?? '', /install/);
+    const install = (report.checks ?? []).find((check) => check.name === 'plugin-install');
+    assert.equal(install?.pass, false, JSON.stringify(install));
+    assert.equal(report.cleanup.homeRemoved, true);
+    assert.equal(report.cleanup.residue?.ok, true, JSON.stringify(report.cleanup.residue));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('an unreachable runtime path fails before creating a home', {
   skip: !enabled,
   timeout: 120_000,
