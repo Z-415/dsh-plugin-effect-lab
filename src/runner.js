@@ -265,6 +265,7 @@ export async function runLab(options = {}) {
       profileName,
       tmpDir: iso.tmp,
       timeoutMs: options.bootTimeoutMs,
+      transport: options.bootTransport,
       env: {
         ...(fixtureEnabled
           ? fixtureEnv({ enabled: true, sessionId: fixtureSessionId, cwd: fixtureWorkspace, variant: fixtureVariant })
@@ -273,6 +274,20 @@ export async function runLab(options = {}) {
       },
     });
     addCheck(checks, 'boot-url', Number(boot.port) > 0, `port ${boot.port}`);
+    report.boot = {
+      transport: boot.transport,
+      fallbackReason: boot.fallbackReason ?? null,
+      injections: { count: boot.injections?.length ?? 0, kinds: boot.injectionKinds ?? [] },
+    };
+    addCheck(
+      checks,
+      'boot-transport',
+      boot.transport === 'ipc',
+      boot.transport === 'ipc'
+        ? `ipc ready message (${boot.injections?.length ?? 0} injection row(s))`
+        : `stdout fallback (${boot.fallbackReason ?? 'unknown'})`,
+      { informational: true },
+    );
     progress(`isolated host booted on port ${boot.port}`);
 
     bootOutput = boot.getOutput();

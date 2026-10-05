@@ -514,6 +514,46 @@ Final suite: unit 174/174, integration 15/15.
 
 Final suite: unit 182/182, integration 15/15.
 
+## 0.1.0 - 2026-10-05 (real boot-row transport, opt-in)
+
+### Added
+
+- `resolveHostLauncher()` plus a real IPC boot path: `dsh.cmd` is parsed for its
+  exe and host entry, the host is spawned **directly** with
+  `stdio: [..., 'ipc']` and `ELECTRON_RUN_AS_NODE=1`, and the
+  `{ type: 'ready', url, injections }` message is accepted. With typed rows in
+  hand the shell serves the packaged `dist/index.html` and hands the rows to the
+  frontend (the desktop path) instead of the host-rendered index.
+- `--boot-transport stdout|ipc` on `verify`/`capture`/`shell`. `stdout` is the
+  default because the isolated `dsh web` app never sends that message; `ipc`
+  opts in and degrades to stdout with a reason instead of failing.
+- `spawnTracked({ ipc, runAsNode })` and `childEnv(env, { runAsNode })`: an IPC
+  stdio channel, and a way to put `ELECTRON_RUN_AS_NODE=1` back for the host
+  child (the default `childEnv` deliberately strips it).
+- `shell-boot-injections`: parses the rows' *content* back out of the
+  host-rendered index (count, kinds, names — a verified run shows
+  `9 row(s) kinds=[script, script-src, style]`), while
+  `shell-boot-transport`, `shell-index-source` and `boot-transport` record which
+  transport was actually used.
+
+### Fixed
+
+- An `ipc` stdio channel kept the parent's event loop alive after the child was
+  killed; `stopTracked` now disconnects it.
+- `stopTracked` raced `once(child, 'exit')` against `sleep(ms)` without clearing
+  the timer, so every Windows cleanup left a 5 s timer pending and delayed
+  process exit. `waitForExit()` cancels it; the unit suite went from 5.9 s back
+  to 1.8 s.
+
+### Documented
+
+- `docs/ELECTRON-SHELL.md` records the reverse-engineered desktop handshake —
+  the private `dsh-desktop-host/lib/index.js` entry with its positional args and
+  `ipc` channel, why the lab must not run it (it also wires the platform
+  session and credentials), and what the lab does instead.
+
+Final suite: unit 186/186, integration 15/15.
+
 ## 0.1.0 - 2026-10-05 (desktop shell: tray and boot-injection evidence)
 
 ### Added

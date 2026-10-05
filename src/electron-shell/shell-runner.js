@@ -202,6 +202,7 @@ export async function runShell(options = {}) {
       profileName,
       tmpDir: iso.tmp,
       timeoutMs: options.bootTimeoutMs ?? 90_000,
+      transport: options.bootTransport,
       env: fixtureEnabled
         ? fixtureEnv({ enabled: true, sessionId: fixtureSessionId, cwd: fixtureWorkspace, variant: fixtureVariant })
         : fixtureEnv({ enabled: false }),
@@ -285,6 +286,19 @@ export async function runShell(options = {}) {
     const screenshotFile = path.join(runDir, 'screenshots', 'shell.png');
     const resultFile = path.join(runDir, 'shell-result.json');
     const configFile = path.join(iso.root, 'shell-config.json');
+    // The typed boot rows the host sent over IPC, handed to the shell so the
+    // frontend applies them itself (the packaged-desktop path instead of the
+    // server-rendered index).
+    const injectionsFile = path.join(iso.root, 'shell-injections.json');
+    const desktopInjections = Array.isArray(boot.injections) ? boot.injections : null;
+    if (desktopInjections) {
+      const payload = `${JSON.stringify({
+        transport: boot.transport,
+        injections: desktopInjections,
+      }, null, 2)}\n`;
+      fs.writeFileSync(injectionsFile, payload, 'utf8');
+      writeText(runDir, 'boot-injections.json', payload);
+    }
     fs.writeFileSync(configFile, `${JSON.stringify({
       officialInstall: runtime.installDir,
       hostUrl: boot.origin,
@@ -296,6 +310,7 @@ export async function runShell(options = {}) {
       show: options.show === true || options.keepOpen === true,
       keepOpen: options.keepOpen === true,
       showHoldMs: options.showHoldMs ?? 6000,
+      injectionsFile: desktopInjections ? injectionsFile : null,
       desktopMode: desktop.mode,
       // Do not accept an early DOM plateau below the web baseline's slot count.
       minSlots: webProbe?.slotCount ?? 0,
@@ -442,6 +457,36 @@ export async function runShell(options = {}) {
         );
       }
 
+      addCheck(
+        checks,
+        'shell-boot-transport',
+        boot.transport === 'ipc' && Array.isArray(boot.injections),
+        boot.transport === 'ipc'
+          ? `ipc ready message: ${boot.injections?.length ?? 0} injection row(s)`
+            + ` kinds=[${(boot.injectionKinds ?? []).join(', ')}]`
+          : `stdout fallback (${boot.fallbackReason ?? 'unknown'})`,
+        { informational: boot.transport !== 'ipc' },
+      );
+      addCheck(
+        checks,
+        'shell-index-source',
+        result.indexSource === (boot.transport === 'ipc' ? 'packaged-dist' : 'host-rendered'),
+        `indexSource=${result.indexSource ?? 'unknown'} transport=${boot.transport}`,
+        { informational: true },
+      );
+      if (result.derivedInjections) {
+        const derived = result.derivedInjections;
+        addCheck(
+          checks,
+          'shell-boot-injections',
+          derived.count > 0,
+          `derived from the ${derived.source}: ${derived.count} row(s)`
+            + ` kinds=[${(derived.kinds ?? []).join(', ')}]`
+            + ` names=[${(derived.names ?? []).slice(0, 6).join(', ')}]`
+            + `${derived.error ? ` error=${derived.error}` : ''}`,
+        );
+      }
+
       if (webProbe) {
         shellVsWeb = diffProbeSnapshots(webProbe, shellProbe);
         writeJson(runDir, 'dom/shell-vs-web.json', shellVsWeb);
@@ -506,6 +551,12 @@ export async function runShell(options = {}) {
     const shellProbeForReport = result?.dom ? normalizeProbe(result.dom) : null;
     report.shell = {
       runtimeDir: shell.dir,
+      bootTransport: boot.transport,
+      bootInjections: {
+        count: boot.injections?.length ?? 0,
+        kinds: boot.injectionKinds ?? [],
+      },
+      derivedInjections: result.derivedInjections ?? null,
       cached: shell.cached,
       result,
       screenshotFile,

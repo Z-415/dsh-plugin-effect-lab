@@ -94,12 +94,14 @@ update that changes one of them needs a code change *and* a re-verified suite:
 - the session fixture's `surfaceOp: "append"` requirement
   (`fixtures/web-session/*.json`);
 - the host's desktop handshake: `dsh.cmd` runs
-  `DeepSeek Harness.exe --expose-internals .../dsh-desktop-host/lib/cli.js ...`
-  and the host sends `{ type: 'ready', url, injections }` over its IPC channel,
-  with `injections: ctx.webServer.collectIndexInjections()`; the frontend
-  applies rows of kind `global | script | script-src | script-preload | style |
-  html` (`docs/ELECTRON-SHELL.md` has the exact contract, and
-  `shell-boot-globals` probes its effects);
+  `DeepSeek Harness.exe --expose-internals .../dsh-desktop-host/lib/cli.js ...`,
+  but the typed boot rows come from the **private desktop-host entry**
+  (`@deepseek-ai/dsh-desktop-host/lib/index.js <runtimeDir> <projectDir>
+  <primaryRuntime>` spawned with an `ipc` stdio channel) and are
+  `ctx.webServer.collectIndexInjections()`; the frontend applies rows of kind
+  `global | script | script-src | script-preload | style | html`. `docs/ELECTRON-SHELL.md`
+  has the exact contract, `--boot-transport ipc` opts into the transport, and
+  `shell-boot-globals` / `shell-boot-injections` probe its effects and content;
 - the injected global names the frontend reads (`__DSH_BOOT__`,
   `__DSH_BOOT_READY__`, `__DSH_CONTACT_CONFIG__`, `__DSH_SHORTCUTS_CONFIG__`,
   `__DSH_DOCUMENT_PREVIEW_CONFIG__`, `__DSH_MODELS_ONBOARDING__`,

@@ -7,6 +7,23 @@ const { createDesktopBridge } = require('./desktop-bridge.cjs');
 
 const configFile = process.env.DSH_LAB_SHELL_CONFIG;
 const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+
+/**
+ * Typed boot rows the host sent over its IPC channel (written by the runner).
+ * `null` means "no rows available": the shell then serves the index the host
+ * rendered for the web path, which already has them inlined.
+ */
+function loadBootInjections(file) {
+  if (!file) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return Array.isArray(parsed?.injections) ? parsed.injections : null;
+  } catch {
+    return null;
+  }
+}
+const bootInjections = loadBootInjections(config.injectionsFile);
+const indexSource = bootInjections ? 'packaged-dist' : 'host-rendered';
 const consoleErrors = [];
 const pageErrors = [];
 let finished = false;
@@ -71,6 +88,49 @@ async function probeBootGlobals(window) {
     missing: Object.entries(booleans).filter(([, value]) => !value).map(([name]) => name),
     requiredPresent: REQUIRED_BOOT_GLOBALS.every((name) => booleans[name] === true),
   };
+}
+
+/**
+ * The host renders its injection rows into the index it serves for the web
+ * path. Parsing them back gives the *content* of the rows — which globals,
+ * plugin scripts and inline styles the host contributed — which is real
+ * evidence even when the typed-row IPC transport is not in use.
+ */
+async function probeInjectedRows() {
+  try {
+    const response = await fetch(`${config.hostUrl}/`, {
+      headers: config.hostCookie ? { cookie: config.hostCookie } : {},
+      redirect: 'manual',
+    });
+    const html = await response.text();
+    const rows = [];
+    for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+      const src = /\bsrc\s*=\s*"([^"]+)"/i.exec(match[1])?.[1] ?? null;
+      if (src) {
+        if (/plugins\//i.test(src)) rows.push({ kind: 'script-src', name: src.split('?')[0] });
+        continue;
+      }
+      const globals = [...new Set([...match[2].matchAll(/__DSH_[A-Z_]+/g)].map((item) => item[0]))];
+      if (globals.length) rows.push({ kind: 'script', name: globals.join(',') });
+    }
+    for (const match of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) {
+      if (match[1].trim()) rows.push({ kind: 'style', name: 'inline-style' });
+    }
+    return {
+      source: 'host-rendered-index',
+      count: rows.length,
+      kinds: [...new Set(rows.map((row) => row.kind))],
+      names: rows.map((row) => row.name),
+    };
+  } catch (error) {
+    return {
+      source: 'host-rendered-index',
+      count: 0,
+      kinds: [],
+      names: [],
+      error: String(error?.message ?? error),
+    };
+  }
 }
 
 app.setName('dsh-lab-electron-shell');
@@ -442,9 +502,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('dsh-lab:boot', (event) => {
     assertAppSender(event);
     if (!config.hostUrl) throw new Error('dsh-lab shell: Host is unavailable');
-    // The served index already contains the Host injection rows, so the shell
-    // reports an empty list instead of applying them a second time.
-    return { injections: [], streamBaseUrl: new URL(config.hostUrl).origin };
+    // Desktop path: hand the frontend the real typed rows (it applies them).
+    // Web path (no rows): the served index already contains them, so report an
+    // empty list instead of applying them a second time.
+    return { injections: bootInjections ?? [], streamBaseUrl: new URL(config.hostUrl).origin };
   });
   ipcMain.handle('dsh-lab:boot-failed', (event, message) => {
     assertAppSender(event);
@@ -472,7 +533,9 @@ app.whenReady().then(async () => {
     const url = new URL(request.url);
     if (url.hostname !== 'app') return Promise.resolve(new Response(null, { status: 404 }));
     if (url.pathname === '/' || url.pathname === '/index.html') {
-      return serveIndexFromHost();
+      // Desktop path: the packaged index, with the frontend applying the typed
+      // rows itself. Web path: the index the host rendered (rows inlined).
+      return bootInjections ? Promise.resolve(serveWebDocument(request, distDir)) : serveIndexFromHost();
     }
     if (url.pathname.startsWith('/assets/') || ['/favicon.svg', '/manifest.webmanifest'].includes(url.pathname)) {
       return Promise.resolve(serveWebDocument(request, distDir));
@@ -524,6 +587,7 @@ app.whenReady().then(async () => {
     const dom = await probeDom(window);
     const capabilities = await probeDesktopCapabilities(window, desktopBridge);
     const bootGlobals = await probeBootGlobals(window);
+    const derivedInjections = await probeInjectedRows();
     const frame = await captureWindowFrame(window);
     if (frame.image) {
       fs.mkdirSync(path.dirname(config.screenshotFile), { recursive: true });
@@ -535,6 +599,12 @@ app.whenReady().then(async () => {
       capabilities,
       capture: { attempts: frame.attempts, unpainted: frame.unpainted, error: frame.error ?? null },
       bootGlobals,
+      derivedInjections,
+      indexSource,
+      bootInjections: {
+        count: bootInjections?.length ?? 0,
+        kinds: bootInjections ? [...new Set(bootInjections.map((row) => row?.kind ?? 'unknown'))] : [],
+      },
       tray: trayFacts,
       title: window.getTitle(),
       webContents: { url: window.webContents.getURL(), userAgent: window.webContents.getUserAgent() },

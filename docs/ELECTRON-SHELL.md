@@ -215,35 +215,77 @@ if (boot !== undefined) {
 }
 ```
 
-The rows come from the host: its CLI sends
-`{ type: 'ready', url, injections }` over the **IPC channel of the forked host
-process**, with `injections: ctx.webServer.collectIndexInjections()`
-("the typed rows plugins contribute to the boot").
+### Where the rows come from
 
-The lab does not fork the host, so it never sees that IPC message. Instead it
-serves the index the host renders for the **web** path, which already has the
-same rows inlined server-side. The **effects** are therefore present in the
-shell; the **typed-row transport** is not exercised. `shell-boot-globals`
-asserts the effects: it probes `__DSH_BOOT__`, `__DSH_BOOT_READY__`,
-`__DSH_TRANSPORT__` (required) plus `__DSH_CONTACT_CONFIG__`,
-`__DSH_SHORTCUTS_CONFIG__`, `__DSH_DOCUMENT_PREVIEW_CONFIG__`,
-`__DSH_MODELS_ONBOARDING__`, `__DSH_CONNECTION_RECOVERY__` (host-dependent) and
-reports `present=n/total`. A verified run shows `present=8/8`.
+`ctx.webServer.collectIndexInjections()` runs **inside the host process**
+("the typed rows plugins contribute to the boot"), and the host sends them to
+its parent over an IPC channel:
 
-To exercise the transport instead, the lab would have to spawn the host with an
-`ipc` stdio channel, which means bypassing `dsh.cmd`: that launcher runs
-`DeepSeek Harness.exe --expose-internals .../dsh-desktop-host/lib/cli.js ...`,
-and an IPC channel handed to `cmd.exe` never reaches the Node process. That is
-version-coupled, so it is deliberately not done; see
-`docs/VERSION-POLICY.md` for the assumption list.
+```js
+if (process.connected) process.send({ type: 'ready', url, injections });
+```
+
+The official app gets them by spawning a **private desktop-host entry**, not
+`dsh web`:
+
+```js
+// reverse-engineered from the packaged main bundle
+const entry = join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'index.js');
+spawn(node, ['--expose-internals', entry, runtimeDir, projectDir, primaryRuntime, ...pnpmAndNodeBin], {
+  cwd: projectDir,
+  env: desktopNodeEnvironment(...),
+  stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+});
+```
+
+Two things follow, both verified on 0.2.0-rc.2:
+
+1. The isolated `dsh web` profile the lab boots **never sends that message**,
+   and `webServer` is **not** on the HTTP RPC surface (probing
+   `webServer/collectIndexInjections` and four name variants returns 404).
+2. The desktop-host entry is the app's private launcher: it also wires the
+   platform session and credential plumbing, so the lab must not run it — that
+   would break the "never touch real credentials/sessions" rule.
+
+### What the lab does
+
+- Default transport is `stdout`: spawn `dsh.cmd` and parse the readiness line
+  (the pre-existing, zero-overhead path).
+- `--boot-transport ipc` opts into the real thing: read the exe + host entry out
+  of `dsh.cmd` (`resolveHostLauncher`), spawn the host **directly** with
+  `stdio: [..., 'ipc']` and `ELECTRON_RUN_AS_NODE=1` (`spawnTracked({ ipc: true,
+  runAsNode: true })`), and accept `{ type: 'ready', url, injections }`. With
+  rows in hand the shell serves the **packaged** `dist/index.html` and hands the
+  typed rows to the frontend, instead of the host-rendered index. A channel
+  handed to `cmd.exe` never reaches the Node process, which is why the direct
+  spawn is required.
+- If the message never arrives (today's `dsh web`), the boot degrades to the
+  stdout path with a reason in `report.<mode>.boot.transport` /
+  `shell.bootTransport` and the `boot-transport` / `shell-boot-transport`
+  checks. It does not fail the run.
+
+### Evidence on every run
+
+- `shell-boot-globals` probes the injected globals — `__DSH_BOOT__`,
+  `__DSH_BOOT_READY__`, `__DSH_TRANSPORT__` (required) plus
+  `__DSH_CONTACT_CONFIG__`, `__DSH_SHORTCUTS_CONFIG__`,
+  `__DSH_DOCUMENT_PREVIEW_CONFIG__`, `__DSH_MODELS_ONBOARDING__`,
+  `__DSH_CONNECTION_RECOVERY__`. A verified run reports `present=8/8`.
+- `shell-boot-injections` derives the rows' **content** from the
+  host-rendered index (the host inlines the same rows for the web path) and
+  reports count, kinds and names. A verified run reports
+  `9 row(s) kinds=[script, script-src, style]` with names such as
+  `__DSH_CONTACT_CONFIG__` and `plugins/...`.
 
 ## Not covered
 
 - The official **update UI** is not reproduced. The lab ships no updater, and
   faking one would be misleading; a plugin that depends on the updater surface
   is out of scope.
-- Boot rows reach the document through the server-rendered index, not through
-  the desktop IPC channel (see above).
+- Boot rows reach the document through the server-rendered index by default.
+  The desktop IPC transport is implemented (`--boot-transport ipc`) but the
+  isolated `dsh web` profile does not send the message, so it degrades unless a
+  launcher that does is provided.
 - `window.__DSH_FILE_UPLOAD__` is a *page-provided upload carrier hook* the
   frontend reads (it lets blob/stream request bodies use the page's fetch
   instead of a short-lived Worker), not a main-process bridge. The lab does not

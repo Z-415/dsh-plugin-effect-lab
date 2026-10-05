@@ -10,9 +10,12 @@ import { sleep } from './util.js';
  * grandchildren: the lab's own Electron shell would then start as Node, run
  * `main.js` without a browser process, and never show a window.
  */
-export function childEnv(overrides) {
+export function childEnv(overrides, options = {}) {
   const env = overrides ? { ...process.env, ...overrides } : { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
+  // The official `dsh.cmd` sets this before running the Electron binary as
+  // Node; the host cannot boot without it, so callers may ask for it back.
+  if (options.runAsNode === true) env.ELECTRON_RUN_AS_NODE = '1';
   return env;
 }
 
@@ -87,13 +90,13 @@ export function runCommand(file, args = [], options = {}) {
  * The returned handle owns the child; only these tracked PIDs are killed.
  */
 export function spawnTracked(file, args = [], options = {}) {
-  const { cwd, env, onStdout, onStderr } = options;
+  const { cwd, env, onStdout, onStderr, ipc = false, runAsNode = false } = options;
   const resolved = resolveCommand(file, args);
   const child = spawn(resolved.file, resolved.args, {
     cwd,
-    env: childEnv(env),
+    env: childEnv(env, { runAsNode }),
     windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe', ...(ipc ? ['ipc'] : [])],
     windowsVerbatimArguments: process.platform === 'win32' && /cmd\.exe$/i.test(resolved.file),
   });
   let stdout = '';
@@ -161,16 +164,15 @@ export async function stopTracked(tracked, options = {}) {
   const child = tracked?.child;
   if (!child) return { alreadyExited: true, forced: false, detail: 'no child' };
   if (child.exitCode !== null) {
+    releaseIpc(child);
     return { alreadyExited: true, forced: false, detail: 'already exited' };
   }
   if (process.platform === 'win32') {
     // Kill the tree while cmd.exe is still alive. Killing the wrapper first
     // would orphan the Electron grandchild and lose the /T relationship.
     const forced = killTree(child.pid);
-    await Promise.race([
-      once(child, 'exit').then(() => true),
-      sleep(5000).then(() => false),
-    ]);
+    await waitForExit(child, 5000);
+    releaseIpc(child);
     return { alreadyExited: false, forced: true, detail: `${label}: ${forced.detail}` };
   }
   try {
@@ -178,15 +180,42 @@ export async function stopTracked(tracked, options = {}) {
   } catch {
     // Fall through to the forced tree kill.
   }
-  const exited = await Promise.race([
-    once(child, 'exit').then(() => true),
-    sleep(graceMs).then(() => false),
-  ]);
+  const exited = await waitForExit(child, graceMs);
   if (exited) return { alreadyExited: false, forced: false, detail: 'SIGTERM accepted' };
   const forced = killTree(child.pid);
-  await Promise.race([
-    once(child, 'exit').then(() => true),
-    sleep(3000).then(() => false),
-  ]);
+  await waitForExit(child, 3000);
+  releaseIpc(child);
   return { alreadyExited: false, forced: true, detail: `${label}: ${forced.detail}` };
+}
+
+/**
+ * Wait for a child to exit, cancelling the timeout timer when it does. A bare
+ * `Promise.race([once(child,'exit'), sleep(ms)])` leaves that timer pending,
+ * which keeps the lab process (and any test runner) alive for up to `ms`.
+ */
+async function waitForExit(child, timeoutMs) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      once(child, 'exit').then(() => true),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * An `ipc` stdio channel keeps the parent's event loop alive until it is
+ * disconnected: a killed host child would otherwise stop the lab from exiting.
+ */
+function releaseIpc(child) {
+  if (!child?.connected) return;
+  try {
+    child.disconnect();
+  } catch {
+    // Already closing.
+  }
 }

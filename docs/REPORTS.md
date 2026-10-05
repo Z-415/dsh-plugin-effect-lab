@@ -70,7 +70,13 @@ shell-result.json       raw shell result (DOM, console errors, page errors, sett
   `[connection] connection lost`. `shell.result.tray` records the tray
   (`{ created, skipped, tooltip, menuItems, error }`, `shell-tray` check) and
   `shell.result.bootGlobals` records which host-injected globals reached the
-  renderer (`shell-boot-globals` check).
+  renderer (`shell-boot-globals` check). `shell.bootTransport` /
+  `shell.bootInjections` record how the host was booted and whether typed rows
+  arrived, `shell.derivedInjections` records the row content parsed back out of
+  the host-rendered index (`shell-boot-injections` check), and
+  `shell.result.indexSource` says whether the shell served the packaged dist
+  index or the host-rendered one. `verify`/`capture` put the same boot facts on
+  `report.boot`.
 - `agentCoverage`: `fixture-only` or `loopback-mock-model`, always with
   `realModelRequests: false`, plus the covered/uncovered surface list.
 - `settings`: with `--screenshot settings`, `{ totalSlots, added }` lists the

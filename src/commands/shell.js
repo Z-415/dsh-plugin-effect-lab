@@ -23,6 +23,7 @@ export async function runShellCommand(options) {
     artifactsRoot: options.artifactsRoot,
     noCache: options.noCache,
     shellTimeoutMs: options.shellTimeoutMs,
+    bootTransport: options.bootTransport,
     plugins: options.plugins,
     withPlugins: options.withPlugins,
     fixture: options.fixture,

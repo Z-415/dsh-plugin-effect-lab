@@ -22,6 +22,7 @@ export async function runVerifyCommand(options) {
     artifactsRoot: options.artifactsRoot,
     browserPath: options.browserPath,
     bootTimeoutMs: options.bootTimeoutMs,
+    bootTransport: options.bootTransport,
     browserTimeoutMs: options.browserTimeoutMs,
     strictConsole: options.strictConsole,
     html: options.html,

@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
-import { childEnv, quoteForCmd, resolveCommand } from '../../src/process-tree.js';
+import { childEnv, quoteForCmd, resolveCommand, spawnTracked, stopTracked } from '../../src/process-tree.js';
 
 test('quoteForCmd quotes paths with spaces', () => {
   assert.equal(quoteForCmd('D:\\DeepSeek Harness\\dsh.cmd'), '"D:\\DeepSeek Harness\\dsh.cmd"');
@@ -34,5 +37,53 @@ test('childEnv strips ELECTRON_RUN_AS_NODE but keeps the parent and overrides', 
     if (previous === undefined) delete process.env.ELECTRON_RUN_AS_NODE;
     else process.env.ELECTRON_RUN_AS_NODE = previous;
     delete process.env.DSH_LAB_CHILD_ENV_TEST;
+  }
+});
+
+test('childEnv can put ELECTRON_RUN_AS_NODE back for the host child', () => {
+  assert.equal(childEnv({}, { runAsNode: true }).ELECTRON_RUN_AS_NODE, '1');
+  assert.equal(childEnv({ ELECTRON_RUN_AS_NODE: '1' }).ELECTRON_RUN_AS_NODE, undefined);
+});
+
+test('spawnTracked with ipc delivers the child message and a Node-mode env', {
+  timeout: 30_000,
+}, async (context) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-ipc-'));
+  const script = path.join(dir, 'child.mjs');
+  fs.writeFileSync(script, [
+    "process.send?.({",
+    "  type: 'ready',",
+    "  connected: process.connected,",
+    "  runAsNode: process.env.ELECTRON_RUN_AS_NODE ?? null,",
+    "});",
+    'setTimeout(() => process.exit(0), 500);',
+    '',
+  ].join('\n'), 'utf8');
+  try {
+    let timed;
+    try {
+      timed = spawnTracked(process.execPath, [script], { ipc: true, runAsNode: true });
+    } catch (error) {
+      // A sandbox that denies spawning with an ipc stdio entry reports EPERM.
+      if (String(error?.code) === 'EPERM') {
+        context.skip('this environment denies spawning with an ipc channel');
+        return;
+      }
+      throw error;
+    }
+    const message = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(null), 10_000);
+      timed.child.on('message', (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      });
+    });
+    assert.ok(message, 'the child message must arrive');
+    assert.equal(message.type, 'ready');
+    assert.equal(message.connected, true);
+    assert.equal(message.runAsNode, '1', 'runAsNode must survive childEnv');
+    await stopTracked(timed, { label: 'ipc child' });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

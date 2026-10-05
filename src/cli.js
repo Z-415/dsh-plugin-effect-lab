@@ -24,6 +24,7 @@ const VALUE_FLAGS = new Set([
   'artifacts',
   'browser',
   'boot-timeout',
+  'boot-transport',
   'browser-timeout',
   'install-timeout',
   'runtime-timeout',
@@ -136,6 +137,7 @@ export async function main(argv) {
         routes: (flags.route ?? []).map((url) => ({ name: url, url, cookie: true, expect: ['ok', 'auth-fence', 'redirect'] })),
         artifactsRoot: flags.artifacts,
         bootTimeoutMs: numberFlag(flags, 'boot-timeout'),
+        bootTransport: flags['boot-transport'],
         browserTimeoutMs: numberFlag(flags, 'browser-timeout'),
         installTimeoutMs: numberFlag(flags, 'install-timeout'),
         strictConsole: flags['strict-console'] === true,
@@ -154,6 +156,7 @@ export async function main(argv) {
         routes: (flags.route ?? []).map((url) => ({ name: url, url, cookie: true, expect: ['ok', 'auth-fence', 'redirect'] })),
         artifactsRoot: flags.artifacts,
         bootTimeoutMs: numberFlag(flags, 'boot-timeout'),
+        bootTransport: flags['boot-transport'],
         browserTimeoutMs: numberFlag(flags, 'browser-timeout'),
         installTimeoutMs: numberFlag(flags, 'install-timeout'),
         strictConsole: flags['strict-console'] === true,
@@ -195,6 +198,7 @@ export async function main(argv) {
         artifactsRoot: flags.artifacts,
         noCache: flags['no-cache'] === true,
         shellTimeoutMs: numberFlag(flags, 'shell-timeout'),
+        bootTransport: flags['boot-transport'],
         plugins: flags.plugin ?? [],
         withPlugins: flags.with ?? [],
         fixture: flags['no-fixture'] !== true,
@@ -249,6 +253,7 @@ Usage:
              [--fixture-variant default|empty|long]
              [--profile-lab <name>]
              [--artifacts <dir>] [--browser <exe>] [--no-fixture]
+             [--boot-transport stdout|ipc]
              [--mock-model] [--route /plugin/health] [--no-html] [--json]
   lab capture [same options as verify]
   lab matrix --config <file.json> [--online] [--runtime-matrix] [--json]
@@ -257,6 +262,7 @@ Usage:
             [--plugin <spec>] [--with <spec>] [--offline|--online] [--no-fixture]
             [--fixture-variant default|empty|long]
             [--profile-lab <name>]
+            [--boot-transport stdout|ipc]
             [--show] [--keep-open] [--native-desktop] [--probe-native-dialog] [--show-hold <ms>] [--no-html]
             [--browser <exe>] [--browser-timeout <ms>] [--json]
   lab gui [--install-shortcut] [--rebuild] [--no-open] [--json]
@@ -282,6 +288,12 @@ deterministic stubs by default; add --native-desktop (with --show or
 --keep-open) to raise the real Electron folder dialog and OS notification.
 --probe-native-dialog also opens the real folder dialog during the run and
 waits for you to pick a folder or cancel; it needs --native-desktop + --show.
+
+--boot-transport ipc spawns the host directly with an IPC stdio channel to
+receive the desktop host's typed boot rows ({ type: 'ready', url, injections }).
+The default stdout parses the readiness line. The isolated dsh web app does not
+send that message (only the app's private desktop-host entry does), so ipc
+currently reports a fallback instead of failing; see docs/ELECTRON-SHELL.md.
 
 lab gui copies the official Electron runtime into LOCALAPPDATA\\dsh-plugin-effect-lab
 (once) and opens a desktop launcher whose buttons run the same commands and

@@ -43,6 +43,16 @@ test('electron shell bridges the host stream and matches web DOM/tokens', {
     const globalsCheck = (report.checks ?? []).find((check) => check.name === 'shell-boot-globals');
     assert.ok(globalsCheck, 'the report must include a shell-boot-globals check');
     assert.equal(globalsCheck.pass, true, `boot injections must reach the shell: ${JSON.stringify(globalsCheck)}`);
+    const injectionsCheck = (report.checks ?? []).find((check) => check.name === 'shell-boot-injections');
+    assert.ok(injectionsCheck, 'the report must include a shell-boot-injections check');
+    assert.equal(injectionsCheck.pass, true, `the host must contribute injection rows: ${JSON.stringify(injectionsCheck)}`);
+    assert.match(injectionsCheck.detail, /__DSH_/);
+    assert.equal(report.shell.derivedInjections?.count > 0, true, JSON.stringify(report.shell.derivedInjections));
+    assert.equal(
+      report.shell.bootTransport,
+      'stdout',
+      'the isolated `dsh web` app does not send the desktop host IPC ready message',
+    );
     assert.equal(report.cleanup.homeRemoved, true);
     assert.deepEqual(report.cleanup.portsLeft, []);
     assert.equal(report.realHome.diff.ok, true);
