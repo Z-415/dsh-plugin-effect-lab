@@ -538,21 +538,26 @@ export async function openUi(options) {
         return true;
       })()`;
       const mountExpression = `!!document.querySelector('[data-slot="conversation.chat.node"], [data-slot="conversation.session"]')`;
-      // The conversation only counts as mounted once the seeded turn view is
-      // present; a hero/onboarding page has no conversation.session slot.
-      const waitForConversation = async (rowTimeoutMs) => {
-        const clickedNow = (await waitFor(sessionRowExpression, { timeoutMs: rowTimeoutMs })) === true;
-        if (!clickedNow) return false;
-        clickedSession = true;
-        return (await waitFor(mountExpression, { timeoutMs: 20_000 })) === true;
-      };
-      // One long, uninterrupted wait: clicking a workspace every few seconds
-      // can keep collapsing/re-rendering the panel, so the session row never
-      // settles. Only re-select once if the whole first window saw no row.
+      // Click a fresh workspace element every couple of seconds until the
+      // sidebar lists the session row, then click the row and wait for the
+      // conversation to mount. Re-clicking handles a stale node (React can
+      // replace it mid-click) and a click that landed before the workspace
+      // data loaded; a single click plus a long wait can hang on the hero page.
+      const deadline = Date.now() + 40_000;
       clickedSession = false;
-      if (!(await waitForConversation(40_000)) && clickText) {
-        if ((await waitFor(workspaceClickExpression, { timeoutMs: 8_000 })) === true) clicked = true;
-        await waitForConversation(20_000);
+      while (Date.now() < deadline) {
+        try {
+          if ((await evaluate(client, workspaceClickExpression)) === true) clicked = true;
+        } catch {
+          // The page may be re-rendering between clicks.
+        }
+        const rowClicked = (await waitFor(sessionRowExpression, { timeoutMs: 3000 })) === true;
+        if (rowClicked) {
+          clickedSession = true;
+          const mounted = await waitFor(mountExpression, { timeoutMs: 10_000 });
+          if (mounted) break;
+        }
+        await sleep(400);
       }
     }
     for (const name of screenshotsAfter) await capture(name);
@@ -588,11 +593,17 @@ export async function openUi(options) {
     // pre-interaction baseline, so `probeDom` reads the terminal DOM instead of
     // a transitional one (this count feeds the shell probe's minSlots floor).
     const interacted = Boolean(clickText) || clickSessionRow === true || openSettings === true;
+    // The pre-interaction baseline is only a valid floor when we expect the
+    // conversation to mount; an empty-fixture workspace can legitimately end
+    // with fewer slots than the hero page it started on.
+    const settleFloor = clickSessionRow
+      ? Math.max(options.settleOptions?.minSlots ?? 0, settle?.slots ?? 0)
+      : (options.settleOptions?.minSlots ?? 0);
     const settleAfter = interacted && options.settle !== false
       ? await waitForStableUi(client, {
         ...options.settleOptions,
-        minSlots: Math.max(options.settleOptions?.minSlots ?? 0, settle?.slots ?? 0),
-        raiseToPeak: true,
+        minSlots: settleFloor,
+        raiseToPeak: clickSessionRow === true,
       })
       : null;
     // Probe after the workspace/session/settings interactions so the recorded
