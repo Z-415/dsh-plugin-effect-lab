@@ -18,6 +18,8 @@ function createArtifacts() {
     artifacts: { reportHtml: path.join(runDir, 'report.html') },
   }), 'utf8');
   fs.writeFileSync(path.join(runDir, 'screenshots', 'home.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  fs.writeFileSync(path.join(runDir, 'note.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><text>hi</text></svg>', 'utf8');
+  fs.writeFileSync(path.join(runDir, 'payload.bin'), Buffer.from([1, 2, 3, 4]));
   return { root, runDir };
 }
 
@@ -43,6 +45,33 @@ test('serves the latest report html from the artifacts root', async () => {
     assert.equal(res.headers['content-type'], 'text/html; charset=utf-8');
     assert.match(String(res.body), /<title>report<\/title>/);
     assert.match(res.headers['content-security-policy'], /frame-ancestors 'self'/);
+    assert.equal(res.headers['x-content-type-options'], 'nosniff');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('svg artifacts are served with a CSP and nosniff', async () => {
+  const { root } = createArtifacts();
+  try {
+    const handler = createBridgeRouteHandler({ getConfig: () => ({ artifactsDir: root, routePrefix: '/dsh-lab-bridge' }) });
+    const res = await invoke(handler, '/dsh-lab-bridge/latest/note.svg');
+    assert.equal(res.status, 200);
+    assert.equal(res.headers['content-type'], 'image/svg+xml');
+    assert.equal(res.headers['x-content-type-options'], 'nosniff');
+    assert.match(res.headers['content-security-policy'], /script-src 'none'/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('an artifact outside the MIME whitelist is refused', async () => {
+  const { root } = createArtifacts();
+  try {
+    const handler = createBridgeRouteHandler({ getConfig: () => ({ artifactsDir: root, routePrefix: '/dsh-lab-bridge' }) });
+    const res = await invoke(handler, '/dsh-lab-bridge/latest/payload.bin');
+    assert.equal(res.status, 415);
+    assert.equal(res.headers['x-content-type-options'], 'nosniff');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

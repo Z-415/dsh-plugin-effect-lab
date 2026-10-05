@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 /**
  * Command construction and execution for `lab verify --json`.
@@ -20,6 +20,31 @@ export function buildVerifyArgs({ labEntry, pluginSpec, online = false, artifact
     artifactsDir,
   ];
   return args;
+}
+
+/**
+ * Kill the lab process tree. `child.kill()` only reaps the direct child; on
+ * Windows the lab spawns DSH/Electron/Edge grandchildren that must go too.
+ */
+export function killProcessTree(child, options = {}) {
+  const { platform = process.platform, spawnSyncImpl = spawnSync } = options;
+  if (!child || !child.pid) return { killed: false, detail: 'no pid' };
+  if (platform === 'win32') {
+    const result = spawnSyncImpl('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+      windowsHide: true,
+      encoding: 'utf8',
+    });
+    return {
+      killed: result?.status === 0,
+      detail: `${result?.stdout ?? ''}${result?.stderr ?? ''}`.trim(),
+    };
+  }
+  try {
+    child.kill('SIGKILL');
+    return { killed: true, detail: 'SIGKILL' };
+  } catch (error) {
+    return { killed: false, detail: String(error?.message ?? error) };
+  }
 }
 
 function parseJsonOutput(stdout) {
@@ -50,6 +75,7 @@ export function runLabVerify(options) {
     cwd,
     env,
     spawnImpl = spawn,
+    killTreeImpl = killProcessTree,
   } = options;
   const args = buildVerifyArgs({ labEntry, pluginSpec, online, artifactsDir });
   return new Promise((resolve) => {
@@ -57,6 +83,7 @@ export function runLabVerify(options) {
     let stderr = '';
     let timedOut = false;
     let settled = false;
+    let killTimer = null;
     let child;
     try {
       child = spawnImpl(nodeExe, args, {
@@ -73,13 +100,18 @@ export function runLabVerify(options) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       resolve({ exitCode, timedOut, stdout, stderr, report: parseJsonOutput(stdout) });
     };
     const timer = setTimeout(() => {
       timedOut = true;
-      try { child.kill(); } catch { /* best effort */ }
-      // Fallback for Windows trees where the direct child refuses to die.
-      setTimeout(() => finish(child.exitCode ?? null), 2000);
+      try {
+        killTreeImpl(child);
+      } catch {
+        try { child.kill(); } catch { /* best effort */ }
+      }
+      // Fallback when the tree kill cannot be observed closing.
+      killTimer = setTimeout(() => finish(child.exitCode ?? null), 2000);
     }, timeoutMs);
     child.stdout?.on('data', (chunk) => { stdout += chunk; });
     child.stderr?.on('data', (chunk) => { stderr += chunk; });

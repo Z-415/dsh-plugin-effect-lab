@@ -29,10 +29,37 @@ const REPORT_CSP = [
   "frame-ancestors 'self'",
 ].join('; ');
 
+/** Artifact MIME whitelist. Anything else is refused instead of sniffed. */
+const SERVABLE_TYPES = new Set([
+  'text/html',
+  'text/plain',
+  'text/markdown',
+  'text/css',
+  'text/javascript',
+  'application/json',
+  'image/png',
+  'image/jpeg',
+  'image/svg+xml',
+]);
+
+function baseType(contentType) {
+  return String(contentType ?? '').split(';')[0].trim().toLowerCase();
+}
+
+function isServable(contentType) {
+  return SERVABLE_TYPES.has(baseType(contentType));
+}
+
+function needsCsp(contentType) {
+  const type = baseType(contentType);
+  return type.startsWith('text/') || type === 'image/svg+xml';
+}
+
 function json(res, status, payload) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   res.end(JSON.stringify(payload, null, 2));
 }
 
@@ -40,6 +67,7 @@ function html(res, status, body) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Security-Policy', REPORT_CSP);
   res.end(body);
 }
@@ -143,10 +171,17 @@ export function createBridgeRouteHandler({ getConfig }) {
         res.end('no report');
         return;
       }
+      if (!isServable(artifact.contentType)) {
+        res.statusCode = 415;
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.end('unsupported media type');
+        return;
+      }
       res.statusCode = 200;
       res.setHeader('Content-Type', artifact.contentType);
       res.setHeader('Cache-Control', 'no-store');
-      if (artifact.contentType.startsWith('text/html')) res.setHeader('Content-Security-Policy', REPORT_CSP);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      if (needsCsp(artifact.contentType)) res.setHeader('Content-Security-Policy', REPORT_CSP);
       if (method === 'HEAD') {
         res.setHeader('Content-Length', String(artifact.body.length));
         res.end();

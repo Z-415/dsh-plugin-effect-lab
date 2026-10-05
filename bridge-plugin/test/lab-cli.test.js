@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { buildVerifyArgs, runLabVerify } from '../lib/lab-cli.js';
+import { buildVerifyArgs, killProcessTree, runLabVerify } from '../lib/lab-cli.js';
 
 test('buildVerifyArgs is offline by default and never passes --profile-lab', () => {
   const args = buildVerifyArgs({
@@ -80,7 +80,7 @@ test('non-JSON stdout is reported as an unparsed outcome', async () => {
 });
 
 test('a hung child is killed and reported as timed out', async () => {
-  let killed = false;
+  let killedPid = null;
   const outcome = await runLabVerify({
     nodeExe: 'node',
     labEntry: 'lab.js',
@@ -89,13 +89,35 @@ test('a hung child is killed and reported as timed out', async () => {
     timeoutMs: 30,
     spawnImpl: () => {
       const child = fakeChild({ code: null });
-      const originalKill = child.kill;
-      child.kill = () => { killed = true; originalKill(); };
+      child.pid = 4242;
       return child;
     },
+    killTreeImpl: (child) => { killedPid = child.pid; },
   });
   assert.equal(outcome.timedOut, true);
-  assert.equal(killed, true);
+  assert.equal(killedPid, 4242);
+});
+
+test('killProcessTree uses taskkill /T /F on win32', () => {
+  const calls = [];
+  const result = killProcessTree({ pid: 9876 }, {
+    platform: 'win32',
+    spawnSyncImpl: (file, args, options) => {
+      calls.push({ file, args, options });
+      return { status: 0, stdout: 'SUCCESS', stderr: '' };
+    },
+  });
+  assert.equal(result.killed, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].file, 'taskkill');
+  assert.deepEqual(calls[0].args, ['/PID', '9876', '/T', '/F']);
+});
+
+test('killProcessTree falls back to SIGKILL off win32', () => {
+  let signal = null;
+  const result = killProcessTree({ pid: 1, kill: (value) => { signal = value; } }, { platform: 'linux' });
+  assert.equal(result.killed, true);
+  assert.equal(signal, 'SIGKILL');
 });
 
 test('a spawn failure resolves instead of throwing', async () => {

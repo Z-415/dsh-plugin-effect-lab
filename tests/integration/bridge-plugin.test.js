@@ -81,11 +81,21 @@ test('lab verify installs the bridge and the same-origin report route answers 20
         url: '/dsh-lab-bridge/latest/report.html',
         cookie: true,
         expect: ['ok', 'auth-fence', 'redirect'],
+      }, {
+        name: '/dsh-lab-bridge/latest/report.html (no cookie)',
+        url: '/dsh-lab-bridge/latest/report.html',
+        cookie: false,
+        expect: ['ok', 'auth-fence', 'redirect'],
       }],
     });
     const route = report.routes.find((entry) => entry.name === '/dsh-lab-bridge/latest/report.html');
     assert.equal(route?.status, 200, JSON.stringify(report.routes));
     assert.equal(route?.pass, true);
+    const noCookie = report.routes.find((entry) => entry.name === '/dsh-lab-bridge/latest/report.html (no cookie)');
+    assert.ok(noCookie, 'the no-cookie probe must run');
+    assert.equal(noCookie.status > 0, true, JSON.stringify(noCookie));
+    // Record the observed auth posture for the report/doc.
+    console.log(`[bridge] no-cookie report.html -> status ${noCookie.status} (${noCookie.classification})`);
     assert.equal(report.ok, true, JSON.stringify(report.checks.filter((check) => !check.pass), null, 2));
   } finally {
     fs.rmSync(artifactsRoot, { recursive: true, force: true });
