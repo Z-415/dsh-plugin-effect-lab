@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { resolveBridgeConfig } from './config.js';
-import { runLabVerify } from './lab-cli.js';
+import { runLabVerify, spawnLabShell } from './lab-cli.js';
 import { summarizeReport } from './report-summary.js';
 import { createBridgeRouteHandler } from './routes.js';
 import { createVerifyController } from './verify-controller.js';
@@ -149,7 +149,22 @@ export function apply(ctx, config = {}) {
   disposers.push(webServer.register({
     kind: 'prefix',
     path: BRIDGE_ROUTE_PREFIX,
-    handler: createBridgeRouteHandler({ getConfig, controller, getToken: () => controlToken }),
+    handler: createBridgeRouteHandler({
+      getConfig,
+      controller,
+      getToken: () => controlToken,
+      shellLauncher: (input) => {
+        const resolved = getConfig();
+        return spawnLabShell({
+          nodeExe: resolved.nodeExe,
+          labEntry: resolved.labEntry,
+          cwd: resolved.labRoot,
+          pluginSpec: input.plugin,
+          online: input.online,
+          holdMs: input.holdMs,
+        });
+      },
+    }),
   }));
 
   const tools = ctx.tools;

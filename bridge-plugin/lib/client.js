@@ -30,6 +30,7 @@ window.__ModuleLoader__.load({
     const VERIFY_URL = '/dsh-lab-bridge/verify';
     const STATUS_URL = '/dsh-lab-bridge/verify/status';
     const CANCEL_URL = '/dsh-lab-bridge/verify/cancel';
+    const SHELL_URL = '/dsh-lab-bridge/shell';
 
     const token = () => (typeof globalThis !== 'undefined' ? globalThis.__DSH_LAB_BRIDGE__?.token ?? null : null);
     const controlFetch = (url, options = {}) => fetch(url, {
@@ -49,6 +50,7 @@ window.__ModuleLoader__.load({
       const [online, setOnline] = React.useState(false);
       const [job, setJob] = React.useState(null);
       const [actionError, setActionError] = React.useState(null);
+      const [shellMsg, setShellMsg] = React.useState(null);
       const [, setTick] = React.useState(0);
 
       const refreshSummary = React.useCallback(async () => {
@@ -156,6 +158,24 @@ window.__ModuleLoader__.load({
         }
       };
 
+      const openShell = async () => {
+        setActionError(null);
+        setShellMsg(null);
+        try {
+          const response = await controlFetch(SHELL_URL, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ plugin: spec.trim(), online }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
+          const pid = payload.launched?.pid;
+          setShellMsg(pid ? `已打开壳窗口（pid ${pid}）` : '已打开壳窗口');
+        } catch (error) {
+          setActionError(String(error?.message ?? error));
+        }
+      };
+
       const openExternal = () => {
         const url = summary?.loopbackReportUrl;
         if (!url || typeof window === 'undefined' || typeof window.open !== 'function') return;
@@ -215,9 +235,11 @@ window.__ModuleLoader__.load({
             React.createElement('input', { type: 'checkbox', checked: online, onChange: (event) => setOnline(event.target.checked) }),
             '允许联网'),
           React.createElement('button', { type: 'button', onClick: start, disabled: running }, '开始验证'),
+          React.createElement('button', { type: 'button', onClick: openShell }, '打开壳界面'),
           running ? React.createElement('button', { type: 'button', onClick: cancel }, '取消') : null),
         jobStatus,
         actionError ? React.createElement('div', { style: { color: '#b91c1c' } }, actionError) : null,
+        shellMsg ? React.createElement('div', { style: { color: '#166534' } }, shellMsg) : null,
         React.createElement('div', { style: { marginTop: '8px' } }, reportBlock),
         React.createElement('div', { style: { display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px' } },
           React.createElement('button', { type: 'button', onClick: loadReport }, '内嵌查看报告'),

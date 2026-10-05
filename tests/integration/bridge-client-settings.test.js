@@ -35,6 +35,9 @@ const BRIDGE_SECTION_PROBE = `(async () => {
     if (url.includes('/dsh-lab-bridge/verify/cancel')) {
       return new Response(JSON.stringify({ job: doneJob }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
+    if (url.includes('/dsh-lab-bridge/shell')) {
+      return new Response(JSON.stringify({ launched: { pid: 4321, args: ['lab.js', 'shell'] } }), { status: 202, headers: { 'content-type': 'application/json' } });
+    }
     if (url.includes('/dsh-lab-bridge/verify')) {
       return new Response(JSON.stringify({ job: runningJob }), { status: 202, headers: { 'content-type': 'application/json' } });
     }
@@ -74,6 +77,10 @@ const BRIDGE_SECTION_PROBE = `(async () => {
   const runningSeen = document.body.innerText.includes('进行中');
   await wait(3400);
   const textAfterDone = document.body.innerText;
+  const shellButton = [...document.querySelectorAll('button')].find((el) => el.textContent.includes('打开壳界面'));
+  if (shellButton) shellButton.click();
+  await wait(300);
+  const shellMessageSeen = document.body.innerText.includes('已打开壳窗口');
   let openedUrl = null;
   const originalOpen = window.open;
   window.open = (url, target, features) => { openedUrl = url; return { url, target, features }; };
@@ -88,6 +95,7 @@ const BRIDGE_SECTION_PROBE = `(async () => {
   return JSON.stringify({
     found: true,
     runningSeen,
+    shellMessageSeen,
     inputFound: Boolean(input),
     inputValue: input ? input.value : null,
     reactPropsUsed,
@@ -176,6 +184,7 @@ test('the bridge settings section shows the latest summary and previews the repo
     const probe = JSON.parse(ui.extraAfter.bridgeSection);
     assert.equal(probe.found, true, 'the 实验舱桥接 settings section must be present');
     assert.equal(probe.runningSeen, true, `starting a verification must show the running state: ${JSON.stringify(probe)}`);
+    assert.equal(probe.shellMessageSeen, true, 'clicking 打开壳界面 must report the launched shell');
     assert.equal(probe.hasRunId, true, 'the section must show the latest seeded runId');
     assert.equal(probe.hasPreviewButton, true, 'the section must expose the inline preview button');
     assert.equal(probe.bridgeAnchors, 0, 'no anchor may navigate the SPA to the report URL');

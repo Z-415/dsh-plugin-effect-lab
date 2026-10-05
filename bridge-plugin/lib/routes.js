@@ -166,7 +166,7 @@ function latestRunName(artifactsDir) {
  * Build the request handler. All config resolution is deferred to request
  * time through `getConfig`, so plugin startup stays cheap.
  */
-export function createBridgeRouteHandler({ getConfig, controller = null, getToken = () => null }) {
+export function createBridgeRouteHandler({ getConfig, controller = null, getToken = () => null, shellLauncher = null }) {
   return async function handleBridgeRequest(req, res) {
     let pathname;
     try {
@@ -235,6 +235,37 @@ export function createBridgeRouteHandler({ getConfig, controller = null, getToke
     if (rest === '/verify/cancel' && method === 'POST') {
       if (!authorizeControl(req, res, getToken)) return;
       json(res, 200, { job: publicJobView(controller?.cancel?.() ?? null) });
+      return;
+    }
+    if (rest === '/shell' && method === 'POST') {
+      if (!authorizeControl(req, res, getToken)) return;
+      if (typeof shellLauncher !== 'function') {
+        json(res, 503, { error: 'shell launcher is not available' });
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        json(res, 400, { error: String(error?.message ?? error) });
+        return;
+      }
+      const plugin = typeof body?.plugin === 'string' ? body.plugin.trim() : '';
+      if (plugin.length > 4096) {
+        json(res, 400, { error: 'plugin must be <= 4096 chars' });
+        return;
+      }
+      const holdMs = Number(body?.holdMs);
+      try {
+        const launched = await shellLauncher({
+          plugin,
+          online: body?.online === true,
+          ...(Number.isFinite(holdMs) && holdMs > 0 ? { holdMs } : {}),
+        });
+        json(res, 202, { launched });
+      } catch (error) {
+        json(res, 500, { error: String(error?.message ?? error) });
+      }
       return;
     }
 

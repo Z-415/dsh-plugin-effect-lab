@@ -314,3 +314,59 @@ test('read routes are loopback-only too', async () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('the shell entry requires the control token and launches through the loopback gate', async () => {
+  const calls = [];
+  const handler = createBridgeRouteHandler({
+    getConfig: () => ({ artifactsDir: 'a', routePrefix: '/dsh-lab-bridge' }),
+    getToken: () => 'tok-123',
+    shellLauncher: async (input) => {
+      calls.push(input);
+      return { pid: 4242, args: ['lab.js', 'shell'] };
+    },
+  });
+  const noToken = await invoke(
+    handler,
+    '/dsh-lab-bridge/shell',
+    'POST',
+    { host: '127.0.0.1:19387' },
+    { body: JSON.stringify({ plugin: 'p' }) },
+  );
+  assert.equal(noToken.status, 401);
+  assert.equal(calls.length, 0);
+
+  const launched = await invoke(
+    handler,
+    '/dsh-lab-bridge/shell',
+    'POST',
+    { host: '127.0.0.1:19387', 'x-dsh-lab-token': 'tok-123' },
+    { body: JSON.stringify({ plugin: 'p', online: true, holdMs: 20000 }) },
+  );
+  assert.equal(launched.status, 202);
+  assert.deepEqual(calls, [{ plugin: 'p', online: true, holdMs: 20000 }]);
+  assert.equal(JSON.parse(String(launched.body)).launched.pid, 4242);
+});
+
+test('the shell entry rejects a non-loopback peer and a missing launcher', async () => {
+  const noLauncher = createBridgeRouteHandler({
+    getConfig: () => ({ artifactsDir: 'a', routePrefix: '/dsh-lab-bridge' }),
+    getToken: () => 'tok-123',
+  });
+  const denied = await invoke(
+    noLauncher,
+    '/dsh-lab-bridge/shell',
+    'POST',
+    { host: '127.0.0.1:1', 'x-dsh-lab-token': 'tok-123' },
+    { body: JSON.stringify({ plugin: 'p' }), remoteAddress: '10.0.0.9' },
+  );
+  assert.equal(denied.status, 403);
+
+  const missing = await invoke(
+    noLauncher,
+    '/dsh-lab-bridge/shell',
+    'POST',
+    { host: '127.0.0.1:1', 'x-dsh-lab-token': 'tok-123' },
+    { body: JSON.stringify({ plugin: 'p' }) },
+  );
+  assert.equal(missing.status, 503);
+});

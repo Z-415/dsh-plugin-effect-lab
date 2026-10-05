@@ -1,12 +1,24 @@
 import { spawn, spawnSync } from 'node:child_process';
 
 /**
- * Command construction and execution for `lab verify --json`.
+ * Command construction and execution for `lab verify --json` and `lab shell`.
  *
  * The command is deliberately always `--offline` unless the caller explicitly
  * asks for online, and it never passes `--profile-lab`. The lab therefore keeps
  * its own temporary isolated DSH_HOME.
  */
+
+/**
+ * Never hand the lab the host's real DSH_HOME/DSH_AGENTS_HOME: the lab must
+ * create its own temporary isolated home. DSH_LAB_HOME is left alone because
+ * the bridge itself uses it for path discovery, not the lab.
+ */
+export function sanitizeLabEnv(env = process.env) {
+  const next = { ...env };
+  delete next.DSH_HOME;
+  delete next.DSH_AGENTS_HOME;
+  return next;
+}
 
 export function buildVerifyArgs({ labEntry, pluginSpec, online = false, artifactsDir }) {
   const args = [
@@ -20,6 +32,53 @@ export function buildVerifyArgs({ labEntry, pluginSpec, online = false, artifact
     artifactsDir,
   ];
   return args;
+}
+
+/**
+ * `lab shell --show` in an isolated home. `--keep-open` lets the user close the
+ * window themselves; a positive holdMs is exposed for a timed window. The
+ * plugin spec is optional — an empty spec opens a plain DSH shell.
+ */
+export function buildShellArgs({ labEntry, pluginSpec, online = false, holdMs } = {}) {
+  const args = [
+    labEntry,
+    'shell',
+    ...(online ? ['--online'] : ['--offline']),
+    '--show',
+    '--no-compare-web',
+  ];
+  if (typeof pluginSpec === 'string' && pluginSpec.trim()) args.push('--plugin', pluginSpec.trim());
+  const hold = Number(holdMs);
+  if (Number.isFinite(hold) && hold > 0) args.push('--show-hold', String(Math.trunc(hold)));
+  else args.push('--keep-open');
+  return args;
+}
+
+/**
+ * Launch the lab's Electron shell window detached from the host process. The
+ * shell keeps its own temporary isolated home and cleans up when it closes.
+ */
+export function spawnLabShell(options = {}) {
+  const {
+    nodeExe,
+    labEntry,
+    pluginSpec,
+    online = false,
+    holdMs,
+    cwd,
+    env,
+    spawnImpl = spawn,
+  } = options;
+  const args = buildShellArgs({ labEntry, pluginSpec, online, holdMs });
+  const child = spawnImpl(nodeExe, args, {
+    cwd: cwd ?? undefined,
+    env: sanitizeLabEnv(env ?? process.env),
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: false,
+  });
+  try { child.unref?.(); } catch { /* best effort */ }
+  return { pid: child.pid ?? null, args };
 }
 
 /**
@@ -93,7 +152,7 @@ export function runLabVerify(options) {
     try {
       child = spawnImpl(nodeExe, args, {
         cwd: cwd ?? undefined,
-        env: env ?? process.env,
+        env: sanitizeLabEnv(env ?? process.env),
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
       });

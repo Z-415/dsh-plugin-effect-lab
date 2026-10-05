@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { buildVerifyArgs, killProcessTree, runLabVerify } from '../lib/lab-cli.js';
+import {
+  buildShellArgs,
+  buildVerifyArgs,
+  killProcessTree,
+  runLabVerify,
+  sanitizeLabEnv,
+  spawnLabShell,
+} from '../lib/lab-cli.js';
 
 test('buildVerifyArgs is offline by default and never passes --profile-lab', () => {
   const args = buildVerifyArgs({
@@ -155,6 +162,80 @@ test('aborting mid-run kills the process tree and resolves aborted', async () =>
   const outcome = await promise;
   assert.equal(outcome.aborted, true);
   assert.equal(killed, 1);
+});
+
+test('sanitizeLabEnv strips the real DSH home vars but keeps others', () => {
+  const env = sanitizeLabEnv({
+    DSH_HOME: 'C:/real',
+    DSH_AGENTS_HOME: 'C:/real/agents',
+    DSH_LAB_HOME: 'C:/lab',
+    PATH: 'x',
+  });
+  assert.equal('DSH_HOME' in env, false);
+  assert.equal('DSH_AGENTS_HOME' in env, false);
+  assert.equal(env.DSH_LAB_HOME, 'C:/lab');
+  assert.equal(env.PATH, 'x');
+});
+
+test('buildShellArgs opens a visible keep-open shell and never passes --profile-lab', () => {
+  const args = buildShellArgs({ labEntry: 'C:/lab/bin/lab.js', pluginSpec: 'C:/plugins/foo', online: false });
+  assert.deepEqual(args, [
+    'C:/lab/bin/lab.js',
+    'shell',
+    '--offline',
+    '--show',
+    '--no-compare-web',
+    '--plugin',
+    'C:/plugins/foo',
+    '--keep-open',
+  ]);
+  assert.equal(args.includes('--profile-lab'), false);
+});
+
+test('buildShellArgs supports a plain timed shell without a plugin', () => {
+  const args = buildShellArgs({ labEntry: 'lab.js', holdMs: 20000 });
+  assert.equal(args.includes('--plugin'), false);
+  assert.deepEqual(args.slice(-2), ['--show-hold', '20000']);
+  assert.equal(args.includes('--keep-open'), false);
+});
+
+test('spawnLabShell detaches, ignores stdio, and never inherits DSH_HOME', () => {
+  const calls = [];
+  const child = { pid: 4242, unref() { calls.push(['unref']); } };
+  const result = spawnLabShell({
+    nodeExe: 'node',
+    labEntry: 'lab.js',
+    pluginSpec: 'p',
+    cwd: 'C:/lab',
+    env: { DSH_HOME: 'C:/real', DSH_AGENTS_HOME: 'C:/real/agents', PATH: 'x' },
+    spawnImpl: (file, args, options) => {
+      calls.push({ file, args, options });
+      return child;
+    },
+  });
+  assert.equal(result.pid, 4242);
+  const spawnCall = calls.find((call) => call.file);
+  assert.equal(spawnCall.options.detached, true);
+  assert.equal(spawnCall.options.stdio, 'ignore');
+  assert.equal('DSH_HOME' in spawnCall.options.env, false);
+  assert.equal(spawnCall.options.env.PATH, 'x');
+  assert.deepEqual(calls.at(-1), ['unref']);
+});
+
+test('runLabVerify strips the host DSH_HOME from the lab environment', async () => {
+  let captured = null;
+  await runLabVerify({
+    nodeExe: 'node',
+    labEntry: 'lab.js',
+    pluginSpec: 'p',
+    artifactsDir: 'a',
+    timeoutMs: 5000,
+    env: { DSH_HOME: 'C:/real', DSH_AGENTS_HOME: 'C:/real/agents', PATH: 'x' },
+    spawnImpl: (file, args, options) => { captured = options; return fakeChild({ code: 0 }); },
+  });
+  assert.equal('DSH_HOME' in captured.env, false);
+  assert.equal('DSH_AGENTS_HOME' in captured.env, false);
+  assert.equal(captured.env.PATH, 'x');
 });
 
 test('a spawn failure resolves instead of throwing', async () => {
