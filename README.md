@@ -134,6 +134,19 @@ node bin/lab.js verify --plugin .\my-plugin --offline `
   --assert-slot conversation.composer --assert-body-attr style --min-slots 30
 ```
 
+If the install itself fails, the report now says why: the `plugin-install` check
+carries the pnpm reason plus a stable error code — `LAB-INSTALL-NOTFOUND` when the
+package does not exist, `LAB-INSTALL-NETWORK` when a GitHub download keeps
+resetting, `LAB-INSTALL-UNKNOWN` otherwise. When the name you typed is not the
+published package name, the lab says so instead of hiding it: a GitHub URL whose
+repo is a private/workspace monorepo gets a hint naming the real npm package.
+To hand the evidence to a DSH agent or an issue tracker:
+
+```powershell
+node bin/lab.js verify --plugin npm:dsh-orb-cordis --online --diagnostics-bundle out/diag.json
+node bin/lab.js diagnose --bundle out/diag.json
+```
+
 ### 2. Compare the Desktop shell with the web UI
 
 ```powershell
@@ -291,8 +304,10 @@ Requirements and caveats:
 | `lab shell` | Electron-shell fidelity: DOM / token and pixel diff against the web baseline |
 | `lab matrix` | Run a JSON list of plugin combinations and classify conflicts |
 | `lab runtimes` | List installed official DSH versions and their support status |
+| `lab real-profiles` | List the machine's real DSH profiles (read-only clone sources) |
 | `lab profile` | Manage persistent lab profiles: `list` / `create` / `remove` / `remove-plugin` / `path` |
 | `lab scan` | Scan boot and console logs against the failure signature library |
+| `lab diagnose` | Explain a run's stable error codes from a report, bundle, log, or the newest run |
 | `lab clean` | Remove leftover lab temp dirs and orphan lab processes |
 
 Every command accepts `--json`; `verify`, `capture`, `shell`, and `matrix` also accept

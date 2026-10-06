@@ -124,6 +124,17 @@ node bin/lab.js verify --plugin .\my-plugin --offline `
   --assert-slot conversation.composer --assert-body-attr style --min-slots 30
 ```
 
+如果连安装都失败了，报告现在会说清原因：`plugin-install` 检查会带上 pnpm 的
+原始错误和稳定的错误码——包不存在是 `LAB-INSTALL-NOTFOUND`，GitHub 下载反复被重置是
+`LAB-INSTALL-NETWORK`，其它是 `LAB-INSTALL-UNKNOWN`。当你输入的名字不是真正发布的包名时，
+实验舱会指出来而不是藏起来：如果粘贴的 GitHub 仓库是 `private` / monorepo 源码，会提示
+它真正发布到 npm 的包名。想把证据交给 DSH 的 agent 或提 issue：
+
+```powershell
+node bin/lab.js verify --plugin npm:dsh-orb-cordis --online --diagnostics-bundle out/diag.json
+node bin/lab.js diagnose --bundle out/diag.json
+```
+
 ### 2. 对比桌面壳与网页
 
 ```powershell
@@ -271,8 +282,10 @@ DSH 桌面版自己管理 profile，所以 `dsh plugin add` 会拒绝它
 | `lab shell` | Electron 壳保真：与网页基线做 DOM / token 与像素差异 |
 | `lab matrix` | 按 JSON 列表跑插件组合并分类冲突 |
 | `lab runtimes` | 列出本机已安装的官方 DSH 版本及支持状态 |
+| `lab real-profiles` | 列出本机真实的 DSH profile（只读克隆来源） |
 | `lab profile` | 管理持久 lab profile：`list` / `create` / `remove` / `remove-plugin` / `path` |
 | `lab scan` | 用失败签名库扫描启动日志与控制台日志 |
+| `lab diagnose` | 从报告 / 诊断包 / 日志 / 最近一次运行解释稳定错误码 |
 | `lab clean` | 删除残留的 lab 临时目录与游离 lab 进程 |
 
 所有命令都支持 `--json`；`verify`、`capture`、`shell`、`matrix` 还支持 `--no-html`。
