@@ -75,20 +75,61 @@ export function createIsolatedHome(options = {}) {
   };
 }
 
+/** ENOENT/ENOTDIR mean the entry is already gone; that is not a blocker. */
+function isVanished(error) {
+  return error?.code === 'ENOENT' || error?.code === 'ENOTDIR';
+}
+
 /**
  * Remove a tree entry by entry with `lstat`, unlinking symlinks/junctions
  * instead of traversing them. A profile can contain a link to a local plugin
  * source (pnpm links `file:` directory dependencies), and a recursive delete
  * that followed such a link would erase the user's source tree.
+ *
+ * The walk must also tolerate entries that vanish underneath it. The dsh-orb
+ * plugin extracts an Electron runtime under the isolated home and deletes it
+ * again on shutdown; when that runs concurrently with our delete, `lstat`,
+ * `unlink`, or `rmdir` sees a path the other process already removed (ENOENT)
+ * or a directory it briefly refilled (ENOTEMPTY). Treat a vanished entry as
+ * done and re-sweep a non-empty directory; only a real lock (EBUSY/EPERM)
+ * should stop the walk.
  */
 export function removeTreeSafely(target) {
-  const stat = fs.lstatSync(target);
+  let stat;
+  try {
+    stat = fs.lstatSync(target);
+  } catch (error) {
+    if (isVanished(error)) return;
+    throw error;
+  }
   if (stat.isSymbolicLink() || !stat.isDirectory()) {
-    fs.unlinkSync(target);
+    try {
+      fs.unlinkSync(target);
+    } catch (error) {
+      if (!isVanished(error)) throw error;
+    }
     return;
   }
-  for (const entry of fs.readdirSync(target)) removeTreeSafely(path.join(target, entry));
-  fs.rmdirSync(target);
+  for (let pass = 0; pass < 5; pass += 1) {
+    let entries;
+    try {
+      entries = fs.readdirSync(target);
+    } catch (error) {
+      if (isVanished(error)) return;
+      throw error;
+    }
+    for (const entry of entries) removeTreeSafely(path.join(target, entry));
+    try {
+      fs.rmdirSync(target);
+      return;
+    } catch (error) {
+      if (isVanished(error)) return;
+      // A concurrent writer recreated a child after readdir; sweep again.
+      if (error?.code === 'ENOTEMPTY') continue;
+      throw error;
+    }
+  }
+  throw new Error(`directory would not stay empty while removing: ${target}`);
 }
 
 /**
@@ -138,6 +179,16 @@ async function waitForHoldersGone(root, options) {
 }
 
 /**
+ * Keep the most useful failure for diagnostics: a vanished-entry race is
+ * transient, so never let it hide a real EBUSY/EPERM lock seen earlier.
+ */
+function preferredCleanupError(candidate, current) {
+  if (!candidate) return current;
+  if (isVanished(candidate)) return current ?? candidate;
+  return candidate;
+}
+
+/**
  * Delete an isolated root with exponential backoff and process reaping.
  *
  * The hooks (`probeHolders`, `reapHolders`, `sleepFn`, `now`) are injectable so
@@ -168,7 +219,7 @@ export async function disposeIsolatedHome(root, options = {}) {
     try {
       removeTreeSafely(root);
     } catch (error) {
-      lastError = error;
+      lastError = preferredCleanupError(error, lastError);
     }
     if (!fs.existsSync(root)) {
       return {
@@ -228,9 +279,10 @@ export function describeHomeCleanup(cleanup) {
   if (cleanup.removed === true) {
     return `removed ${cleanup.root} in ${cleanup.elapsedMs ?? '?'}ms (${cleanup.attempts ?? 1} attempt(s))`;
   }
+  const vanished = cleanup.errorCode === 'ENOENT' || cleanup.errorCode === 'ENOTDIR';
   const parts = [
     'removed=false',
-    `locked=${cleanup.lockedPath ?? cleanup.root}`,
+    `${vanished ? 'vanished' : 'locked'}=${cleanup.lockedPath ?? cleanup.root}`,
   ];
   if (cleanup.errorCode) parts.push(`errorCode=${cleanup.errorCode}`);
   else if (cleanup.error) parts.push(`error=${String(cleanup.error).slice(0, 200)}`);

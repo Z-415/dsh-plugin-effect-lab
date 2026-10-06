@@ -11,6 +11,7 @@ import {
   createIsolatedHome,
   describeHomeCleanup,
   disposeIsolatedHome,
+  removeTreeSafely,
 } from '../../src/home-manager.js';
 import { sleep } from '../../src/util.js';
 
@@ -180,4 +181,122 @@ test('describeHomeCleanup and cleanupErrorCode read a synthetic failure', () => 
   assert.match(detail, /elapsedMs=3000/);
   assert.match(describeHomeCleanup({ removed: true, root: 'C:\\Temp\\dsh-lab-x', attempts: 3, elapsedMs: 900 }), /removed .* in 900ms/);
   assert.match(describeHomeCleanup({ kept: true, root: 'C:\\profiles\\dev' }), /kept persistent profile/);
+  assert.match(
+    describeHomeCleanup({
+      removed: false,
+      root: 'C:\\Temp\\dsh-lab-x',
+      lockedPath: 'C:\\Temp\\dsh-lab-x\\home\\dsh-orb\\electron-runtime\\resources\\default_app.js',
+      errorCode: 'ENOENT',
+      attempts: 11,
+      elapsedMs: 31_618,
+    }),
+    /vanished=.*default_app\.js/,
+  );
+});
+
+test('removeTreeSafely tolerates an entry that vanished before unlink (ENOENT race)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-race-'));
+  fs.writeFileSync(path.join(root, 'race.txt'), 'x', 'utf8');
+  fs.writeFileSync(path.join(root, 'other.txt'), 'y', 'utf8');
+  const originalUnlink = fs.unlinkSync;
+  let raced = 0;
+  fs.unlinkSync = (target, ...args) => {
+    if (String(target).endsWith('race.txt')) {
+      originalUnlink(target); // the other deleter won the race
+      raced += 1;
+      const error = new Error(`ENOENT: no such file or directory, unlink '${target}'`);
+      error.code = 'ENOENT';
+      error.path = String(target);
+      throw error;
+    }
+    return originalUnlink(target, ...args);
+  };
+  try {
+    assert.doesNotThrow(() => removeTreeSafely(root));
+    assert.equal(raced, 1);
+    assert.equal(fs.existsSync(root), false);
+  } finally {
+    fs.unlinkSync = originalUnlink;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('removeTreeSafely ignores a listed entry that vanished before lstat', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-race-'));
+  fs.writeFileSync(path.join(root, 'real.txt'), 'r', 'utf8');
+  const phantom = path.join(root, 'phantom.txt');
+  const originalReaddir = fs.readdirSync;
+  const originalLstat = fs.lstatSync;
+  fs.readdirSync = (target, ...args) => (
+    String(target) === root ? ['real.txt', 'phantom.txt'] : originalReaddir(target, ...args)
+  );
+  fs.lstatSync = (target, ...args) => {
+    if (String(target) === phantom) {
+      const error = new Error(`ENOENT: no such file or directory, lstat '${target}'`);
+      error.code = 'ENOENT';
+      throw error;
+    }
+    return originalLstat(target, ...args);
+  };
+  try {
+    assert.doesNotThrow(() => removeTreeSafely(root));
+    assert.equal(fs.existsSync(root), false);
+  } finally {
+    fs.readdirSync = originalReaddir;
+    fs.lstatSync = originalLstat;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('removeTreeSafely re-sweeps a directory that is briefly non-empty (ENOTEMPTY race)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-race-'));
+  fs.writeFileSync(path.join(root, 'a.txt'), 'a', 'utf8');
+  const originalRmdir = fs.rmdirSync;
+  let rmdirCalls = 0;
+  fs.rmdirSync = (target, ...args) => {
+    if (String(target) === root && rmdirCalls === 0) {
+      rmdirCalls += 1;
+      const error = new Error(`ENOTEMPTY: directory not empty, rmdir '${target}'`);
+      error.code = 'ENOTEMPTY';
+      throw error;
+    }
+    return originalRmdir(target, ...args);
+  };
+  try {
+    assert.doesNotThrow(() => removeTreeSafely(root));
+    assert.equal(rmdirCalls, 1);
+    assert.equal(fs.existsSync(root), false);
+  } finally {
+    fs.rmdirSync = originalRmdir;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('disposeIsolatedHome survives a plugin deleting the same tree (ENOENT race)', async () => {
+  const iso = createIsolatedHome({ withAgents: true });
+  const raceFile = path.join(iso.root, 'home', 'dsh-orb', 'electron-runtime', 'resources', 'default_app.js');
+  fs.mkdirSync(path.dirname(raceFile), { recursive: true });
+  fs.writeFileSync(raceFile, 'x', 'utf8');
+  const originalUnlink = fs.unlinkSync;
+  fs.unlinkSync = (target, ...args) => {
+    if (String(target) === raceFile) {
+      originalUnlink(target);
+      const error = new Error(`ENOENT: no such file or directory, unlink '${target}'`);
+      error.code = 'ENOENT';
+      throw error;
+    }
+    return originalUnlink(target, ...args);
+  };
+  try {
+    const result = await disposeIsolatedHome(iso.root, {
+      probeHolders: () => [],
+      reapHolders: () => ({ matched: 0 }),
+    });
+    assert.equal(result.removed, true, JSON.stringify(result));
+    assert.equal(result.errorCode, null, JSON.stringify(result));
+    assert.equal(fs.existsSync(iso.root), false);
+  } finally {
+    fs.unlinkSync = originalUnlink;
+    fs.rmSync(iso.root, { recursive: true, force: true });
+  }
 });
