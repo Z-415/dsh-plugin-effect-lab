@@ -82,6 +82,7 @@ the bar to maximise or restore the window.
 | Group | Button | Command |
 |---|---|---|
 | 插件 / 持久 profile | 验证这个插件（出报告截图） | `verify --screenshot home --screenshot settings [--plugin <spec>] [--profile-lab <name>]` |
+| 插件 / 持久 profile | 安装并显示真实包名 | `verify [--plugin <spec>] --screenshot home`，日志与报告回显 `spec -> name@version` |
 | 插件 / 持久 profile | 在壳窗口打开（自己关） | `shell --no-compare-web [--plugin <spec>] [--profile-lab <name>] --keep-open` |
 | 插件 / 持久 profile | 在壳窗口打开（20 秒） | `shell --no-compare-web [--plugin <spec>] … --show --show-hold 20000` |
 | 插件 / 持久 profile | 壳 vs web 对比 | `shell [--plugin <spec>] [--profile-lab <name>]` |
@@ -110,9 +111,12 @@ browser, or the `artifacts/` folder. **中止** kills the running child tree.
 
 ## 插件 + profile 怎么填
 
-- **插件**（文本框）：`dsh-plugin-x@1.2.3`，或本地目录 / `.tgz` 路径。本地路径自动
-  用 `--offline`，包名自动用 `--online`。**留空** = 这次不装新插件，只用 profile 里
-  已经装好的（或一次性的空环境）。
+- **来源**（下拉框）：`npm 包` / `GitHub` / `本地目录` / `tarball`。下拉决定拼进
+  `--plugin` 的前缀（`npm:` / `github:`）和网络开关：本地目录 / tarball 自动
+  `--offline`，npm / GitHub 自动 `--online`。
+- **插件**（文本框）：按来源填 `dsh-plugin-x@1.2.3`、`owner/repo#ref`、
+  `https://github.com/...`、本地目录或 `.tgz` 路径。**留空** = 这次不装新插件，
+  只用 profile 里已经装好的（或一次性的空环境）。
 - **profile**（下拉框）：
   - `一次性运行（跑完删除）`（默认）：临时隔离环境，跑完删掉，不留东西；
   - 选已有的 profile（例如 `dev（dsh-plugin-wallpaper-engine@1.2.0, dsh-ui-tweaks@0.20.0）`）：
@@ -121,6 +125,10 @@ browser, or the `artifacts/` folder. **中止** kills the running child tree.
   - **刷新** 重新读取 `.lab-profiles` 目录；跑完任何命令也会自动刷新。
 
 只要 profile 下拉选了已有项，顶部按钮就会自动带上 `--profile-lab <name>`。
+
+**安装并显示真实包名** 跑一次 `verify`，日志和 `report.md` 会打出
+`advertised spec -> real-name@version`，用来确认作者对外宣称的名字是不是真的
+包名。
 
 ## 卸载单个插件（鼠标操作）
 

@@ -57,6 +57,64 @@ export function listInstalledProfilePlugins(profileDir) {
   return Object.keys(manifest.dependencies ?? {}).filter((name) => !name.startsWith('@deepseek-ai/'));
 }
 
+/**
+ * Give each precheck entry the package name pnpm actually installed.
+ *
+ * A directory/tarball spec already knows its manifest name. An npm spec knows
+ * its requested name. A `github:` spec does not, so the newly added
+ * dependencies are assigned to the still-unknown entries in install order.
+ */
+export function assignResolvedNames(entries, addedNames = []) {
+  const remaining = [...addedNames];
+  for (const entry of entries) {
+    const name = entry.resolved?.name;
+    if (!name) continue;
+    const index = remaining.indexOf(name);
+    if (index >= 0) remaining.splice(index, 1);
+  }
+  return entries.map((entry) => {
+    if (entry.resolved?.name) return entry;
+    const name = remaining.shift() ?? null;
+    return { ...entry, resolved: { ...entry.resolved, name } };
+  });
+}
+
+function installedVersion(profileDir, name, fallback = null) {
+  if (!name) return fallback ?? null;
+  const installed = readInstalledManifest(profileDir, name);
+  return installed?.manifest?.version ?? fallback ?? null;
+}
+
+/**
+ * The report-facing plugin list. `resolvedSpec` is the real
+ * `name@version` read back from the installed profile, which is the whole
+ * point when an author advertises a name that differs from the package name.
+ */
+export function pluginListFromEntries(entries, profileDir, options = {}) {
+  const seederDir = options.seederDir ?? seederPluginDir();
+  return entries.map((entry) => {
+    const name = entry.resolved?.name ?? entry.manifest?.name ?? null;
+    const version = installedVersion(profileDir, name, entry.manifest?.version ?? entry.resolved?.version ?? null);
+    const resolvedSpec = name ? `${name}@${version ?? 'unknown'}` : null;
+    return {
+      name: name ?? entry.resolved?.spec,
+      version,
+      source: entry.resolved?.kind ?? null,
+      spec: entry.resolved?.spec ?? null,
+      advertisedSpec: entry.resolved?.spec ?? null,
+      resolvedName: name,
+      resolvedVersion: version,
+      resolvedSpec,
+      resolved: resolvedSpec,
+      fixture: path.resolve(entry.resolved?.installSpec ?? '') === path.resolve(seederDir),
+      findingSummary: {
+        blockers: (entry.findings ?? []).filter((item) => item.severity === 'blocker').length,
+        warnings: (entry.findings ?? []).filter((item) => item.severity === 'warn').length,
+      },
+    };
+  });
+}
+
 /** Map a user selector (name, name@version, or a spec) onto an installed name. */
 function matchInstalledPlugin(installed, selector) {
   const text = String(selector ?? '').trim();
@@ -237,11 +295,7 @@ export async function installProfilePlugins(options) {
     }
     const added = detectAddedDependencies(manifestBefore, readJson(path.join(profileDir, 'package.json')));
     appendBundles(profileDir, added);
-    entries = entries.map((entry) => {
-      if (entry.resolved.name) return entry;
-      const remaining = added.filter((name) => !entries.some((other) => other.resolved.name === name));
-      return { ...entry, resolved: { ...entry.resolved, name: remaining[0] ?? entry.resolved.name } };
-    });
+    entries = assignResolvedNames(entries, added);
     entries = postcheckPlugins(entries, profileDir, version);
     // Cross-plugin conflicts against everything already installed.
     profileAudit = auditProfilePlugins(profileDir, version);
@@ -270,17 +324,7 @@ export async function installProfilePlugins(options) {
     summary,
     resolvedSpecs,
     validation: { stage: 'postcheck', entries, summary },
-    pluginList: entries.map((entry) => ({
-      name: entry.resolved.name ?? entry.resolved.spec,
-      version: entry.manifest?.version ?? entry.resolved.version ?? null,
-      source: entry.resolved.kind,
-      spec: entry.resolved.spec,
-      fixture: path.resolve(entry.resolved.installSpec ?? '') === path.resolve(seederDir),
-      findingSummary: {
-        blockers: entry.findings.filter((item) => item.severity === 'blocker').length,
-        warnings: entry.findings.filter((item) => item.severity === 'warn').length,
-      },
-    })),
+    pluginList: pluginListFromEntries(entries, profileDir, { seederDir }),
     install,
     installArgs,
     profileAudit,

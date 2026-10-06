@@ -100,6 +100,33 @@ const PROFILE_SELECT = `(async () => {
   return JSON.stringify({ options, calls: window.__calls, newVisible, errors: window.__rendererErrors });
 })()`;
 
+/** The source dropdown must build npm:/github: specs and pick the network flag. */
+const SOURCE_SELECT = `(async () => {
+  const input = document.getElementById('plugin');
+  const source = document.getElementById('pluginSource');
+  const button = document.getElementById('runResolvePlugin');
+  const calls = {};
+  for (const [value, raw] of [
+    ['npm', 'dsh-plugin-x@1.2.3'],
+    ['github', 'owner/repo#v1'],
+    ['path', 'C:\\\\tmp\\\\my-plugin'],
+    ['tarball', 'C:\\\\tmp\\\\my-plugin.tgz'],
+  ]) {
+    source.value = value;
+    input.value = raw;
+    window.__calls = [];
+    button.disabled = false;
+    button.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    calls[value] = window.__calls.at(-1) ?? null;
+  }
+  return JSON.stringify({
+    options: [...source.options].map((option) => option.value),
+    calls,
+    errors: window.__rendererErrors,
+  });
+})()`;
+
 const LAYOUT_AND_BANNER = `(() => {
   const rect = (el) => el.getBoundingClientRect();
   const log = rect(document.getElementById('log'));
@@ -352,6 +379,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
         clickAll: CLICK_ALL,
         desktop: CLICK_DESKTOP,
         profiles: PROFILE_SELECT,
+        sourceSelect: SOURCE_SELECT,
         layout: LAYOUT_AND_BANNER,
         design: DESIGN,
         theme: THEME,
@@ -363,6 +391,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
     const result = JSON.parse(ui.extra.clickAll);
     const desktop = JSON.parse(ui.extra.desktop);
     const profiles = JSON.parse(ui.extra.profiles);
+    const sourceSelect = JSON.parse(ui.extra.sourceSelect);
     const layout = JSON.parse(ui.extra.layout);
     const design = JSON.parse(ui.extra.design);
     const theme = JSON.parse(ui.extra.theme);
@@ -417,6 +446,23 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(profiles.newVisible, true, 'choosing 新建 must reveal the name field');
     const created = profiles.calls[1];
     assert.equal(created[created.indexOf('--profile-lab') + 1], 'fresh1');
+
+    // The source dropdown decides the --plugin prefix and the network flag.
+    assert.deepEqual(sourceSelect.options, ['npm', 'github', 'path', 'tarball']);
+    const npmCall = sourceSelect.calls.npm;
+    assert.equal(npmCall.includes('--plugin'), true, JSON.stringify(sourceSelect));
+    assert.equal(npmCall[npmCall.indexOf('--plugin') + 1], 'npm:dsh-plugin-x@1.2.3');
+    assert.equal(npmCall.includes('--online'), true);
+    const githubCall = sourceSelect.calls.github;
+    assert.equal(githubCall[githubCall.indexOf('--plugin') + 1], 'github:owner/repo#v1');
+    assert.equal(githubCall.includes('--online'), true);
+    const pathCall = sourceSelect.calls.path;
+    assert.equal(pathCall[pathCall.indexOf('--plugin') + 1], 'C:\\tmp\\my-plugin');
+    assert.equal(pathCall.includes('--offline'), true);
+    const tarballCall = sourceSelect.calls.tarball;
+    assert.equal(tarballCall[tarballCall.indexOf('--plugin') + 1], 'C:\\tmp\\my-plugin.tgz');
+    assert.equal(tarballCall.includes('--offline'), true);
+    assert.deepEqual(sourceSelect.errors, []);
 
     // The log pane must stay on screen; adding controls must not squeeze it out.
     assert.equal(layout.layoutOk, true, JSON.stringify(layout));

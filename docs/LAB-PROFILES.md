@@ -96,3 +96,37 @@ node bin/lab.js shell --profile-lab dev --plugin A@1 --with B@2 --online
 `matrix --config` still runs each combination in a fresh one-shot environment,
 which is the right tool when you want comparable per-plugin DOM/token/screenshot
 diffs.
+
+## Plugin sources and the real package name
+
+`--plugin` / `--with` accept more than a bare registry name:
+
+| form | example | network |
+|---|---|---|
+| npm name | `dsh-plugin-x@1.2.3` | `--online` |
+| explicit npm prefix | `npm:dsh-plugin-x@1.2.3` | `--online` |
+| GitHub shorthand | `github:owner/repo#v1.2.3` | `--online` |
+| GitHub URL | `https://github.com/owner/repo#main` | `--online` |
+| local directory | `.\my-plugin` | `--offline` |
+| tarball | `.\my-plugin-1.0.0.tgz` | `--offline` |
+
+`npm:` is stripped before the spec reaches pnpm, and the `#ref` on a GitHub
+source is passed through untouched so pnpm can resolve the branch, tag, or
+commit.
+
+After a successful install the lab reads the package back from the isolated
+profile's `dependencies` + `node_modules/<name>/package.json` and records the
+real name. This is what makes an advertised name that differs from the real
+package name visible:
+
+```text
+[插件] github:author/claimed-name#v2 -> dsh-real-name@2.3.4 (github)
+```
+
+`report.json` carries the same mapping in `plugins[]`:
+`advertisedSpec`, `resolvedName`, `resolvedVersion`, `resolvedSpec`
+(`name@version`), `source` (`npm` / `github` / `directory` / `tarball`), and
+`spec`. `report.md` renders it under **插件来源与真实包名**.
+
+A GitHub source that cannot be reached offline is reported as a failed install
+with the plugin list empty; the lab does not retry-online silently.

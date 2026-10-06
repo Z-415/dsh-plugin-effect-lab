@@ -262,6 +262,10 @@ Phase 1 runs entirely inside a temp DSH_HOME and never installs into the real
 profile. npm/GitHub plugin specs require explicit --online. The fixed session
 fixture is enabled by default; pass --no-fixture to disable it. --mock-model
 starts a loopback OpenAI-compatible provider for a real streamed tool turn.
+--plugin accepts an npm spec (optionally npm:<spec>), github:<owner/repo#ref>,
+a https://github.com/... URL, a local directory, or a .tgz tarball. After
+install the report prints the advertised spec next to the real name@version
+read back from the isolated profile.
 lab shell boots the same isolated Host, opens it once in headless Edge and once
 through a minimal Electron shell, then diffs DOM slots, body attributes, and
 --dsw-* tokens. Pass --no-compare-web to skip the Edge baseline. --show makes

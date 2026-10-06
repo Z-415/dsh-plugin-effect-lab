@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import test from 'node:test';
-import { resolvePlugin, readTarballManifest } from '../../src/plugin-resolver.js';
+import { classifySpec, resolvePlugin, readTarballManifest } from '../../src/plugin-resolver.js';
 import { seederPluginDir } from '../../src/fixture-manager.js';
 
 function tarHeader(name, size) {
@@ -46,4 +46,41 @@ test('readTarballManifest extracts package.json from a tgz', () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('the npm: prefix is stripped before install and keeps the advertised spec', () => {
+  const resolved = resolvePlugin('npm:dsh-plugin-x@1.2.3');
+  assert.equal(resolved.kind, 'npm');
+  assert.equal(resolved.name, 'dsh-plugin-x');
+  assert.equal(resolved.version, '1.2.3');
+  assert.equal(resolved.spec, 'npm:dsh-plugin-x@1.2.3', 'the report keeps what the author advertised');
+  assert.equal(resolved.installSpec, 'dsh-plugin-x@1.2.3', 'pnpm must not receive a literal npm: name');
+});
+
+test('npm: supports a scoped package with a range', () => {
+  const resolved = resolvePlugin('npm:@scope/pkg@^0.2.0');
+  assert.equal(resolved.kind, 'npm');
+  assert.equal(resolved.name, '@scope/pkg');
+  assert.equal(resolved.version, '^0.2.0');
+  assert.equal(resolved.installSpec, '@scope/pkg@^0.2.0');
+});
+
+test('npm: is classified before the generic npm fallback', () => {
+  assert.equal(classifySpec('npm:foo'), 'npm');
+  assert.equal(classifySpec('NPM:foo'), 'npm');
+});
+
+test('a github: ref passes through untouched', () => {
+  const spec = 'github:owner/repo#feature/branch';
+  const resolved = resolvePlugin(spec);
+  assert.equal(resolved.kind, 'github');
+  assert.equal(resolved.installSpec, spec, 'the branch/tag/commit ref must survive');
+  assert.equal(resolved.spec, spec);
+});
+
+test('a GitHub URL with a ref fragment passes through untouched', () => {
+  const spec = 'https://github.com/owner/repo#v1.2.3';
+  const resolved = resolvePlugin(spec);
+  assert.equal(resolved.kind, 'github');
+  assert.equal(resolved.installSpec, spec);
 });

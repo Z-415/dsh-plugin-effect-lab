@@ -34,6 +34,7 @@ export function readTarballManifest(file) {
 
 export function classifySpec(spec) {
   const text = String(spec ?? '').trim();
+  if (/^npm:/i.test(text)) return 'npm';
   if (text.startsWith('github:') || /^https?:\/\/github\.com\//.test(text)) return 'github';
   if (text.startsWith('.') || path.isAbsolute(text) || fs.existsSync(text)) {
     const resolved = path.resolve(text);
@@ -61,11 +62,17 @@ export function resolvePlugin(spec) {
     return { kind, spec, installSpec: file, file, manifest, name: manifest.name, version: manifest.version };
   }
   if (kind === 'npm') {
-    const parsed = parseNpmSpec(spec);
+    // `npm:<spec>` is the explicit registry form. Strip the prefix before the
+    // spec reaches pnpm; otherwise pnpm would look up a literal package named
+    // `npm:foo`. The original text is kept as `spec` for the report.
+    const raw = String(spec).trim().replace(/^npm:/i, '');
+    const parsed = parseNpmSpec(raw);
     if (!parsed) throw new Error(`cannot parse npm spec: ${spec}`);
-    return { kind, spec, installSpec: spec, name: parsed.name, version: parsed.version, manifest: null };
+    return { kind, spec, installSpec: raw, name: parsed.name, version: parsed.version, manifest: null };
   }
   if (kind === 'github') {
+    // `github:owner/repo#ref` and a GitHub URL with a `#ref` fragment both pass
+    // through untouched; pnpm owns the ref (branch/tag/commit) resolution.
     return { kind, spec, installSpec: spec, manifest: null };
   }
   throw new Error(`unsupported plugin source: ${spec}`);

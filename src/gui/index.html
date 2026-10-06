@@ -58,6 +58,9 @@
   .fieldrow input[type="text"] { flex: 1; min-width: 0; }
   input[type="text"], select { font: inherit; min-height: 32px; padding: 6px 10px; color: var(--text);
                                background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px; }
+  .fieldrow select { flex: 0 1 auto; min-width: 0; }
+  .source-select { flex: 0 0 104px; }
+  #profileSelect { max-width: 190px; }
   input[type="text"]::placeholder { color: #9aa1ab; }
   input[type="text"]:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .12); }
   select { max-width: 100%; }
@@ -171,7 +174,13 @@
           <span class="tag" id="profileTag">一次性运行</span>
         </div>
         <div class="fieldrow">
-          <input type="text" id="plugin" placeholder="插件：dsh-plugin-x@1.2.3 或 C:\path\to\my-plugin（留空 = 只用 profile 里已装的）">
+          <select id="pluginSource" class="source-select" title="插件来源" aria-label="插件来源">
+            <option value="npm">npm 包</option>
+            <option value="github">GitHub</option>
+            <option value="path">本地目录</option>
+            <option value="tarball">tarball</option>
+          </select>
+          <input type="text" id="plugin" placeholder="插件：dsh-plugin-x@1.2.3 / owner/repo#ref / C:\path\to\plugin（留空 = 只用 profile 里已装的）">
           <select id="profileSelect" title="选择已保存的 profile" aria-label="profile"></select>
           <input type="text" id="profileNew" placeholder="新 profile 名" aria-label="新 profile 名" hidden>
           <button id="refreshProfiles" title="重新读取 .lab-profiles">刷新</button>
@@ -185,6 +194,7 @@
           <button id="runListProfiles" title="列出 .lab-profiles 下所有 profile">列出 profile</button>
         </div>
         <div class="actions">
+          <button id="runResolvePlugin" class="strong span2" title="安装插件并把真实 name@version 写进日志和报告">安装并显示真实包名</button>
           <button id="runVerifyPlugin" class="primary span2" title="安装或加载插件，生成报告和截图">验证这个插件（出报告截图）</button>
         </div>
         <div class="checks">
@@ -250,6 +260,7 @@
     .filter((b) => !['stop', 'report', 'artifacts'].includes(b.id) && !b.closest('.titlebar'));
   const presetButtons = [...document.querySelectorAll('button[data-args]')];
   const pluginInput = document.getElementById('plugin');
+  const pluginSource = document.getElementById('pluginSource');
   const profileSelect = document.getElementById('profileSelect');
   const profileNew = document.getElementById('profileNew');
   const nativeDesktop = document.getElementById('nativeDesktop');
@@ -293,11 +304,25 @@
   function isLocalSpec(spec) {
     return /^[a-zA-Z]:[\\/]/.test(spec) || spec.startsWith('.') || spec.startsWith('/') || spec.includes('\\');
   }
-  function networkFlag(spec) {
-    return isLocalSpec(spec) ? '--offline' : '--online';
-  }
+  /**
+   * Compose the `--plugin` value from the source dropdown. The CLI also
+   * accepts bare specs, but spelling the source out is what makes "advertised
+   * name" vs "real package name" observable in the report.
+   */
   function pluginField() {
-    return pluginInput.value.trim();
+    const raw = pluginInput.value.trim();
+    if (!raw) return '';
+    switch (pluginSource.value) {
+      case 'npm':
+        return /^npm:/i.test(raw) ? raw : `npm:${raw}`;
+      case 'github':
+        return /^(github:|https?:\/\/)/i.test(raw) ? raw : `github:${raw}`;
+      default:
+        return raw;
+    }
+  }
+  function networkFlag() {
+    return pluginSource.value === 'path' || pluginSource.value === 'tarball' ? '--offline' : '--online';
   }
   function currentProfile() {
     if (profileSelect.value === '__new__') return profileNew.value.trim();
@@ -381,24 +406,32 @@
   document.getElementById('runVerifyPlugin').addEventListener('click', () => {
     const spec = pluginField();
     if (!spec) noteNoPlugin();
-    const pluginArgs = spec ? ['--plugin', spec, networkFlag(spec)] : [];
+    const pluginArgs = spec ? ['--plugin', spec, networkFlag()] : [];
     runWithArgs(withProfile(['verify', ...pluginArgs, '--screenshot', 'home', '--screenshot', 'settings']), spec ? `verify · ${spec}` : 'verify（基线）');
+  });
+  document.getElementById('runResolvePlugin').addEventListener('click', () => {
+    const spec = pluginField();
+    if (!spec) {
+      append('[gui] 先在插件输入框填要安装的插件，再点「安装并显示真实包名」。\n');
+      return;
+    }
+    runWithArgs(withProfile(['verify', '--plugin', spec, networkFlag(), '--screenshot', 'home']), `resolve · ${spec}`);
   });
   document.getElementById('runShellPlugin').addEventListener('click', () => {
     const spec = pluginField();
     if (!spec) noteNoPlugin();
-    const pluginArgs = spec ? ['--plugin', spec, networkFlag(spec)] : [];
+    const pluginArgs = spec ? ['--plugin', spec, networkFlag()] : [];
     runWithArgs(withDesktop(withProfile(['shell', '--no-compare-web', ...pluginArgs, '--keep-open'])), spec ? `shell keep-open · ${spec}` : 'shell keep-open（当前 profile）');
   });
   document.getElementById('runShellPluginTimed').addEventListener('click', () => {
     const spec = pluginField();
     if (!spec) noteNoPlugin();
-    const pluginArgs = spec ? ['--plugin', spec, networkFlag(spec)] : [];
+    const pluginArgs = spec ? ['--plugin', spec, networkFlag()] : [];
     runWithArgs(withDesktop(withProfile(['shell', '--no-compare-web', ...pluginArgs, '--show', '--show-hold', '20000'])), spec ? `shell 20s · ${spec}` : 'shell 20s（当前 profile）');
   });
   document.getElementById('runShellCompare').addEventListener('click', () => {
     const spec = pluginField();
-    const pluginArgs = spec ? ['--plugin', spec, networkFlag(spec)] : [];
+    const pluginArgs = spec ? ['--plugin', spec, networkFlag()] : [];
     runWithArgs(withDesktop(withProfile(['shell', ...pluginArgs])), spec ? `壳 vs web · ${spec}` : '壳 vs web 对比');
   });
   document.getElementById('runMatrixPlugin').addEventListener('click', () => {
@@ -411,8 +444,8 @@
     if (!other) return;
     runWithArgs(withDesktop(withProfile([
       'shell', '--no-compare-web',
-      '--plugin', spec, networkFlag(spec),
-      '--with', other, networkFlag(other),
+      '--plugin', spec, networkFlag(),
+      '--with', other, isLocalSpec(other) ? '--offline' : '--online',
       '--show', '--show-hold', '20000',
     ])), `两个插件一起 · ${spec} + ${other}`);
   });

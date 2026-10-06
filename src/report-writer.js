@@ -125,6 +125,14 @@ export function renderReportMarkdown(report) {
       }
     }
   }
+  if (report.plugins?.length) {
+    lines.push('', '## 插件来源与真实包名', '');
+    for (const plugin of report.plugins) {
+      const advertised = plugin.advertisedSpec ?? plugin.spec ?? '(unknown)';
+      const resolved = plugin.resolvedSpec ?? plugin.resolved ?? '(未解析)';
+      lines.push(`- ${advertised} -> ${resolved}（来源：${plugin.source ?? 'unknown'}）`);
+    }
+  }
   if (report.fixture) {
     lines.push('', '## 固定会话夹具', '');
     lines.push(`- session: ${report.fixture.sessionId}`);

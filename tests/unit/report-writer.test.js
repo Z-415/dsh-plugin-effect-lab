@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { prepareArtifacts } from '../../src/report-writer.js';
+import { prepareArtifacts, renderReportMarkdown } from '../../src/report-writer.js';
 
 test('prepareArtifacts resolves a relative root to absolute', () => {
   const runId = `dsh-lab-relative-${process.pid}-${Date.now()}`;
@@ -28,4 +28,27 @@ test('prepareArtifacts keeps an absolute root unchanged', () => {
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('the markdown report echoes advertised spec -> resolved name@version', () => {
+  const markdown = renderReportMarkdown({
+    runId: 'run-1',
+    ok: true,
+    mode: 'web',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    finishedAt: '2026-01-01T00:00:01.000Z',
+    checks: [],
+    plugins: [
+      {
+        advertisedSpec: 'github:author/claimed#v2',
+        spec: 'github:author/claimed#v2',
+        resolvedSpec: 'dsh-real-name@2.3.4',
+        resolved: 'dsh-real-name@2.3.4',
+        source: 'github',
+      },
+    ],
+    artifacts: {},
+  });
+  assert.match(markdown, /## 插件来源与真实包名/);
+  assert.match(markdown, /github:author\/claimed#v2 -> dsh-real-name@2\.3\.4（来源：github）/);
 });
