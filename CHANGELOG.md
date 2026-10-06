@@ -5,8 +5,12 @@
 ### Changed
 
 - The profile drawer no longer covers the page: it reserves a right-hand column
-  about the width of the 检查 column (`--drawer-w`) and the controls collapse to
-  one column while it is open, so button labels stay on one line.
+  (`--drawer-w: clamp(340px, 42vw, 500px)`, widened again so the cards are not
+  cramped) and the controls collapse to one column while it is open, so button
+  labels stay on one line.
+- Each profile's plugin list is collapsible: the card shows
+  `▸ 已装插件（N）` (collapsed by default) and toggles to `▾` on click; the
+  expanded state survives the automatic refresh that follows every run.
 - Each profile card lists its installed plugins - the recorded specs plus the
   third-party packages actually present in the profile's `package.json` (which
   covers cloned profiles) - and every row has its own **卸载**

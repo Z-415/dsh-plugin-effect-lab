@@ -180,12 +180,24 @@ const PROFILE_DRAWER = `(async () => {
 
   const rows = [...document.querySelectorAll('#profileList .prow')];
   const first = rows[0];
-  const firstButtons = first ? [...first.querySelectorAll('button')].map((button) => button.textContent.trim()) : [];
-  const pluginItems = first
-    ? [...first.querySelectorAll('.pitem')].map((item) => item.textContent.replace(/卸载$/, '').trim())
+  const pluginToggle = first?.querySelector('.plist-toggle');
+  const collapsedByDefault = first?.querySelector('.plist-items')?.hidden === true;
+  const toggleText = pluginToggle?.textContent ?? null;
+  if (pluginToggle) {
+    pluginToggle.disabled = false;
+    pluginToggle.click();
+    await wait(30);
+  }
+  const firstAfter = document.querySelector('#profileList .prow');
+  const expandedAfterToggle = firstAfter?.querySelector('.plist-items')?.hidden === false;
+  const firstButtons = firstAfter
+    ? [...firstAfter.querySelectorAll('button')].map((button) => button.textContent.trim())
     : [];
-  const rowButtons = first
-    ? [...first.querySelectorAll('.prow-actions button')].map((button) => button.textContent.trim())
+  const pluginItems = firstAfter
+    ? [...firstAfter.querySelectorAll('.pitem')].map((item) => item.textContent.replace(/卸载$/, '').trim())
+    : [];
+  const rowButtons = firstAfter
+    ? [...firstAfter.querySelectorAll('.prow-actions button')].map((button) => button.textContent.trim())
     : [];
   const clickConfirm = async () => {
     const ok = document.getElementById('confirmDialogOk');
@@ -198,7 +210,7 @@ const PROFILE_DRAWER = `(async () => {
   window.__profileDirCalls = [];
 
   // Per-plugin uninstall -> confirm -> profile remove-plugin <name> <selector>.
-  const firstPluginUninstall = first?.querySelector('.pitem button');
+  const firstPluginUninstall = firstAfter?.querySelector('.pitem button');
   if (firstPluginUninstall) {
     firstPluginUninstall.disabled = false;
     firstPluginUninstall.click();
@@ -207,8 +219,8 @@ const PROFILE_DRAWER = `(async () => {
   }
 
   const clickRowButton = (label) => {
-    const button = first
-      ? [...first.querySelectorAll('.prow-actions button')].find((item) => item.textContent.includes(label))
+    const button = firstAfter
+      ? [...firstAfter.querySelectorAll('.prow-actions button')].find((item) => item.textContent.includes(label))
       : null;
     if (!button) return;
     button.disabled = false;
@@ -242,7 +254,10 @@ const PROFILE_DRAWER = `(async () => {
   return JSON.stringify({
     open: wasOpen,
     rowCount: rows.length,
-    firstText: first ? first.textContent : null,
+    firstText: firstAfter ? firstAfter.textContent : null,
+    collapsedByDefault,
+    toggleText,
+    expandedAfterToggle,
     firstButtons,
     rowButtons,
     pluginItems,
@@ -680,7 +695,10 @@ test('every GUI button dispatches a lab command without a renderer error', {
     );
     // The drawer is about as wide as the main grid's right column and reserves
     // its own space, so it never covers the controls on the left.
-    assert.equal(profileDrawer.drawerWidth <= 440, true, JSON.stringify(profileDrawer));
+    assert.equal(profileDrawer.collapsedByDefault, true, `plugin lists must start collapsed: ${JSON.stringify(profileDrawer)}`);
+    assert.match(profileDrawer.toggleText ?? '', /已装插件（3）/);
+    assert.equal(profileDrawer.expandedAfterToggle, true, JSON.stringify(profileDrawer));
+    assert.equal(profileDrawer.drawerWidth >= 420 && profileDrawer.drawerWidth <= 500, true, JSON.stringify(profileDrawer));
     assert.equal(profileDrawer.paddingRight >= profileDrawer.drawerWidth, true, JSON.stringify(profileDrawer));
     assert.equal(profileDrawer.gutter >= 1, true, `drawer overlaps the controls: ${JSON.stringify(profileDrawer)}`);
     assert.equal(profileDrawer.controlsColumns, 1, `controls must collapse to one column: ${JSON.stringify(profileDrawer)}`);

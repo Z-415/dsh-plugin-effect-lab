@@ -51,8 +51,8 @@ the same width and height instead of ragged flex wrapping:
   (including the cross-version matrix), so they cost no height until opened.
 
 Opening the profile drawer reserves its own column on the right (`--drawer-w`,
-about the width of the 检查 column) and the controls collapse to one column, so
-the drawer never covers the buttons on the left.
+`clamp(340px, 42vw, 500px)`) and the controls collapse to one column, so the
+drawer gets room to breathe without covering the buttons on the left.
 
 At the 1080×760 default size the whole layout fits without scrolling; below
 900px wide the two columns stack and the control area scrolls on its own. The
@@ -153,9 +153,11 @@ browser, or the `artifacts/` folder. **中止** kills the running child tree.
 不会挡住左边的按钮。每个 profile 一张卡，显示：
 
 - 名称、插件数、`node_modules` 是否已建（及第三方依赖数）；
-- **已安装插件清单**：记录在 `lab-profile.json` 里的 spec，加上克隆 profile 实际装进
-  `package.json` 的第三方依赖（自动去掉 `dsh-lab-session-fixture`、按包名去重）；
-  每一行右边都有 **卸载**；
+- **已安装插件清单（可折叠）**：默认收起，标题按钮显示
+  `▸ 已装插件（N）`，点开变 `▾` 并展开；展开状态在同一次会话内刷新列表（例如每轮
+  跑完自动刷新）后仍保留。清单 = 记录在 `lab-profile.json` 里的 spec，加上克隆
+  profile 实际装进 `package.json` 的第三方依赖（自动去掉
+  `dsh-lab-session-fixture`、按包名去重）；每一行右边都有 **卸载**；
 - 最后运行时间（`lastRunAt`，没有则回落到目录 `mtimeMs`）；
 - 克隆来源（`clonedFrom`，例如「克隆自 web」）。
 

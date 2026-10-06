@@ -112,11 +112,13 @@ node bin/lab.js diagnose --bundle out/diagnostics.json
    `dependencies`（`package.json` 里的第三方包名，已排除 `@deepseek-ai/*`）；抽屉把
    「记录的 spec」和「实际安装的依赖」合并按包名去重（去掉 `dsh-lab-session-fixture`），
    每条右侧一个「卸载」→ 页内二次确认 → `profile remove-plugin <name> <selector>`。
-   克隆 profile 之前没有记录插件、没法逐条卸；现在靠依赖列表也能卸。
+   克隆 profile 之前没有记录插件、没法逐条卸；现在靠依赖列表也能卸。清单**默认折叠**
+   （`▸ 已装插件（N）`，点开变 `▾`），展开状态在同一次会话内、自动刷新后仍保留。
 2. **删掉每个 profile 下的「克隆为一次性运行（跑完即删）」**；行内只剩
    「在壳窗口打开 / 打开目录 / 删除 profile」。克隆栏顶部的持久 / 一次性克隆按钮保留。
 3. **抽屉不再遮挡**：原来 `position: fixed; width: min(600px, 94vw)` 直接盖住右侧。
-   现在宽度 `--drawer-w: clamp(320px, 34vw, 430px)`（≈ 原来的检查栏），并用
+   现在宽度 `--drawer-w: clamp(340px, 42vw, 500px)`（第一版 34vw 后用户反馈卡片挤，
+   已加宽；左侧相应变窄），并用
    `body:has(#profileDrawer:not([hidden])) main { padding-right: calc(var(--drawer-w) + 18px) }`
    让主区主动让位；打开时 `#controls` 收成单列，按钮标签不再折行。
 4. **左侧按钮重排**：删「再加一个插件一起验证」；两个「在壳窗口打开」并排，之后
@@ -131,8 +133,8 @@ node bin/lab.js diagnose --bundle out/diagnostics.json
 
 - `npm test` → **322/322**。
 - `node --test tests/integration/gui-page.test.js` → **2/2**：抽屉探针断言合并后的插件
-  清单、逐插件卸载调用、只剩三个行按钮、抽屉宽 ≤ 440 且 `gutter ≥ 1`（不压控件）、
-  控件单列；另有版本弹窗探针。
+  清单、插件清单默认折叠（`▸ 已装插件（3）`）且点开后展开、逐插件卸载调用、只剩三个
+  行按钮、抽屉宽在 420–500 之间且 `gutter ≥ 1`（不压控件）、控件单列；另有版本弹窗探针。
 - `node --test tests/integration/profile-ui.test.js` → **5/5**（含新增 `dependencies` 断言）。
 - `node --test tests/integration/shell-mode.test.js` → **3/3**。
 - 全量 `npm run test:e2e`：其余全绿，2 条壳窗口用例失败——

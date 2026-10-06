@@ -20,7 +20,7 @@
     --bad-bg: #fdf2f1;
     /* Width of the profile drawer: about the main grid's right column, so the
        drawer can sit beside the controls instead of covering them. */
-    --drawer-w: clamp(320px, 34vw, 430px);
+    --drawer-w: clamp(340px, 42vw, 500px);
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -163,6 +163,9 @@
   .prow .note { margin: 6px 0 0; word-break: break-word; }
   .prow-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .plist { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .plist-toggle { align-self: flex-start; }
+  .plist-items { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .plist-items[hidden] { display: none; }
   .pitem { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 8px;
            border-radius: 6px; background: #f7f8fa; }
   .pitem > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
@@ -425,6 +428,10 @@
   let dialogResolve = null;
   let confirmResolve = null;
   let lastFailureLine = '';
+  // Drawer state: the last rendered profile list (so a collapse toggle can
+  // re-render from cache) and which profiles the user expanded.
+  let profileSnapshot = { profiles: [], root: null, error: null };
+  const expandedProfiles = new Set();
 
   function setBusy(busy, label) {
     allButtons.forEach((b) => { b.disabled = busy; });
@@ -815,6 +822,7 @@
       : '';
   }
   function renderProfileList(profiles, root, error) {
+    profileSnapshot = { profiles, root, error };
     profileRoot.textContent = root ?? '';
     profileList.textContent = '';
     if (error) {
@@ -846,12 +854,29 @@
       head.append(name, meta);
       const pluginBox = document.createElement('div');
       pluginBox.className = 'plist';
+      const expanded = expandedProfiles.has(profile.name);
       if (!entries.length) {
         const empty = document.createElement('p');
         empty.className = 'note';
         empty.textContent = '（这个 profile 还没有装插件）';
         pluginBox.appendChild(empty);
+      } else {
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'small plist-toggle';
+        toggle.setAttribute('aria-expanded', String(expanded));
+        toggle.textContent = `${expanded ? '▾' : '▸'} 已装插件（${entries.length}）`;
+        toggle.addEventListener('click', () => {
+          if (expandedProfiles.has(profile.name)) expandedProfiles.delete(profile.name);
+          else expandedProfiles.add(profile.name);
+          const { profiles: snapshot, root: snapshotRoot, error: snapshotError } = profileSnapshot;
+          renderProfileList(snapshot, snapshotRoot, snapshotError);
+        });
+        pluginBox.appendChild(toggle);
       }
+      const pluginItems = document.createElement('div');
+      pluginItems.className = 'plist-items';
+      pluginItems.hidden = !expanded;
       for (const entry of entries) {
         const item = document.createElement('div');
         item.className = 'pitem';
@@ -860,8 +885,9 @@
         label.textContent = entry.label;
         if (entry.note) label.title = `原 spec：${entry.note}`;
         item.append(label, profileButton('卸载', () => uninstallPluginFromProfile(profile, entry), 'danger'));
-        pluginBox.appendChild(item);
+        pluginItems.appendChild(item);
       }
+      if (entries.length) pluginBox.appendChild(pluginItems);
       const clonedLine = document.createElement('p');
       clonedLine.className = 'note';
       if (profile.clonedFrom) {
