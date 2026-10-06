@@ -159,6 +159,18 @@ test('diagnoseInstallFailure swallows a probe failure', async () => {
   assert.deepEqual(diagnosis.suggestions, []);
 });
 
+test('a GitHub spec timeout with no captured pnpm line is still a GitHub download failure', async () => {
+  const diagnosis = await diagnoseInstallFailure({
+    install: { code: null, stdout: '', stderr: '', timedOut: true, durationMs: 120_000 },
+    specs: ['github:mini-yifan/dsh-orb-cordis'],
+    online: true,
+    probeRepo: async () => null,
+  });
+  assert.equal(diagnosis.code, 'LAB-INSTALL-NETWORK');
+  assert.equal(diagnosis.githubDownload, true);
+  assert.match(describeInstallFailure(diagnosis), /GitHub 下载失败/);
+});
+
 test('diagnoseInstallFailure bounds a hanging probe', async () => {
   const diagnosis = await diagnoseInstallFailure({
     install: { code: 1, stdout: GITHUB_RETRY_LOG, stderr: '' },

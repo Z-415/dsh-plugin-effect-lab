@@ -183,6 +183,11 @@ export async function diagnoseInstallFailure(options = {}) {
   const githubSpecs = [...new Set(
     specs.map((spec) => String(spec ?? '')).filter((spec) => spec && looksLikeGithubSpec(spec)),
   )];
+  // pnpm can be killed before it flushes the codeload retry warnings, so a
+  // network timeout on a GitHub spec is still a GitHub download failure.
+  if (diagnosis.code === INSTALL_ERROR_CODES.NETWORK && githubSpecs.length > 0) {
+    diagnosis.githubDownload = true;
+  }
   const canProbe = online
     && githubSpecs.length > 0
     && (diagnosis.code === INSTALL_ERROR_CODES.NOTFOUND || diagnosis.code === INSTALL_ERROR_CODES.NETWORK);
