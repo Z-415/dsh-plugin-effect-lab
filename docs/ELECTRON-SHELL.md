@@ -113,6 +113,12 @@ removed, `cleanup-home` / `cleanup-no-residue` and `cleanup.json` carry the
 locked path, the EBUSY/EPERM code, and the holding pid/name. The
 `isolated-root-removed` criterion itself is not relaxed.
 
+The delete walk is also race-tolerant: a plugin such as `dsh-orb` extracts and
+then removes its own Electron runtime under the isolated home, so a path can
+vanish (`ENOENT`) or briefly reappear (`ENOTEMPTY`) while the lab is deleting
+the same tree. The walk treats a vanished entry as already removed and re-sweeps
+a directory that is briefly non-empty, instead of aborting the whole attempt.
+
 `lab shell` writes `artifacts/<run-id>/dom/{web-dom.json,shell-dom.json,shell-vs-web.json}`
 plus `screenshots/{web-baseline.png,shell.png}` and
 `dom/shell-screenshot-diff.json`. The measured baseline is
