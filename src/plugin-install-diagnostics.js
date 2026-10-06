@@ -102,11 +102,24 @@ export function classifyInstallFailure(install = {}) {
   };
 }
 
-/** `exit 1; [ERR_PNPM_FETCH_404] ...` - the `plugin-install` check detail. */
+/** A short, user-facing reason for the report/check detail. */
+export function describeInstallFailure(diagnosis) {
+  if (!diagnosis) return null;
+  if (diagnosis.githubDownload === true) {
+    return 'GitHub 下载失败（codeload.github.com 连接被重置或重试耗尽）';
+  }
+  if (diagnosis.code === INSTALL_ERROR_CODES.NETWORK) return '网络下载失败（连接被重置或超时）';
+  if (diagnosis.code === INSTALL_ERROR_CODES.NOTFOUND) return 'npm registry 找不到该包（404）';
+  return null;
+}
+
+/** `exit 1; elapsed 2500ms; [ERR_PNPM_FETCH_404] ...` - the check detail. */
 export function formatInstallDetail(diagnosis, install = {}) {
   const exit = install.timedOut === true ? 'timeout' : (install.code ?? '?');
-  const duration = Number.isFinite(install.durationMs) ? ` after ${install.durationMs}ms` : '';
-  const bits = [`exit ${exit}${install.timedOut === true ? ` (timeout${duration})` : ''}`];
+  const bits = [`exit ${exit}`];
+  if (Number.isFinite(install.durationMs)) bits.push(`elapsed ${install.durationMs}ms`);
+  const summary = describeInstallFailure(diagnosis);
+  if (summary) bits.push(summary);
   if (diagnosis?.keyLines?.length) bits.push(diagnosis.keyLines.join(' | '));
   return clip(bits.join('; '), MAX_DETAIL_LENGTH);
 }
@@ -117,11 +130,13 @@ export function formatInstallDetail(diagnosis, install = {}) {
  */
 export function installFailureMessage(diagnosis, install = {}) {
   const exit = install.timedOut === true ? 'timeout' : (install.code ?? '?');
+  const elapsed = Number.isFinite(install.durationMs) ? `, elapsed ${install.durationMs}ms` : '';
   const reason = diagnosis?.keyLines?.[0]
     ?? (install.timedOut === true
       ? `timed out after ${install.durationMs ?? '?'}ms with no pnpm error line`
       : 'no pnpm error line captured; see install.log');
-  return clip(`plugin install failed (exit ${exit}): ${reason}`, MAX_DETAIL_LENGTH);
+  const summary = describeInstallFailure(diagnosis);
+  return clip(`plugin install failed (exit ${exit}${elapsed}): ${summary ? `${summary}: ` : ''}${reason}`, MAX_DETAIL_LENGTH);
 }
 
 /** The report-facing `plugin-install` check. */

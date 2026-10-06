@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   classifyInstallFailure,
   diagnoseInstallFailure,
+  describeInstallFailure,
   describePluginInstall,
   extractInstallKeyLines,
   formatInstallDetail,
@@ -52,8 +53,25 @@ test('a timeout with an empty log is still LAB-INSTALL-NETWORK, not an empty rep
   assert.equal(diagnosis.code, INSTALL_ERROR_CODES.NETWORK);
   assert.equal(diagnosis.timedOut, true);
   assert.deepEqual(diagnosis.keyLines, []);
-  assert.equal(formatInstallDetail(diagnosis, { code: null, timedOut: true }), 'exit timeout (timeout)');
+  const detail = formatInstallDetail(diagnosis, { code: null, timedOut: true, durationMs: 120_000 });
+  assert.match(detail, /^exit timeout/);
+  assert.match(detail, /elapsed 120000ms/);
+  assert.match(detail, /网络下载失败/);
   assert.match(installFailureMessage(diagnosis, { code: null, timedOut: true, durationMs: 120_000 }), /timed out after 120000ms/);
+});
+
+test('a codeload retry is named as a GitHub download failure with its elapsed time', () => {
+  const install = { code: null, stdout: GITHUB_RETRY_LOG, stderr: '', timedOut: true, durationMs: 120_000 };
+  const diagnosis = classifyInstallFailure(install);
+  assert.equal(describeInstallFailure(diagnosis), 'GitHub 下载失败（codeload.github.com 连接被重置或重试耗尽）');
+  const detail = formatInstallDetail(diagnosis, install);
+  assert.match(detail, /^exit timeout; elapsed 120000ms;/);
+  assert.match(detail, /GitHub 下载失败/);
+  assert.match(detail, /codeload\.github\.com/);
+  const message = installFailureMessage(diagnosis, install);
+  assert.match(message, /GitHub 下载失败/);
+  assert.match(message, /elapsed 120000ms/);
+  assert.equal(message.split('\n').length, 1);
 });
 
 test('an unrecognized failure is LAB-INSTALL-UNKNOWN', () => {
