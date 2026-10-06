@@ -13,6 +13,7 @@ export const FIXTURE_VARIANTS = {
   default: 'fixed-session.json',
   empty: 'empty-session.json',
   long: 'long-session.json',
+  rich: 'rich-session.json',
 };
 
 export function seederPluginDir() {

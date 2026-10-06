@@ -45,3 +45,26 @@ test('the long fixture variant renders twelve turns and tool results', {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('the rich fixture renders a reasoning block and a fenced code block', {
+  skip: !enabled,
+  timeout: 180_000,
+}, async () => {
+  const root = makeRoot('dsh-lab-rich-e2e-');
+  try {
+    const report = await runLab({ fixtureVariant: 'rich', artifactsRoot: root, screenshots: ['home'] });
+    assert.equal(report.ok, true, JSON.stringify((report.checks ?? []).filter((check) => !check.pass), null, 2));
+    assert.equal(report.fixture.variant, 'rich');
+    assert.equal(report.fixture.reasoningBlocks >= 1, true, JSON.stringify(report.fixture));
+    assert.equal(report.fixture.codeFences >= 1, true, JSON.stringify(report.fixture));
+    assert.equal(report.fixture.contentBlockTypes.includes('reasoning'), true, JSON.stringify(report.fixture));
+    assert.equal(report.fixture.streamTypes.includes('reasoning-chunks'), true, JSON.stringify(report.fixture));
+    assert.equal(report.fixture.types.includes('tool/result'), true);
+    assert.equal(report.fixture.textProbe?.reasoningFound, true, JSON.stringify(report.fixture.textProbe));
+    assert.equal(report.fixture.textProbe?.codeFound, true, JSON.stringify(report.fixture.textProbe));
+    assert.equal(report.browser.dom.slotCount > 0, true);
+    assert.equal(report.cleanup.residue?.ok, true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

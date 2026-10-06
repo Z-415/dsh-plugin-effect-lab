@@ -34,6 +34,26 @@ function textBlock(text) {
   return { type: 'text', text };
 }
 
+/**
+ * 0.2.0-rc.2 represents visible model thinking as a `reasoning` content block
+ * inside `assistant/message` (ReasoningBlock: `{ type: 'reasoning', text }`),
+ * not as a separate `assistant/thinking` event and not with a `thinking` type.
+ * The matching stream record is `reasoning-chunks` with the same shape as
+ * `text-chunks` (time0/index/dt/texts).
+ */
+function reasoningBlock(text) {
+  return { type: 'reasoning', text };
+}
+
+function assistantTextWithCode(turn) {
+  const base = turn.assistant ?? 'Reply';
+  if (!turn.code) return base;
+  const code = typeof turn.code === 'string' ? { text: turn.code } : turn.code;
+  const language = code.language ?? 'js';
+  const body = code.text ?? '';
+  return `${base}\n\n\`\`\`${language}\n${body}\n\`\`\``;
+}
+
 /** Expand a fixture spec into the official session event sequence. */
 export function buildEventsFromSpec(spec, startedAt = Date.now()) {
   const events = [];
@@ -47,7 +67,11 @@ export function buildEventsFromSpec(spec, startedAt = Date.now()) {
     const turnNumber = index + 1;
     const step = 1;
     const callId = `call-lab-fixture-${turnNumber}`;
-    const assistantText = turn.assistant ?? `Reply ${turnNumber}`;
+    const assistantText = assistantTextWithCode({ assistant: turn.assistant ?? `Reply ${turnNumber}`, code: turn.code });
+    const stream = [
+      ...(turn.reasoning ? [{ type: 'reasoning-chunks', time0: 0, index: 0, dt: [1], texts: [turn.reasoning] }] : []),
+      { type: 'text-chunks', time0: 0, index: turn.reasoning ? 1 : 0, dt: [1], texts: [assistantText] },
+    ];
     push('turn/start', { turn: turnNumber });
     push('step/start', { turn: turnNumber, step });
     push(
@@ -69,12 +93,13 @@ export function buildEventsFromSpec(spec, startedAt = Date.now()) {
           id: `msg-lab-assistant-${turnNumber}`,
           role: 'assistant',
           content: [
+            ...(turn.reasoning ? [reasoningBlock(turn.reasoning)] : []),
             textBlock(assistantText),
             ...(turn.tool ? [{ type: 'tool-call', id: callId, name: turn.tool.name, arguments: turn.tool.arguments }] : []),
           ],
           source: { kind: 'model', provider: 'lab-fixture', model: 'fixed' },
         },
-        stream: [{ type: 'text-chunks', time0: 0, index: 0, dt: [1], texts: [assistantText] }],
+        stream,
       },
       { surfaceOp: 'append' },
     );

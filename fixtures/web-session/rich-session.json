@@ -1,0 +1,26 @@
+{
+  "name": "rich",
+  "sessionId": "session-00000000-0000-4000-8000-000000000004",
+  "title": "Lab rich fixture: reasoning + code",
+  "formatVersion": 4,
+  "turns": [
+    {
+      "user": "Show your reasoning and a code sample.",
+      "reasoning": "The user asked for the thinking area and a fenced code block. I will produce both in this turn, then call one tool in the next turn so tool rendering stays covered.",
+      "assistant": "Here is the fixture answer.",
+      "code": {
+        "language": "js",
+        "text": "const answer = 42;\nconsole.log(answer);"
+      }
+    },
+    {
+      "user": "Now call the fixture tool once.",
+      "assistant": "Calling the fixture tool.",
+      "tool": {
+        "name": "lab_fixture_echo",
+        "arguments": "{\"text\":\"rich-ok\"}",
+        "result": "lab fixture tool result: rich-ok"
+      }
+    }
+  ]
+}

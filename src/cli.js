@@ -235,7 +235,7 @@ Usage:
              [--screenshot home] [--assert-token --dsw-alias-bg-base]
              [--assert-slot conversation.view] [--assert-body-attr data-we-wallpaper]
              [--min-slots <n>]
-             [--fixture-variant default|empty|long]
+             [--fixture-variant default|empty|long|rich]
              [--profile-lab <name>]
              [--artifacts <dir>] [--browser <exe>] [--no-fixture]
              [--boot-transport stdout|ipc]
@@ -245,7 +245,7 @@ Usage:
   lab runtimes [--runtime-timeout <ms>] [--json]
   lab shell [--no-cache] [--no-compare-web] [--shell-timeout <ms>]
             [--plugin <spec>] [--with <spec>] [--offline|--online] [--no-fixture]
-            [--fixture-variant default|empty|long]
+            [--fixture-variant default|empty|long|rich]
             [--profile-lab <name>]
             [--boot-transport stdout|ipc]
             [--show] [--keep-open] [--native-desktop] [--probe-native-dialog] [--show-hold <ms>] [--no-html]
@@ -266,6 +266,9 @@ starts a loopback OpenAI-compatible provider for a real streamed tool turn.
 a https://github.com/... URL, a local directory, or a .tgz tarball. After
 install the report prints the advertised spec next to the real name@version
 read back from the isolated profile.
+--fixture-variant rich seeds an assistant turn with a reasoning content block
+({ type: 'reasoning', text }) plus a fenced code block, and a second turn
+with a tool call, so thinking/code/tool rendering are all covered.
 lab shell boots the same isolated Host, opens it once in headless Edge and once
 through a minimal Electron shell, then diffs DOM slots, body attributes, and
 --dsw-* tokens. Pass --no-compare-web to skip the Edge baseline. --show makes

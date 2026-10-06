@@ -93,7 +93,7 @@ the bar to maximise or restore the window.
 | 检查 | 自检 doctor | `doctor` |
 | 检查 | 快速验证 | `verify` |
 | 检查 | 验证 + 设置页截图 | `verify --screenshot home --screenshot settings` |
-| 检查 | 空会话 / 长会话 | `verify --fixture-variant empty\|long` |
+| 检查 | 空会话 / 长会话 / 思考代码夹具 | `verify --fixture-variant empty\|long\|rich` |
 | 检查 | 失败签名库 | `scan --list` |
 | 检查 | 扫描最近一次日志 | `scan --latest` |
 | 检查 | 查看已装的 DSH 版本 | `runtimes` |

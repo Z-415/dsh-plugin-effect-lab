@@ -139,6 +139,12 @@ export function renderReportMarkdown(report) {
     lines.push(`- workspace: ${report.fixture.workspaceId} (${report.fixture.workspace})`);
     lines.push(`- events: ${report.fixture.events}`);
     lines.push(`- types: ${(report.fixture.types ?? []).join(', ')}`);
+    if (report.fixture.contentBlockTypes?.length) {
+      lines.push(`- assistant content blocks: ${report.fixture.contentBlockTypes.join(', ')}`);
+    }
+    if (report.fixture.reasoningBlocks !== undefined) {
+      lines.push(`- reasoning blocks: ${report.fixture.reasoningBlocks}; fenced code blocks: ${report.fixture.codeFences ?? 0}`);
+    }
   }
   if (report.mockModel) {
     lines.push('', '## 回环 mock 模型', '');

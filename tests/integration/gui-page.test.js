@@ -415,6 +415,11 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(result.calls.some((args) => args[0] === 'matrix'), true, 'the collapsed 更多 area must dispatch matrix');
     assert.equal(result.calls.some((args) => args[0] === 'runtimes'), true, 'the collapsed 更多 area must dispatch runtimes');
     assert.equal(
+      result.calls.some((args) => args[0] === 'verify' && args.includes('--fixture-variant') && args.includes('rich')),
+      true,
+      'the 思考 / 代码夹具 button must dispatch the rich variant',
+    );
+    assert.equal(
       result.calls.some((args) => args[0] === 'matrix' && args.includes('--runtime-matrix')),
       true,
       'the cross-version matrix button must pass --runtime-matrix',

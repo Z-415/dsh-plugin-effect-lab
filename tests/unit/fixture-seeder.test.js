@@ -52,10 +52,42 @@ test('every committed variant file exists and has a distinct session id', () => 
 
 test('every surface-eligible event carries an append surfaceOp', () => {
   const surfaceTypes = new Set(['system/message', 'developer/message', 'user/message', 'assistant/message', 'tool/result']);
-  for (const variant of ['default', 'long']) {
+  for (const variant of ['default', 'long', 'rich']) {
     for (const event of buildEventsFromSpec(readFixtureSpec(variant), 0)) {
       if (!surfaceTypes.has(event.type)) continue;
       assert.equal(event.surfaceOp, 'append', `${variant} ${event.type} seq=${event.seq}`);
     }
   }
+});
+
+test('the rich variant uses a reasoning content block, not a thinking event/type', () => {
+  const events = buildEventsFromSpec(readFixtureSpec('rich'), 0);
+  const types = new Set(events.map((event) => event.type));
+  assert.equal(types.has('assistant/thinking'), false, '0.2.0-rc.2 has no assistant/thinking event');
+  assert.equal(types.has('assistant/reasoning'), false);
+  const blocks = events
+    .filter((event) => event.type === 'assistant/message')
+    .flatMap((event) => event.data.message.content);
+  const reasoning = blocks.filter((block) => block.type === 'reasoning');
+  assert.equal(reasoning.length, 1, 'the rich fixture must carry one reasoning block');
+  assert.equal(typeof reasoning[0].text, 'string');
+  assert.equal(reasoning[0].text.length > 0, true);
+  assert.equal(blocks.some((block) => block.type === 'thinking'), false, 'a thinking type would not render');
+  const text = blocks.filter((block) => block.type === 'text').map((block) => block.text).join('\n');
+  assert.match(text, /```js/);
+  assert.equal(events.filter((event) => event.type === 'tool/result').length, 1);
+});
+
+test('the rich variant streams reasoning-chunks with the official shape', () => {
+  const events = buildEventsFromSpec(readFixtureSpec('rich'), 0);
+  const streams = events
+    .filter((event) => event.type === 'assistant/message')
+    .flatMap((event) => event.data.stream);
+  assert.deepEqual(streams.map((record) => record.type), ['reasoning-chunks', 'text-chunks', 'text-chunks']);
+  const [reasoning] = streams;
+  assert.equal(typeof reasoning.time0, 'number');
+  assert.equal(typeof reasoning.index, 'number');
+  assert.equal(Array.isArray(reasoning.dt), true);
+  assert.equal(Array.isArray(reasoning.texts), true);
+  assert.match(reasoning.texts.join(''), /thinking area/);
 });

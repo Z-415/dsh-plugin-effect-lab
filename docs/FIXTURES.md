@@ -9,12 +9,39 @@ The conversation data lives in committed specs under `fixtures/web-session/`:
 | `default` | `fixed-session.json` | one turn with user, assistant, tool call, and tool result |
 | `empty` | `empty-session.json` | a session with zero events |
 | `long` | `long-session.json` | twelve turns, four of them with tool results |
+| `rich` | `rich-session.json` | two turns: reasoning + fenced code block, then a tool call/result |
 
 ```powershell
 node bin/lab.js verify --fixture-variant empty
 node bin/lab.js verify --fixture-variant long
+node bin/lab.js verify --fixture-variant rich
 node bin/lab.js shell  --fixture-variant long
 ```
+
+### Thinking and code (the `rich` variant)
+
+0.2.0-rc.2 represents visible model thinking as a **`reasoning` content block**
+inside `assistant/message`:
+
+```text
+content: [ { type: 'reasoning', text: '...' },
+           { type: 'text', text: '...```js ...```' },
+           { type: 'tool-call', ... } ]
+stream:  [ { type: 'reasoning-chunks', time0, index, dt, texts },
+           { type: 'text-chunks', ... } ]
+```
+
+There is **no** `assistant/thinking` event and **no** `thinking` block type in
+this runtime: `ContentBlockMap` is `text | reasoning | image | file | tool-call |
+tool-addition | tool-removal`, and `dsh-client-ui-chat` only renders a block
+whose `type === 'reasoning'`. Writing `thinking` would render nothing, so the
+unit test asserts the exact type and the integration test reads the block back
+from the live session (`fixture.reasoningBlocks`, `fixture.codeFences`,
+`fixture.contentBlockTypes`, `fixture.streamTypes`).
+
+The `rich` variant also seeds a second turn with a tool call, so opening it in
+the UI covers the thinking area, a fenced code block, and tool rendering at
+once. The GUI's **思考 / 代码夹具** button runs the same variant.
 
 Each spec has its own `sessionId`, so variants never collide. A turn expands to
 the official event sequence below; every message-producing event carries

@@ -357,6 +357,43 @@ export async function runLab(options = {}) {
             missing.length === 0,
             missing.length ? `missing ${missing.join(', ')}` : `${page.events.length} event(s)`,
           );
+          const assistantContents = page.events
+            .filter((event) => event.type === 'assistant/message')
+            .flatMap((event) => event.data?.message?.content ?? []);
+          const contentBlockTypes = [...new Set(assistantContents.map((block) => block?.type).filter(Boolean))];
+          const reasoningBlocks = assistantContents.filter((block) => block?.type === 'reasoning').length;
+          const codeFences = assistantContents
+            .filter((block) => block?.type === 'text' && /```/.test(block.text ?? ''))
+            .length;
+          const streamTypes = [...new Set(
+            page.events
+              .filter((event) => event.type === 'assistant/message')
+              .flatMap((event) => event.data?.stream ?? [])
+              .map((record) => record?.type)
+              .filter(Boolean),
+          )];
+          if (fixtureVariant === 'rich') {
+            addCheck(
+              checks,
+              'fixture-reasoning-block',
+              reasoningBlocks >= 1,
+              reasoningBlocks
+                ? `${reasoningBlocks} assistant/message reasoning block(s)`
+                : `no content block of type "reasoning" (saw: ${contentBlockTypes.join(', ') || 'none'})`,
+            );
+            addCheck(
+              checks,
+              'fixture-code-block',
+              codeFences >= 1,
+              codeFences ? `${codeFences} fenced code block(s)` : 'no fenced code block in any text block',
+            );
+            addCheck(
+              checks,
+              'fixture-reasoning-stream',
+              streamTypes.includes('reasoning-chunks'),
+              `stream records: [${streamTypes.join(', ')}]`,
+            );
+          }
           report.fixture = {
             variant: fixtureVariant,
             sessionId: fixtureSessionId,
@@ -365,6 +402,10 @@ export async function runLab(options = {}) {
             workspaceId,
             events: page.events.length,
             types: [...types],
+            contentBlockTypes,
+            reasoningBlocks,
+            codeFences,
+            streamTypes,
           };
         }
       } catch (error) {
@@ -449,6 +490,24 @@ export async function runLab(options = {}) {
     // A fixture with no events has no sidebar session row to click; only the
     // workspace selection applies there.
     const fixtureHasSessionRow = fixtureEnabled && (fixtureSpec?.turns?.length ?? 0) > 0;
+    // The rich variant additionally proves the renderer actually shows the
+    // thinking area and the code block, not just that the events were stored.
+    const richTurn = fixtureVariant === 'rich' ? (fixtureSpec?.turns ?? []).find((turn) => turn.reasoning) : null;
+    const richCode = fixtureVariant === 'rich'
+      ? (fixtureSpec?.turns ?? []).map((turn) => turn.code).find(Boolean)
+      : null;
+    const fixturesAfter = fixtureVariant === 'rich' && richTurn
+      ? {
+        fixtureText: `(() => {
+          const text = document.body ? document.body.textContent : '';
+          return JSON.stringify({
+            length: text.length,
+            reasoningFound: text.includes(${JSON.stringify(String(richTurn.reasoning).slice(0, 60))}),
+            codeFound: text.includes(${JSON.stringify(String(richCode?.text ?? '').split('\n')[0])}),
+          });
+        })()`,
+      }
+      : {};
     browser = await openUi({
       baseUrl: boot.url,
       screenshots: requestedScreenshots.filter((name) => name !== 'settings'),
@@ -458,6 +517,7 @@ export async function runLab(options = {}) {
       clickSessionRow: fixtureHasSessionRow,
       sessionText: fixtureHasSessionRow ? fixtureTitle : null,
       openSettings: wantsSettings,
+      probesAfter: fixturesAfter,
       assertTokens,
       artifactsDir: runDir,
       timeoutMs: options.browserTimeoutMs ?? DEFAULT_BROWSER_TIMEOUT_MS,
@@ -473,6 +533,27 @@ export async function runLab(options = {}) {
         `workspace=${browser.clicked === true}, session=${browser.clickedSession === true}`
           + `${fixtureHasSessionRow ? '' : ' (no fixture events; session row not expected)'}`,
       );
+      if (fixtureVariant === 'rich') {
+        let probe = null;
+        try {
+          probe = JSON.parse(browser.extraAfter?.fixtureText ?? 'null');
+        } catch {
+          probe = null;
+        }
+        if (report.fixture) report.fixture.textProbe = probe;
+        addCheck(
+          checks,
+          'fixture-thinking-rendered',
+          probe?.reasoningFound === true,
+          probe ? `renderer text ${probe.length} chars; reasoningFound=${probe.reasoningFound}` : 'renderer text probe missing',
+        );
+        addCheck(
+          checks,
+          'fixture-code-rendered',
+          probe?.codeFound === true,
+          probe ? `codeFound=${probe.codeFound}` : 'renderer text probe missing',
+        );
+      }
     }
     addCheck(checks, 'dom-slots', browser.dom.slotCount > 0, `${browser.dom.slotCount} data-slot node(s)`);
     if (browser.settleAfter) {
@@ -517,6 +598,8 @@ export async function runLab(options = {}) {
       ui: browser.ui,
       settle: browser.settle ?? null,
       settleAfter: browser.settleAfter ?? null,
+      extra: browser.extra ?? {},
+      extraAfter: browser.extraAfter ?? {},
       dom: browser.dom,
       clicked: browser.clicked,
       consoleErrors: browser.consoleErrors,
