@@ -57,7 +57,11 @@ into the log pane; `中止` stops the running command.
 **插件 / 持久 profile** (left)
 
 - `插件` field — the spec to test: an npm/GitHub spec or a local path. Leave it
-  empty to load only what the selected profile already has.
+  empty to load only what the selected profile already has. Pasting a
+  `https://github.com/...` URL (or `owner/repo`) switches the source dropdown to
+  GitHub automatically; `github:` / `git@` clone URLs are recognized too. A
+  failed install reports the real pnpm key line, a stable `LAB-INSTALL-*` code,
+  and, for a monorepo source, a `npm:<real-package>` hint.
 - `profile` dropdown — `一次性运行` (a temporary home, deleted afterwards), an
   existing `.lab-profiles/<name>` (its plugins are loaded and kept), or `新建`
   plus a name. `刷新` re-reads the profile list.

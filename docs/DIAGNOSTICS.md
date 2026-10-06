@@ -31,6 +31,31 @@ keeps its own runner and rejects the flag.
 carries the failed checks and a bounded boot tail. A clean run reports
 `LAB-OK` and an empty `errorCodes` list.
 
+## Install-stage codes
+
+An install failure happens before the host boots, so it never shows up in
+`signatureHits`. The `plugin-install` stage classifies the captured pnpm output
+instead:
+
+| code | trigger |
+|---|---|
+| `LAB-INSTALL-NOTFOUND` | `ERR_PNPM_FETCH_404` / "is not in the npm registry" |
+| `LAB-INSTALL-NETWORK` | `ECONNRESET` / `ETIMEDOUT` / a codeload retry loop / install timeout |
+| `LAB-INSTALL-UNKNOWN` | a non-zero install with no recognizable pnpm line |
+
+`report.installFailure` and `diagnostics.install` carry the code, the extracted
+key lines, the timeout flag, and any suggestion. The `plugin-install` check
+detail starts with `exit <code>` and the elapsed time, then repeats the real
+pnpm line (`[ERR_PNPM_FETCH_404] GET ...`), so the GUI banner and the report no
+longer stop at `exit 1`.
+
+When an online install of a GitHub-looking spec fails, the lab best-effort
+pre-checks the repo root `package.json` (jsDelivr first, raw GitHub as a
+fallback). For a monorepo it reads the workspace manifests and suggests the
+package the repo publishes to npm (for `mini-yifan/dsh-orb-cordis`:
+`npm:dsh-orb`). It never replaces the user's input, and a probe failure is
+swallowed so the original install error is still reported.
+
 The full table is in [FAILURE-SIGNATURES.md](FAILURE-SIGNATURES.md).
 
 ## What the bundle contains

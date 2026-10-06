@@ -53,7 +53,10 @@ node bin/lab.js doctor  # 环境自检，必须 PASS
 **插件 / 持久 profile**（左侧）
 
 - `插件` 输入框 —— 要测的规格：npm/GitHub 规格或本地路径。留空表示只加载所选 profile
-  里已经装好的插件。
+  里已经装好的插件。粘贴 `https://github.com/...`（或 `owner/repo`）会自动把来源切到
+  GitHub，`github:`、`git@` 克隆地址也会识别。安装失败会带上真实 pnpm 关键行和稳定的
+  `LAB-INSTALL-*` 错误码；如果仓库是 monorepo 源码，还会提示它发布到 npm 的真实包名
+  （例如 `npm:dsh-orb`）。
 - `profile` 下拉框 —— `一次性运行`（临时 home，跑完删除）、已有的
   `.lab-profiles/<name>`（连同它已装的插件一起加载，跑完保留）、或 `新建` + 填名字。
   `刷新` 重新读取 profile 列表。

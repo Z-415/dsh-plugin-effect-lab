@@ -105,6 +105,14 @@ By default the window renders at `opacity: 0` so automation stays invisible.
 6000, before closing); `--keep-open` waits until you close it, then writes the
 result and cleans up the isolated home.
 
+Cleanup does not assume the window closed synchronously: after the shell is
+stopped the runner reaps every `DeepSeek Harness.exe` / `msedge.exe` process
+that references the run root, waits for them to disappear, and retries the
+delete with exponential backoff for a 30s budget. If the root still cannot be
+removed, `cleanup-home` / `cleanup-no-residue` and `cleanup.json` carry the
+locked path, the EBUSY/EPERM code, and the holding pid/name. The
+`isolated-root-removed` criterion itself is not relaxed.
+
 `lab shell` writes `artifacts/<run-id>/dom/{web-dom.json,shell-dom.json,shell-vs-web.json}`
 plus `screenshots/{web-baseline.png,shell.png}` and
 `dom/shell-screenshot-diff.json`. The measured baseline is

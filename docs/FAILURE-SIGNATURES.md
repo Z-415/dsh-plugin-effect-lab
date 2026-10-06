@@ -75,6 +75,23 @@ Keep `severity: 'fatal'` for anything that stops the tree from mounting; a
 false fatal fails an entire run, so a pattern must be no broader than the real
 failure sentence.
 
+## Install-stage codes
+
+These are not boot-log fingerprints. They classify a failed `dsh plugin add`
+(pnpm) before the host starts, in `src/plugin-install-diagnostics.js`:
+
+| code | trigger |
+|---|---|
+| `LAB-INSTALL-NOTFOUND` | `ERR_PNPM_FETCH_404` / "is not in the npm registry" |
+| `LAB-INSTALL-NETWORK` | `ECONNRESET` / `ETIMEDOUT` / a codeload retry loop / install timeout |
+| `LAB-INSTALL-UNKNOWN` | a non-zero install with no recognizable pnpm line |
+
+The `plugin-install` check detail carries the elapsed time and the pnpm key
+line, and `report.errorCode` is set even though the run never booted a host. A
+GitHub-looking spec that fails online is pre-checked: a private/monorepo source
+gets a "this is source, install the published package" hint (for
+`mini-yifan/dsh-orb-cordis`, `npm:dsh-orb`) without replacing the input.
+
 ## Known limits
 
 - Only patterns already seen in this repo's runs are covered. An **unknown**

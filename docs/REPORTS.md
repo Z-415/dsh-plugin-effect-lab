@@ -53,7 +53,9 @@ shell-result.json       raw shell result (DOM, console errors, page errors, sett
   `crash`), a root cause, and a suggested fix; see
   `docs/FAILURE-SIGNATURES.md` and `lab scan --list`;
 - `errorCode` / `diagnostics`: the primary code (`LAB-OK`, a signature code, or
-  `LAB-UNKNOWN`), the failed checks, and a bounded boot tail. Pass
+  an install-stage `LAB-INSTALL-*` code, or `LAB-UNKNOWN`), the failed checks,
+  and a bounded boot tail. `diagnostics.install` repeats the pnpm key lines and
+  any repo suggestion for an early install failure. Pass
   `--diagnostics-bundle <file>` to write the redacted bundle; see
   `docs/DIAGNOSTICS.md`;
 - `clone`: for `--clone-profile`, the source snapshot hash, copied files and
@@ -69,7 +71,11 @@ shell-result.json       raw shell result (DOM, console errors, page errors, sett
   "未命中签名的失败上下文" in the HTML/Markdown report. The `bootTail` is the
   last 30 non-empty boot-log lines — the raw material for a new signature.
 - `browser.consoleErrors[]`, `pageErrors[]`, `networkFailures[]`;
-- `cleanup.homeRemoved` and `cleanup.portsLeft`;
+- `cleanup.homeRemoved` and `cleanup.portsLeft`; `cleanup.homeCleanup` records
+  the delete attempt (`attempts`, `elapsedMs`) and, when it fails, the locked
+  path, `errorCode` (EBUSY/EPERM), and the pid/name of every process still
+  referencing the root. The same object is what `cleanup-home` /
+  `cleanup-no-residue` detail and `lab clean` print;
 - `realHome.diff`: structural file hash comparison against the real `~/.dsh`.
 - `plugin-validation.json`: manifest findings for each installed plugin.
 - `fixture.json`: fixed session id, workspace id, and event types.
