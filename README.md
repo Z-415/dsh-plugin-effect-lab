@@ -48,6 +48,61 @@ node bin/lab.js doctor  # environment self-check; must be PASS
 You can also double-click `启动实验台.cmd`. The launcher runs the same commands as the
 CLI and streams their output into a live log pane.
 
+## Desktop GUI buttons
+
+`node bin/lab.js gui` (or double-clicking `启动实验台.cmd`) opens the launcher.
+Every control runs the same `lab.js` command the CLI does, and the output streams
+into the log pane; `中止` stops the running command.
+
+**插件 / 持久 profile** (left)
+
+- `插件` field — the spec to test: an npm/GitHub spec or a local path. Leave it
+  empty to load only what the selected profile already has.
+- `profile` dropdown — `一次性运行` (a temporary home, deleted afterwards), an
+  existing `.lab-profiles/<name>` (its plugins are loaded and kept), or `新建`
+  plus a name. `刷新` re-reads the profile list.
+- `在壳窗口打开（自己关）` — opens the real Electron shell window for the current
+  plugin/profile and leaves it open until you close it.
+- `在壳窗口打开（20 秒）` — the same, auto-closing after 20 seconds.
+- `壳 vs web 对比` — runs the shell and a web baseline over the same profile and
+  diffs DOM slots, `--dsw-*` tokens and pixels.
+- `再加一个插件一起验证` — runs the shell with a second plugin alongside the
+  current one, so a cross-plugin conflict shows up.
+- `卸载这个插件` — removes the plugin named in the `插件` field from the selected
+  persistent profile only.
+- `列出 profile` — lists everything under `.lab-profiles/`.
+- `验证这个插件（出报告截图）` — the full isolated `lab verify` for that spec:
+  checks, report, screenshots.
+- `原生桌面` — use the real folder dialog and OS notification instead of the
+  deterministic stubs (`--native-desktop`); `启动时弹出文件夹对话框` also opens the
+  real picker during the run (`--probe-native-dialog`).
+
+**检查** (right)
+
+- `自检 doctor` — environment self-check; must PASS before anything else.
+- `快速验证` — `lab verify` without installing a new plugin.
+- `验证 + 设置页截图` — the same, plus a settings-page screenshot.
+- `空会话` / `长会话（12 轮）` — run against the `empty` / `long` conversation fixture.
+- `失败签名库` — browse the known failure signatures (`lab scan --list`).
+- `扫描最近一次日志` — re-scan the newest run's boot logs (`lab scan --latest`).
+- `查看已装的 DSH 版本` — `lab runtimes`.
+
+**更多（矩阵 / 版本）** — collapsed under 检查
+
+- `主题冲突矩阵` / `效果探针矩阵` — run the shipped matrix configs.
+- `跨版本矩阵（每个版本各跑一遍）` — run the config once per discovered DSH version.
+
+**清理**
+
+- `查看残留（不改动）` — show leftover lab temp dirs and orphan processes.
+- `清理残留临时目录` — reap the orphan processes, then delete those directories.
+
+**Footer**
+
+- `打开最新 HTML 报告` — open the newest `artifacts/<run>/report.html`.
+- `打开 artifacts 文件夹` — open the artifacts directory.
+- `中止` — stop the running command.
+
 ## Common workflows
 
 ### 1. Verify a plugin
