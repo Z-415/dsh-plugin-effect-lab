@@ -241,12 +241,15 @@ export async function installProfilePlugins(options) {
     plugins = [],
     fixture = false,
     fixtureRoot = null,
+    fixtureWorkspaceName = null,
     online = false,
     installTimeoutMs,
     seederDir = seederPluginDir(),
   } = options;
 
-  const fixtureWorkspace = fixture && fixtureRoot ? createFixtureWorkspace(fixtureRoot) : null;
+  const fixtureWorkspace = fixture && fixtureRoot
+    ? createFixtureWorkspace(fixtureRoot, { name: fixtureWorkspaceName ?? undefined })
+    : null;
   const installSpecs = fixture ? [...plugins, seederDir] : [...plugins];
   let entries = precheckPlugins(installSpecs, version);
   let summary = summarizePluginEntries(entries);

@@ -170,27 +170,52 @@ async function openFixtureSession(window) {
     target.click();
     return true;
   })()`;
-  const mountExpression = "!!document.querySelector('[data-slot=\"conversation.chat.node\"], [data-slot=\"conversation.session\"]')";
+  // A profile without usable provider credentials opens the "Add an API Key"
+  // onboarding modal, which covers the conversation. Dismiss it with its
+  // secondary action so the seeded fixture is visible (the lab never adds a
+  // key).
+  const dismissOnboardingExpression = `(() => {
+    const labels = ['稍后配置', '稍后设置', '跳过', 'Later', 'Skip'];
+    const candidates = [...document.querySelectorAll('button, [role="button"], a')];
+    const target = candidates.find((node) => labels.includes((node.textContent || '').trim()));
+    if (!target) return false;
+    target.click();
+    return true;
+  })()`;
+  const expectedText = config.fixtureReasoning || config.fixtureCodeLine || '';
+  // `conversation.session` exists even on the empty hero, so it is not proof
+  // that the seeded messages rendered. Require the fixture text (or a real
+  // message node) and keep re-clicking the workspace/session until it appears.
+  const visibleExpression = expectedText
+    ? `document.body ? document.body.textContent.includes(${JSON.stringify(expectedText)}) : false`
+    : "!!document.querySelector('[data-slot=\"conversation.chat.node\"]')";
   const deadline = Date.now() + (config.show || config.keepOpen ? 25_000 : 10_000);
   let clickedWorkspace = false;
   let clickedSession = false;
   let mounted = false;
   while (Date.now() < deadline) {
     try {
+      await evaluate(dismissOnboardingExpression);
+    } catch {
+      // No onboarding modal on this profile.
+    }
+    try {
       if (await evaluate(workspaceClickExpression)) clickedWorkspace = true;
     } catch {
       // The page may re-render between clicks.
     }
     try {
-      if (await evaluate(sessionRowExpression)) {
-        clickedSession = true;
-        if (await evaluate(mountExpression)) {
-          mounted = true;
-          break;
-        }
-      }
+      if (await evaluate(sessionRowExpression)) clickedSession = true;
     } catch {
       // The sidebar may still be mounting.
+    }
+    try {
+      if (await evaluate(visibleExpression)) {
+        mounted = true;
+        break;
+      }
+    } catch {
+      // The conversation may still be mounting.
     }
     await sleep(400);
   }
@@ -205,6 +230,7 @@ async function probeFixtureText(window) {
     const text = document.body ? document.body.textContent : '';
     return {
       textLength: text.length,
+      textSample: text.replace(/\s+/g, ' ').trim().slice(0, 500),
       reasoningFound: ${reasoning ? `text.includes(${JSON.stringify(reasoning)})` : 'false'},
       codeFound: ${codeLine ? `text.includes(${JSON.stringify(codeLine)})` : 'false'},
     };

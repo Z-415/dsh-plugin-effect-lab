@@ -13,6 +13,7 @@ import {
 } from './config.js';
 import { createIsolatedHome } from './home-manager.js';
 import {
+  clearLabFixtureState,
   createFixtureWorkspace,
   FIXTURE_SESSION_ID,
   FIXTURE_SESSION_TITLE,
@@ -32,7 +33,7 @@ import {
 } from './lab-profile.js';
 import { describeAgentCoverage, scanForCredentials } from './model-coverage.js';
 import { startMockLlmServer } from './mock-llm-server.js';
-import { installProfilePlugins } from './plugin-install.js';
+import { installProfilePlugins, listInstalledProfilePlugins } from './plugin-install.js';
 import { mintAuthCookie } from './port-and-token.js';
 import { MOCK_API_KEY_ENV, MOCK_MODEL, MOCK_PROVIDER, writeMockProviderPatch } from './provider-patcher.js';
 import { writeMinimalProfile } from './profile-builder.js';
@@ -346,6 +347,12 @@ export async function runLab(options = {}) {
       clone.clonedFrom = clonedFrom;
     }
     const fixtureEnabled = options.fixture !== false;
+    if (fixtureEnabled) {
+      const cleared = clearLabFixtureState(iso.home);
+      if (cleared.removed.length) {
+        progress('install-plugins', `cleared ${cleared.removed.length} stale lab fixture file(s)`);
+      }
+    }
     const fixtureVariant = options.fixtureVariant ?? 'default';
     const fixtureSpec = fixtureEnabled ? readFixtureSpec(fixtureVariant) : null;
     const fixtureSessionId = fixtureSpec?.sessionId ?? FIXTURE_SESSION_ID;
@@ -402,6 +409,13 @@ export async function runLab(options = {}) {
       addCheck(checks, 'plugin-install', true, 'no plugins requested');
     }
     report.plugins = pluginPipeline.pluginList;
+    // Pre-existing third-party plugins in a persistent profile can change the
+    // sidebar/conversation rendering. The fixture is still seeded and the probe
+    // still reports, but a profile plugin breaking the view must not fail the
+    // whole run as if the lab's own fixture were broken.
+    const profileThirdPartyPlugins = listInstalledProfilePlugins(profileDir)
+      .filter((name) => name !== 'dsh-lab-session-fixture');
+    const installedPluginsThisRun = (options.plugins ?? []).length > 0;
     if (pluginPipeline.profileAudit) {
       const audit = pluginPipeline.profileAudit;
       report.profileAudit = { names: audit.names, conflicts: audit.conflicts };
@@ -414,7 +428,7 @@ export async function runLab(options = {}) {
           : `${audit.names.length} installed package(s), no cross-plugin conflict`,
         // Conflicts inside a cloned profile are pre-existing in the real
         // profile the user started from; report them, don't fail the run.
-        { informational: isClonedLabProfile(profileLab) },
+        { informational: isClonedLabProfile(profileLab) || !installedPluginsThisRun },
       );
     }
     const recordedPlugins = (pluginPipeline.pluginList ?? []).filter((entry) => !entry.fixture);
@@ -704,6 +718,7 @@ export async function runLab(options = {}) {
         browser.clicked === true && (!fixtureHasSessionRow || browser.clickedSession === true),
         `workspace=${browser.clicked === true}, session=${browser.clickedSession === true}`
           + `${fixtureHasSessionRow ? '' : ' (no fixture events; session row not expected)'}`,
+        { informational: profileThirdPartyPlugins.length > 0 },
       );
       if (fixtureVariant === 'rich') {
         let probe = null;
@@ -718,12 +733,14 @@ export async function runLab(options = {}) {
           'fixture-thinking-rendered',
           probe?.reasoningFound === true,
           probe ? `renderer text ${probe.length} chars; reasoningFound=${probe.reasoningFound}` : 'renderer text probe missing',
+          { informational: profileThirdPartyPlugins.length > 0 },
         );
         addCheck(
           checks,
           'fixture-code-rendered',
           probe?.codeFound === true,
           probe ? `codeFound=${probe.codeFound}` : 'renderer text probe missing',
+          { informational: profileThirdPartyPlugins.length > 0 },
         );
       }
     }

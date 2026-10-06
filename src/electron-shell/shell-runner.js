@@ -10,8 +10,14 @@ import { hasFatal, scanSources, summarize, tailLines } from '../log-scanner.js';
 import { defaultArtifactsRoot } from '../config.js';
 import { createIsolatedHome } from '../home-manager.js';
 import { mintAuthCookie } from '../port-and-token.js';
-import { FIXTURE_SESSION_ID, FIXTURE_SESSION_TITLE, fixtureEnv, readFixtureSpec } from '../fixture-manager.js';
-import { installProfilePlugins } from '../plugin-install.js';
+import {
+  clearLabFixtureState,
+  FIXTURE_SESSION_ID,
+  FIXTURE_SESSION_TITLE,
+  fixtureEnv,
+  readFixtureSpec,
+} from '../fixture-manager.js';
+import { installProfilePlugins, listInstalledProfilePlugins } from '../plugin-install.js';
 import { spawnTracked, stopTracked } from '../process-tree.js';
 import { reapProcessesByCommandLine } from '../process-reaper.js';
 import { writeMinimalProfile } from '../profile-builder.js';
@@ -163,6 +169,12 @@ export async function runShell(options = {}) {
     const fixtureSessionId = fixtureEnabled ? (fixtureSpec?.sessionId ?? FIXTURE_SESSION_ID) : FIXTURE_SESSION_ID;
     const fixtureTitle = fixtureSpec?.title ?? FIXTURE_SESSION_TITLE;
     const fixtureHasSession = fixtureEnabled && (fixtureSpec?.turns?.length ?? 0) > 0;
+    if (fixtureEnabled) {
+      const cleared = clearLabFixtureState(iso.home);
+      if (cleared.removed.length) {
+        progress('install-plugins', `cleared ${cleared.removed.length} stale lab fixture file(s)`);
+      }
+    }
     const pipeline = await installProfilePlugins({
       runtime,
       env: {
@@ -437,7 +449,10 @@ export async function runShell(options = {}) {
       // compositor-throttled, and a third-party plugin may legitimately change
       // the sidebar; in those cases the probe is reported but does not fail.
       const visible = options.show === true || options.keepOpen === true;
-      const fixtureChecksInformational = !visible || (pipeline.pluginList ?? []).some((entry) => !entry.fixture);
+      const runThirdParty = (pipeline.pluginList ?? []).some((entry) => !entry.fixture);
+      const profileThirdParty = listInstalledProfilePlugins(profileDir)
+        .some((name) => name !== 'dsh-lab-session-fixture');
+      const fixtureChecksInformational = !visible || runThirdParty || profileThirdParty;
       addCheck(
         checks,
         'shell-fixture-session',

@@ -538,6 +538,17 @@ export async function openUi(options) {
         return true;
       })()`;
       const mountExpression = `!!document.querySelector('[data-slot="conversation.chat.node"], [data-slot="conversation.session"]')`;
+      // A profile without usable provider credentials opens the "Add an API
+      // Key" onboarding modal, which covers the conversation. Dismiss it with
+      // its secondary action before clicking the fixture session.
+      const dismissOnboardingExpression = `(() => {
+        const labels = ['稍后配置', '稍后设置', '跳过', 'Later', 'Skip'];
+        const candidates = [...document.querySelectorAll('button, [role="button"], a')];
+        const target = candidates.find((node) => labels.includes((node.textContent || '').trim()));
+        if (!target) return false;
+        target.click();
+        return true;
+      })()`;
       // Click a fresh workspace element every couple of seconds until the
       // sidebar lists the session row, then click the row and wait for the
       // conversation to mount. Re-clicking handles a stale node (React can
@@ -546,6 +557,11 @@ export async function openUi(options) {
       const deadline = Date.now() + 40_000;
       clickedSession = false;
       while (Date.now() < deadline) {
+        try {
+          await evaluate(client, dismissOnboardingExpression);
+        } catch {
+          // No onboarding modal on this profile.
+        }
         try {
           if ((await evaluate(client, workspaceClickExpression)) === true) clicked = true;
         } catch {
