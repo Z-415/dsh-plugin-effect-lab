@@ -134,10 +134,14 @@ node bin/lab.js clean             # remove them
 
 The repo also ships a tiny DSH plugin, `dsh-plugin-effect-lab-bridge`
 (`bridge-plugin/`). It installs into a DSH profile while **the lab itself stays
-outside the profile**: the plugin's settings section holds a single
-**启动实验舱** button that starts the lab's own Electron GUI as a separate
-process, so the DSH window is never replaced or disturbed. The host half also
-registers the agent-facing `lab_verify_plugin` tool.
+outside the profile**: it adds a left-sidebar entry (**实验舱**, a flask icon)
+that opens a standalone panel, plus a **实验舱桥接** section under
+Settings → Plugins. Both carry the same **启动实验舱** button, which starts the
+lab's own Electron GUI as a separate process — the DSH window is never replaced
+or disturbed. The host half also registers the agent-facing
+`lab_verify_plugin` tool. The plugin ships its own stylesheet, so the button
+follows the lab's flat palette (borderless light-blue fill, hover step) rather
+than the host's default button look.
 
 DSH Desktop manages its own profile, so `dsh plugin add` refuses it
 (`profile "desktop" is managed exclusively by the Electron application`).

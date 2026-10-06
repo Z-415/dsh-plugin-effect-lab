@@ -128,9 +128,12 @@ node bin/lab.js clean             # 再删除
 ## DSH 桌面版插件（启动器）
 
 仓库里还带了一个很小的 DSH 插件 `dsh-plugin-effect-lab-bridge`
-（`bridge-plugin/`）。它装进 DSH 的 profile，但**实验舱本体不进 profile**：插件在设置页
-只有一个「启动实验舱」按钮，点击后在外部启动实验舱自己的 Electron GUI——DSH 界面不会被替换，
-也不会被打断。宿主半区另外注册了面向 agent 的工具 `lab_verify_plugin`。
+（`bridge-plugin/`）。它装进 DSH 的 profile，但**实验舱本体不进 profile**：它会加一个
+左侧栏入口（**实验舱**，烧瓶图标），点开是一个独立面板；同时也在 设置 → 插件 下提供
+「实验舱桥接」分区。两处都有同一个「启动实验舱」按钮，点击后在外部启动实验舱自己的
+Electron GUI——DSH 界面不会被替换，也不会被打断。宿主半区另外注册了面向 agent 的工具
+`lab_verify_plugin`。插件自带样式表，按钮跟随实验舱的扁平配色（无边框浅蓝填充、悬停换背景），
+而不是宿主默认的按钮外观。
 
 DSH 桌面版自己管理 profile，所以 `dsh plugin add` 会拒绝它
 （`profile "desktop" is managed exclusively by the Electron application`）。
