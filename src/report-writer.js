@@ -50,6 +50,42 @@ export function renderReportMarkdown(report) {
     const label = check.pass ? '通过' : check.informational ? '提示' : '失败';
     lines.push(`- [${label}] ${check.name}: ${check.detail ?? ''}`);
   }
+  if (report.clone) {
+    const clone = report.clone;
+    lines.push('', '## 真实 profile 克隆', '');
+    lines.push(`- 克隆来源: ${clone.kind} (${clone.sourceDir})`);
+    lines.push(`- 来源快照: ${clone.sourceSnapshot?.files?.length ?? 0} 个结构文件，哈希 ${clone.sourceSnapshot?.hash ?? '不适用'}`);
+    lines.push(`- 已复制结构文件: [${(clone.copiedFiles ?? []).join(', ')}]`);
+    if (clone.copiedPatches?.length) lines.push(`- 已复制 patches: [${clone.copiedPatches.join(', ')}]`);
+    lines.push(`- 插件模式: ${clone.plugins}`);
+    for (const entry of clone.excluded ?? []) {
+      lines.push(`- 已排除插件: ${entry.name} (${entry.spec}) [${entry.reason ?? 'excluded'}]`);
+    }
+    for (const entry of clone.droppedLocal ?? []) {
+      lines.push(`- 已移除本地插件 (--clone-drop-local): ${entry.name} (${entry.spec})`);
+    }
+    if (!clone.droppedLocal?.length) {
+      for (const entry of clone.localPlugins ?? []) {
+        lines.push(`- 本地插件 (${entry.kind}, 只读引用，未复制): ${entry.name} (${entry.spec})`);
+      }
+    }
+    if (clone.credentials) {
+      lines.push(`- 隔离 home 凭据扫描: ${clone.credentials.ok ? '通过（无凭据）' : '失败'}`);
+    }
+    if (clone.install) {
+      lines.push(
+        `- node_modules 重建 (pnpm install --offline): exit ${clone.install.code}`
+          + `${clone.install.timedOut ? ' (timeout)' : ''}，存在 ${clone.install.installed.length}，失败 ${clone.install.missing.length}`,
+      );
+      for (const name of clone.install.missing ?? []) lines.push(`  - 安装失败的插件: ${name}`);
+      for (const entry of clone.install.incompatible ?? []) {
+        lines.push(`  - 运行时不兼容被拒: ${entry.name}@${entry.version}`);
+      }
+      if (clone.install.rejected) {
+        lines.push('  - 说明: DSH 安装后的兼容性检查拒绝了该克隆 profile；这是如实记录的预期失败，不会被吞掉。');
+      }
+    }
+  }
   if (report.signatureHits?.length) {
     lines.push('', '## 启动日志特征', '');
     for (const hit of report.signatureHits) {

@@ -1,0 +1,115 @@
+# Clone a real DSH profile
+
+`lab verify --clone-profile web|desktop` starts from the user's real profile
+instead of the minimal template, so a plugin can be tested against something
+close to the environment it will actually run in.
+
+```powershell
+node bin/lab.js verify --clone-profile web --no-fixture
+node bin/lab.js verify --clone-profile desktop --no-fixture
+node bin/lab.js verify --clone-profile web --clone-plugins none --no-fixture
+node bin/lab.js verify --clone-profile web --clone-exclude dsh-better-sidebar --no-fixture
+node bin/lab.js verify --clone-profile web --clone-drop-local --no-fixture
+```
+
+`--clone-profile` is supported by `lab verify` / `lab capture`. `lab shell`
+keeps its own runner and rejects the flag with a readable error.
+
+## What is copied
+
+Only structural files under `<real home>\profiles\<web|desktop>`:
+
+```text
+package.json
+cordis.yml
+cordis.patch.yml
+pnpm-workspace.yaml
+pnpm-lock.yaml
+patches/**            (regular files only; symlinks are skipped)
+```
+
+Never copied, never read, never walked:
+
+```text
+node_modules/         rebuilt with the official runtime's pnpm instead
+sessions/
+agents/
+.credentials.yaml
+settings.yaml
+```
+
+The module only iterates the allowlist above; it never walks the profile root,
+so a forbidden file cannot be picked up by a broad recursive copy. After
+copying, `clone-no-credentials` runs `scanForCredentials()` over the isolated
+home.
+
+## Hard safety assertions
+
+- `clone-real-profile-unchanged`: the allowlisted real files (and `patches/`)
+  are SHA-256 hashed before and after the copy. A difference aborts the clone.
+- `real-home-unchanged`: the existing before/after hash guard still runs at the
+  end of the whole run.
+- `clone-no-credentials`: the isolated home must contain no credential file and
+  no inline API key.
+- `forbiddenEntries`: `node_modules`, `sessions`, `agents`,
+  `.credentials.yaml`, and `settings.yaml` must not exist in the clone target.
+  A leaked entry aborts the clone.
+- Cloning is refused when the target is inside the real home or already has a
+  `package.json`.
+
+## Rebuilding node_modules
+
+The copied `pnpm-lock.yaml` is used to rebuild the tree offline:
+
+```text
+dsh plugin --profile <profileName> install --offline --no-frozen-lockfile
+```
+
+The run is executed with the isolated `DSH_HOME` and `cwd = <clone profile>`.
+Afterwards every dependency is checked for a real
+`node_modules/<name>/package.json`.
+
+## Expected failures (reported, not hidden)
+
+A clone is not guaranteed to boot. The real desktop profile has ~25
+third-party plugins; peers may disagree with 0.2.0-rc.2, a tarball may be
+missing, or the installation may need the network. The lab reports:
+
+- `clone-install`: the pnpm/DSH exit code, `installed` and `missing` counts;
+- `clone-plugins-present`: every dependency that has no installed manifest;
+- `DSH 拒绝的不兼容插件`: parsed from the install output
+  (`Plugin <name>@<version> is incompatible ...`).
+
+`report.json` stores the same evidence under `clone`:
+
+```text
+clone = {
+  kind, sourceDir, sourceSnapshot: { hash, files },
+  copiedFiles, copiedPatches,
+  plugins: 'all' | 'none',
+  excluded: [{ name, spec, reason }],
+  droppedLocal: [{ name, spec }],
+  localPlugins: [{ name, spec, kind: 'file' | 'link' | 'path' }],
+  install: { ok, code, installed, missing, rejected, incompatible }
+}
+```
+
+`report.md` renders it under **真实 profile 克隆**. `clone-install.log` keeps
+the full pnpm/DSH output next to `report.json`.
+
+## Degrading a clone
+
+| flag | effect |
+|---|---|
+| `--clone-plugins none` | drop every third-party dependency and trim `dsh.profile.bundles` to the first-party bundles |
+| `--clone-exclude <plugin>` | drop one dependency by package name or exact spec |
+| `--clone-drop-local` | drop `file:` / `link:` / path dependencies that would otherwise point at the real plugins directory |
+
+Without `--clone-drop-local`, a `file:`/`link:` dependency is kept as a
+read-only reference to the real path (the lab never copies
+`~/.dsh/plugins`). It is listed under `localPlugins` in the report.
+
+Repeated `--clone-exclude` is supported. `--clone-exclude` and
+`--clone-plugins none` also trim the matching entries from
+`dsh.profile.bundles`; `cordis.patch.yml` is copied verbatim (read-only
+snapshot) and is never written back to the real profile.

@@ -8,6 +8,7 @@ import { evaluateDomAssertions } from './dom-assertions.js';
 import {
   DEFAULT_BROWSER_TIMEOUT_MS,
   DEFAULT_COMMAND_TIMEOUT_MS,
+  REAL_HOME,
   defaultArtifactsRoot,
 } from './config.js';
 import { createIsolatedHome } from './home-manager.js';
@@ -27,6 +28,7 @@ import { installProfilePlugins } from './plugin-install.js';
 import { mintAuthCookie } from './port-and-token.js';
 import { MOCK_API_KEY_ENV, MOCK_MODEL, MOCK_PROVIDER, writeMockProviderPatch } from './provider-patcher.js';
 import { writeMinimalProfile } from './profile-builder.js';
+import { cloneProfileInto, rebuildClonedProfile } from './profile-cloner.js';
 import { diffRealHome, snapshotRealHome } from './real-home-guard.js';
 import {
   createSession,
@@ -74,6 +76,7 @@ function isolatedEnv(iso) {
 export async function runLab(options = {}) {
   const progress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
   const runId = options.runId ?? makeRunId();
+  const realHomePath = options.realHome ?? REAL_HOME;
   const artifactsRoot = options.artifactsRoot ?? defaultArtifactsRoot();
   const runDir = prepareArtifacts(artifactsRoot, runId);
   const checks = [];
@@ -88,6 +91,7 @@ export async function runLab(options = {}) {
     runDir,
     runtime: null,
     profile: null,
+    clone: null,
     isolation: null,
     plugins: [],
     pluginValidation: null,
@@ -133,7 +137,7 @@ export async function runLab(options = {}) {
     });
     progress(`runtime ${version.version ?? 'unknown'}`);
 
-    realBefore = snapshotRealHome();
+    realBefore = snapshotRealHome(realHomePath);
     residueBefore = snapshotLabResidue();
     addCheck(
       checks,
@@ -172,13 +176,82 @@ export async function runLab(options = {}) {
 
     const profileName = options.profileName ?? (iso.persistent ? `lab-${iso.name}` : makeProfileName());
     const profileDir = iso.profileDir(profileName);
+    let clone = null;
+    if (options.cloneProfile) {
+      clone = cloneProfileInto({
+        realHome: realHomePath,
+        kind: options.cloneProfile,
+        profileDir,
+        plugins: options.clonePlugins === 'none' ? 'none' : 'all',
+        exclude: options.cloneExclude ?? [],
+        dropLocal: options.cloneDropLocal === true,
+      });
+      report.clone = clone;
+      addCheck(
+        checks,
+        'clone-source',
+        true,
+        `cloned real ${clone.kind} profile structure: ${clone.copiedFiles.length} file(s), `
+          + `${clone.copiedPatches.length} patch(es) from ${clone.sourceDir}`,
+      );
+      addCheck(
+        checks,
+        'clone-real-profile-unchanged',
+        clone.sourceUnchangedAfterCopy === true,
+        `${clone.sourceSnapshot.files.length} structural file(s) hashed; source hash `
+          + `${clone.sourceSnapshot.hash.slice(0, 12)}... unchanged`,
+      );
+      const cloneCredentials = scanForCredentials(iso.home);
+      clone.credentials = cloneCredentials;
+      addCheck(
+        checks,
+        'clone-no-credentials',
+        cloneCredentials.ok,
+        cloneCredentials.ok
+          ? 'cloned home has no credential file or inline API key'
+          : `found ${cloneCredentials.files.length} credential file(s), ${cloneCredentials.keys.length} inline key(s)`,
+      );
+      progress(
+        `cloned real ${clone.kind} profile: ${clone.copiedFiles.length} file(s), `
+          + `${clone.excluded.length + clone.droppedLocal.length} plugin(s) dropped`,
+      );
+    }
     if (!fs.existsSync(path.join(profileDir, 'package.json'))) {
       writeMinimalProfile(profileDir, { name: profileName });
     }
-    report.profile = { name: profileName, dir: profileDir };
+    report.profile = { name: profileName, dir: profileDir, ...(clone ? { clonedFrom: clone.kind } : {}) };
     addCheck(checks, 'profile-minimal', true, path.join(profileDir, 'package.json'));
 
     const env = isolatedEnv(iso);
+    if (clone) {
+      const rebuilt = await rebuildClonedProfile({
+        runtime,
+        env,
+        profileDir,
+        profileName,
+        timeoutMs: options.installTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS,
+      });
+      clone.install = rebuilt;
+      writeText(runDir, 'clone-install.log', `$ dsh ${rebuilt.args.join(' ')}\n\n${rebuilt.stdout}\n${rebuilt.stderr}`);
+      addCheck(
+        checks,
+        'clone-install',
+        rebuilt.ok,
+        rebuilt.ok
+          ? `pnpm install --offline exit 0; ${rebuilt.installed.length} package(s) present`
+          : `exit ${rebuilt.code}${rebuilt.timedOut ? ' (timeout)' : ''}`
+            + `; ${rebuilt.installed.length} present, ${rebuilt.missing.length} missing`
+            + `${rebuilt.rejected ? `; DSH rejected ${rebuilt.incompatible.length} incompatible plugin(s)` : ''}`,
+      );
+      addCheck(
+        checks,
+        'clone-plugins-present',
+        rebuilt.missing.length === 0,
+        rebuilt.missing.length
+          ? `${rebuilt.missing.length} plugin(s) failed to install: ${rebuilt.missing.join(', ')}`
+          : 'every cloned dependency is present in node_modules',
+      );
+    }
     const fixtureEnabled = options.fixture !== false;
     const fixtureVariant = options.fixtureVariant ?? 'default';
     const fixtureSpec = fixtureEnabled ? readFixtureSpec(fixtureVariant) : null;
@@ -728,7 +801,7 @@ export async function runLab(options = {}) {
 
     if (realBefore) {
       try {
-        const realAfter = snapshotRealHome();
+        const realAfter = snapshotRealHome(realHomePath);
         const diff = diffRealHome(realBefore, realAfter);
         report.realHome = { before: realBefore, after: realAfter, diff };
         addCheck(checks, 'real-home-unchanged', diff.ok, diff.ok ? 'all structural hashes unchanged' : `${diff.changed.length} changed`);
@@ -744,6 +817,7 @@ export async function runLab(options = {}) {
       copyIfExists(path.join(profileDir, 'cordis.yml'), path.join(runDir, 'profile.cordis.yml'));
     }
     writeJson(runDir, 'runtime.json', report.runtime);
+    writeJson(runDir, 'clone.json', report.clone);
     writeJson(runDir, 'plugin-validation.json', report.pluginValidation);
     writeJson(runDir, 'fixture.json', report.fixture);
     writeJson(runDir, 'mock-llm.json', report.mockModel ? { ...report.mockModel, evidence: mockServer?.evidence ?? [] } : null);
@@ -770,6 +844,7 @@ export async function runLab(options = {}) {
       bootOut: path.join(runDir, 'boot.out.log'),
       bootErr: path.join(runDir, 'boot.err.log'),
       installLog: path.join(runDir, 'install.log'),
+      ...(report.clone ? { cloneInstallLog: path.join(runDir, 'clone-install.log') } : {}),
       mockLlm: path.join(runDir, 'mock-llm.json'),
       screenshots: report.browser?.screenshots ?? {},
     };

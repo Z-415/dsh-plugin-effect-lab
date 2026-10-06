@@ -11,6 +11,15 @@
 - The temp home is deleted in `finally`, and deletion is verified.
 - Real structural profile files are hashed before and after the run:
   `profiles/{web,desktop}/{package.json,cordis.yml,cordis.patch.yml,pnpm-workspace.yaml,pnpm-lock.yaml}`.
+- `--clone-profile web|desktop` reads only the allowlisted structural files and
+  regular files under `patches/`; it never walks the profile root and never
+  reads or copies `node_modules`, `sessions/`, `agents/`, `.credentials.yaml`,
+  or `settings.yaml`. The allowlisted source files are SHA-256 hashed before
+  and after the copy, and the isolated home is scanned for credentials. A
+  leaked forbidden entry aborts the clone.
+- The clone never copies `node_modules` (the real desktop tree is ~296 MB and
+  is not portable); it rebuilds the tree with the official runtime's
+  `pnpm install --offline` inside the isolated profile.
 - `--mock-model` binds only to `127.0.0.1`, uses a synthetic API key, and makes
   no outbound model request.
 - `lab shell` runs the copied official Electron runtime with its own

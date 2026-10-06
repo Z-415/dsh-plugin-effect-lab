@@ -130,3 +130,12 @@ package name visible:
 
 A GitHub source that cannot be reached offline is reported as a failed install
 with the plugin list empty; the lab does not retry-online silently.
+
+## Starting from the real profile
+
+`lab verify --clone-profile web|desktop` starts from the user's real profile
+structure (never `node_modules`, credentials, settings, sessions, or agents)
+and rebuilds `node_modules` offline. See
+[CLONE-PROFILE.md](CLONE-PROFILE.md) for the allowlist, the hard before/after
+hash assertions, and the `--clone-plugins none` / `--clone-exclude` /
+`--clone-drop-local` degradation flags.

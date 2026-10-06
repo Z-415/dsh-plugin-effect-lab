@@ -92,3 +92,40 @@ test('capture and verify both forward --profile-lab to their runner', async () =
   assert.equal(seen.capture.html, false);
   assert.deepStrictEqual(seen.capture.plugins, []);
 });
+
+test('clone flags parse and forward into the verify runner', async () => {
+  const original = { ...browserRunners };
+  let seen = null;
+  browserRunners.verify = async (options) => {
+    seen = options;
+    return 0;
+  };
+  try {
+    assert.equal(
+      await main([
+        'verify',
+        '--clone-profile', 'web',
+        '--clone-plugins', 'none',
+        '--clone-exclude', 'dsh-x',
+        '--clone-exclude', 'dsh-y',
+        '--clone-drop-local',
+        '--no-html',
+      ]),
+      0,
+    );
+  } finally {
+    Object.assign(browserRunners, original);
+  }
+  assert.equal(seen.cloneProfile, 'web');
+  assert.equal(seen.clonePlugins, 'none');
+  assert.deepStrictEqual(seen.cloneExclude, ['dsh-x', 'dsh-y']);
+  assert.equal(seen.cloneDropLocal, true);
+});
+
+test('lab shell rejects --clone-profile with exit 2', async () => {
+  assert.equal(await main(['shell', '--clone-profile', 'web']), 2);
+});
+
+test('--clone-profile needs a value', () => {
+  assert.throws(() => parseArgv(['verify', '--clone-profile']), /needs a value/);
+});

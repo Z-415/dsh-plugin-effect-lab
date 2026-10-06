@@ -21,6 +21,9 @@ const VALUE_FLAGS = new Set([
   'fixture-variant',
   'show-hold',
   'profile-lab',
+  'clone-profile',
+  'clone-plugins',
+  'clone-exclude',
   'artifacts',
   'browser',
   'boot-timeout',
@@ -36,7 +39,7 @@ const VALUE_FLAGS = new Set([
   'route',
 ]);
 
-const REPEATABLE = new Set(['plugin', 'with', 'screenshot', 'assert-token', 'assert-slot', 'assert-body-attr', 'log', 'route']);
+const REPEATABLE = new Set(['plugin', 'with', 'screenshot', 'assert-token', 'assert-slot', 'assert-body-attr', 'log', 'route', 'clone-exclude']);
 
 const BOOLEAN_FLAGS = new Set([
   'json', 'offline', 'online', 'no-fixture', 'mock-model', 'strict-console',
@@ -44,6 +47,7 @@ const BOOLEAN_FLAGS = new Set([
   'no-html', 'native-desktop', 'probe-native-dialog',
   'list', 'latest', 'explain', 'runtime-matrix',
   'rebuild', 'install-shortcut', 'no-open',
+  'clone-drop-local',
 ]);
 
 /**
@@ -104,6 +108,10 @@ export function browserCommandOptions(flags, common) {
     fixture: flags['no-fixture'] !== true,
     fixtureVariant: flags['fixture-variant'] ?? 'default',
     profileLab: flags['profile-lab'],
+    cloneProfile: flags['clone-profile'],
+    clonePlugins: flags['clone-plugins'] ?? 'all',
+    cloneExclude: flags['clone-exclude'] ?? [],
+    cloneDropLocal: flags['clone-drop-local'] === true,
     mockModel: flags['mock-model'] === true,
     online: flags.online === true,
     screenshots: flags.screenshot ?? ['home'],
@@ -178,6 +186,10 @@ export async function main(argv) {
         runtimeTimeoutMs: numberFlag(flags, 'runtime-timeout'),
       });
     case 'shell':
+      if (flags['clone-profile'] !== undefined) {
+        process.stderr.write('--clone-profile is only supported by `lab verify` / `lab capture`; `lab shell` keeps its own runner.\n');
+        return 2;
+      }
       return runShellCommand({
         ...common,
         artifactsRoot: flags.artifacts,
@@ -237,6 +249,8 @@ Usage:
              [--min-slots <n>]
              [--fixture-variant default|empty|long|rich]
              [--profile-lab <name>]
+             [--clone-profile web|desktop [--clone-plugins all|none]
+              [--clone-exclude <plugin>] [--clone-drop-local]]
              [--artifacts <dir>] [--browser <exe>] [--no-fixture]
              [--boot-transport stdout|ipc]
              [--mock-model] [--route /plugin/health] [--no-html] [--json]
@@ -269,6 +283,15 @@ read back from the isolated profile.
 --fixture-variant rich seeds an assistant turn with a reasoning content block
 ({ type: 'reasoning', text }) plus a fenced code block, and a second turn
 with a tool call, so thinking/code/tool rendering are all covered.
+--clone-profile web|desktop starts from the real profile's structural files
+(package.json / cordis.yml / cordis.patch.yml / pnpm-*.yaml / patches/), never
+from node_modules, credentials, settings, sessions, or agents. node_modules is
+rebuilt with the official runtime's pnpm install --offline. --clone-plugins
+none drops every third-party plugin, --clone-exclude <plugin> drops one, and
+--clone-drop-local drops file:/link: directory references. Clones that
+fail to install or boot are reported as failures, not hidden. --clone-profile
+is supported by lab verify / lab capture; lab shell keeps its own runner
+and rejects it.
 lab shell boots the same isolated Host, opens it once in headless Edge and once
 through a minimal Electron shell, then diffs DOM slots, body attributes, and
 --dsw-* tokens. Pass --no-compare-web to skip the Edge baseline. --show makes
