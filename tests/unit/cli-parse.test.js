@@ -129,3 +129,26 @@ test('lab shell rejects --clone-profile with exit 2', async () => {
 test('--clone-profile needs a value', () => {
   assert.throws(() => parseArgv(['verify', '--clone-profile']), /needs a value/);
 });
+
+test('--diagnostics-bundle is forwarded to the verify runner', async () => {
+  const original = { ...browserRunners };
+  let seen = null;
+  browserRunners.verify = async (options) => {
+    seen = options;
+    return 0;
+  };
+  try {
+    assert.equal(await main(['verify', '--diagnostics-bundle', 'out/diag.json', '--no-html']), 0);
+  } finally {
+    Object.assign(browserRunners, original);
+  }
+  assert.equal(seen.diagnosticsBundle, 'out/diag.json');
+});
+
+test('lab shell rejects --diagnostics-bundle with exit 2', async () => {
+  assert.equal(await main(['shell', '--diagnostics-bundle', 'x.json']), 2);
+});
+
+test('lab diagnose without a source fails with exit 2', async () => {
+  assert.equal(await main(['diagnose']), 2);
+});

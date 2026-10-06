@@ -21,6 +21,8 @@ screenshots/fixture.png
 plugin-validation.json
 fixture.json
 mock-llm.json
+clone.json            (only for --clone-profile)
+clone-install.log     (only for --clone-profile)
 ```
 
 `report.html` is a self-contained page (checks, screenshots embedded as data
@@ -46,9 +48,18 @@ shell-result.json       raw shell result (DOM, console errors, page errors, sett
 - `ok`: all non-informational checks passed;
 - `checks[]`: boot, token, route, UI, token probe, cleanup, and hash checks;
 - `signatureHits[]`: fatal or warning boot-log fingerprints, each with a
-  `category` (`boot` / `plugin` / `client` / `profile` / `env` / `runtime` /
+  stable `code` (`LAB-BOOT-002`, ...), a `category` (`boot` / `plugin` /
+  `client` / `profile` / `env` / `runtime` /
   `crash`), a root cause, and a suggested fix; see
   `docs/FAILURE-SIGNATURES.md` and `lab scan --list`;
+- `errorCode` / `diagnostics`: the primary code (`LAB-OK`, a signature code, or
+  `LAB-UNKNOWN`), the failed checks, and a bounded boot tail. Pass
+  `--diagnostics-bundle <file>` to write the redacted bundle; see
+  `docs/DIAGNOSTICS.md`;
+- `clone`: for `--clone-profile`, the source snapshot hash, copied files and
+  patches, excluded/dropped plugins, local `file:`/`link:` references, and the
+  offline `node_modules` rebuild result (`ok`, `missing`, `incompatible`,
+  `rejected`);
 - `consoleSignatureHits[]`: the same fingerprints, but matched against the
   browser console errors, page errors, and failed requests (`console-signatures`
   check). `signatureHits` is the merge of both sources, deduped.

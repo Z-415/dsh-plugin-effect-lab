@@ -19,6 +19,7 @@ import {
   fixtureEnv,
   readFixtureSpec,
 } from './fixture-manager.js';
+import { summarizeDiagnostics, writeDiagnosticsBundle } from './diagnostics.js';
 import { hasFatal, scanLogs, scanNoise, scanSources, summarize, tailLines } from './log-scanner.js';
 import { writeHtmlReport } from './html-report.js';
 import { openLabProfileHome, recordProfilePlugins } from './lab-profile.js';
@@ -742,6 +743,7 @@ export async function runLab(options = {}) {
       ]
       : [];
     report.signatureHits = scanSources([bootText, ...consoleTexts]);
+    report.bootTail = tailLines(bootText, 40);
 
     if (iso) {
       try {
@@ -851,6 +853,19 @@ export async function runLab(options = {}) {
     if (options.html !== false) {
       report.artifacts.reportHtml = path.join(runDir, 'report.html');
     }
+    if (options.diagnosticsBundle) {
+      try {
+        const bundle = writeDiagnosticsBundle(report, options.diagnosticsBundle);
+        report.artifacts.diagnosticsBundle = bundle.path;
+        addCheck(checks, 'diagnostics-bundle', true, bundle.path);
+      } catch (error) {
+        errors.push(`diagnostics bundle failed: ${String(error?.message ?? error)}`);
+        addCheck(checks, 'diagnostics-bundle', false, String(error?.message ?? error));
+      }
+    }
+    report.ok = checks.every((check) => check.pass || check.informational === true);
+    report.diagnostics = summarizeDiagnostics(report);
+    report.errorCode = report.diagnostics.primaryCode;
     writeJson(runDir, 'report.json', report);
     writeText(runDir, 'report.md', renderReportMarkdown(report));
     if (options.html !== false) {

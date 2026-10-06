@@ -89,7 +89,20 @@ export function renderReportMarkdown(report) {
   if (report.signatureHits?.length) {
     lines.push('', '## 启动日志特征', '');
     for (const hit of report.signatureHits) {
-      lines.push(`- [${hit.severity}] ${hit.id} (${hit.category ?? 'general'}): ${hit.rootCause} -> ${hit.fix}`);
+      lines.push(`- [${hit.severity}] ${hit.code ?? 'LAB-UNKNOWN'} ${hit.id} (${hit.category ?? 'general'}): ${hit.rootCause} -> ${hit.fix}`);
+    }
+  }
+  if (report.diagnostics) {
+    lines.push('', '## 诊断', '');
+    lines.push(`- 错误码: ${(report.diagnostics.errorCodes ?? ['LAB-UNKNOWN']).join(', ')}`);
+    lines.push(
+      `- 结论: ${report.diagnostics.unknown ? '未命中已知签名，已附启动日志末尾与失败检查作为证据' : '命中已知签名'}`,
+    );
+    if (report.diagnostics.failedChecks?.length) {
+      lines.push(`- 失败检查: ${report.diagnostics.failedChecks.map((check) => check.name).join(', ')}`);
+    }
+    if (report.artifacts?.diagnosticsBundle) {
+      lines.push(`- 脱敏诊断包: ${report.artifacts.diagnosticsBundle}`);
     }
   }
   if (report.browser?.consoleErrors?.length) {

@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { buildVerifyArgs, killProcessTree, runLabVerify, sanitizeLabEnv } from '../lib/lab-cli.js';
+import {
+  buildDiagnoseArgs,
+  buildVerifyArgs,
+  killProcessTree,
+  runLabDiagnose,
+  runLabVerify,
+  sanitizeLabEnv,
+} from '../lib/lab-cli.js';
 
 test('buildVerifyArgs is offline by default and never passes --profile-lab', () => {
   const args = buildVerifyArgs({
@@ -196,4 +203,40 @@ test('killProcessTree falls back to SIGKILL off win32', () => {
   const result = killProcessTree({ pid: 1, kill: (value) => { signal = value; } }, { platform: 'linux' });
   assert.equal(result.killed, true);
   assert.equal(signal, 'SIGKILL');
+});
+
+test('buildDiagnoseArgs picks one source and always passes --json', () => {
+  assert.deepEqual(
+    buildDiagnoseArgs({ labEntry: 'lab.js', reportPath: 'r.json' }),
+    ['lab.js', 'diagnose', '--report', 'r.json', '--json'],
+  );
+  assert.deepEqual(
+    buildDiagnoseArgs({ labEntry: 'lab.js', bundlePath: 'b.json' }),
+    ['lab.js', 'diagnose', '--bundle', 'b.json', '--json'],
+  );
+  assert.deepEqual(
+    buildDiagnoseArgs({ labEntry: 'lab.js', logPath: 'boot.err.log' }),
+    ['lab.js', 'diagnose', '--log', 'boot.err.log', '--json'],
+  );
+  assert.deepEqual(
+    buildDiagnoseArgs({ labEntry: 'lab.js' }),
+    ['lab.js', 'diagnose', '--latest', '--json'],
+  );
+  assert.deepEqual(
+    buildDiagnoseArgs({ labEntry: 'lab.js', latest: true, artifactsDir: 'a' }),
+    ['lab.js', 'diagnose', '--latest', '--artifacts', 'a', '--json'],
+  );
+});
+
+test('runLabDiagnose parses the structured diagnostics JSON', async () => {
+  const diagnostics = { ok: false, primaryCode: 'LAB-BOOT-002', errorCodes: ['LAB-BOOT-002'], unknown: false };
+  const outcome = await runLabDiagnose({
+    nodeExe: 'node',
+    labEntry: 'lab.js',
+    reportPath: 'r.json',
+    timeoutMs: 5000,
+    spawnImpl: () => fakeChild({ stdout: JSON.stringify(diagnostics), code: 1 }),
+  });
+  assert.equal(outcome.exitCode, 1);
+  assert.deepEqual(outcome.report, diagnostics);
 });

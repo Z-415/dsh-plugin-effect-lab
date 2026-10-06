@@ -3,8 +3,8 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { resolveBridgeConfig } from './config.js';
-import { runLabVerify } from './lab-cli.js';
-import { summarizeReport } from './report-summary.js';
+import { runLabDiagnose, runLabVerify } from './lab-cli.js';
+import { summarizeDiagnosticsOutcome, summarizeReport } from './report-summary.js';
 import { createBridgeRouteHandler } from './routes.js';
 import { createGuiLauncher } from './launch.js';
 
@@ -112,6 +112,116 @@ function toolDefinition(getConfig) {
   });
 }
 
+/**
+ * Agent-facing diagnostic tool. The lab already redacts credentials/sessions/
+ * settings and assigns stable error codes; this tool only carries that
+ * structured evidence into the DSH agent, which explains the cause.
+ */
+function diagnoseToolDefinition(getConfig) {
+  return defineTool({
+    name: 'lab_diagnose',
+    description:
+      '读取实验舱已经产出的 report.json、脱敏诊断包(--diagnostics-bundle)或日志，'
+      + '或实验舱 artifacts 下最近一次 report.json，返回结构化的稳定错误码、失败检查和有界日志末尾。'
+      + '实验舱负责产出证据，DSH agent 负责解释；本工具不会读取真实凭据、sessions 或 settings。',
+    parameters: {
+      report: {
+        type: 'string',
+        description: 'report.json 的绝对路径（与 bundle/log 三选一）。',
+      },
+      bundle: {
+        type: 'string',
+        description: 'lab verify --diagnostics-bundle 产出的脱敏诊断包路径（与 report/log 三选一）。',
+      },
+      log: {
+        type: 'string',
+        description: 'boot.out.log / boot.err.log 的绝对路径（与 report/bundle 三选一）。',
+      },
+      latest: {
+        type: 'boolean',
+        description: '三者都没给时，读实验舱 artifacts 下最近一次 report.json（默认 true）。',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          ok: { type: 'boolean', required: true },
+          parsed: { type: 'boolean', required: true },
+          timedOut: { type: 'boolean', required: true },
+          exitCode: { type: 'json' },
+          error: { type: 'string' },
+          stderrTail: { type: 'string' },
+          primaryCode: { type: 'json' },
+          errorCodes: { type: 'array', items: { type: 'string' } },
+          unknown: { type: 'boolean' },
+          runId: { type: 'json' },
+          source: { type: 'json' },
+          signatures: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                code: { type: 'string', required: true },
+                id: { type: 'json' },
+                category: { type: 'json' },
+                severity: { type: 'json' },
+                matched: { type: 'json' },
+                rootCause: { type: 'json' },
+                fix: { type: 'json' },
+              },
+            },
+          },
+          failedChecks: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                name: { type: 'json' },
+                detail: { type: 'json' },
+              },
+            },
+          },
+          bootTail: { type: 'array', items: { type: 'string' } },
+          reportJson: { type: 'json' },
+        },
+      },
+      render: (_args, value) => [
+        {
+          type: 'text',
+          text: value.parsed
+            ? `实验舱诊断：错误码 ${(value.errorCodes ?? []).join(', ')}；`
+              + `命中签名 ${(value.signatures ?? []).length} 条；失败检查 ${(value.failedChecks ?? []).length} 项；`
+              + `报告：${value.reportJson ?? value.source ?? '见实验舱 artifacts'}`
+            : `实验舱诊断解析失败：${value.error ?? '未知错误'}`,
+        },
+      ],
+    },
+    async execute(args) {
+      const config = getConfig();
+      const reportPath = String(args?.report ?? '').trim() || undefined;
+      const bundlePath = String(args?.bundle ?? '').trim() || undefined;
+      const logPath = String(args?.log ?? '').trim() || undefined;
+      const latest = !reportPath && !bundlePath && !logPath ? true : args?.latest === true;
+      const outcome = await runLabDiagnose({
+        nodeExe: config.nodeExe,
+        labEntry: config.labEntry,
+        reportPath,
+        bundlePath,
+        logPath,
+        latest,
+        artifactsDir: config.artifactsDir,
+        timeoutMs: config.timeoutMs,
+        cwd: config.labRoot,
+      });
+      return summarizeDiagnosticsOutcome(outcome);
+    },
+  });
+}
+
 export function apply(ctx, config = {}) {
   const disposers = [];
   let cached;
@@ -154,6 +264,7 @@ export function apply(ctx, config = {}) {
     throw new Error('dsh-plugin-effect-lab-bridge: tools service is missing despite inject');
   }
   disposers.push(tools.register(toolDefinition(getConfig)));
+  disposers.push(tools.register(diagnoseToolDefinition(getConfig)));
 
   return () => {
     for (const dispose of disposers) {

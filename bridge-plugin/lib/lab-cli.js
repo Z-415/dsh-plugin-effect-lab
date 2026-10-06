@@ -31,6 +31,22 @@ export function buildVerifyArgs({ labEntry, pluginSpec, online = false, artifact
 }
 
 /**
+ * `lab diagnose` args for the agent-facing lab_diagnose tool. Exactly one
+ * source is expected: a saved report.json, a diagnostics bundle, a log file,
+ * or `--latest`.
+ */
+export function buildDiagnoseArgs({ labEntry, reportPath, bundlePath, logPath, latest = false, artifactsDir }) {
+  const args = [labEntry, 'diagnose'];
+  if (reportPath) args.push('--report', reportPath);
+  else if (bundlePath) args.push('--bundle', bundlePath);
+  else if (logPath) args.push('--log', logPath);
+  else args.push('--latest');
+  if (artifactsDir) args.push('--artifacts', artifactsDir);
+  args.push('--json');
+  return args;
+}
+
+/**
  * Kill the lab process tree. `child.kill()` only reaps the direct child; on
  * Windows the lab spawns DSH/Electron/Edge grandchildren that must go too.
  */
@@ -66,17 +82,15 @@ function parseJsonOutput(stdout) {
 }
 
 /**
- * Run `node <lab>/bin/lab.js verify ...` and resolve with the raw outcome.
- * A non-zero exit code is NOT an error: the lab returns 1 for a valid report
+ * Run `node <lab>/bin/lab.js ...` and resolve with the raw outcome. A
+ * non-zero exit code is NOT an error: the lab returns 1 for a valid report
  * whose checks failed, so stdout is always parsed first.
  */
-export function runLabVerify(options) {
+function runLabProcess(options) {
   const {
     nodeExe,
     labEntry,
-    pluginSpec,
-    online = false,
-    artifactsDir,
+    args,
     timeoutMs,
     cwd,
     env,
@@ -84,7 +98,6 @@ export function runLabVerify(options) {
     killTreeImpl = killProcessTree,
     signal,
   } = options;
-  const args = buildVerifyArgs({ labEntry, pluginSpec, online, artifactsDir });
   if (signal?.aborted) {
     return Promise.resolve({ exitCode: null, timedOut: false, aborted: true, stdout: '', stderr: '', report: null });
   }
@@ -146,4 +159,12 @@ export function runLabVerify(options) {
       if (signal.aborted) onAbort();
     }
   });
+}
+
+export function runLabVerify(options) {
+  return runLabProcess({ ...options, args: buildVerifyArgs(options) });
+}
+
+export function runLabDiagnose(options) {
+  return runLabProcess({ ...options, args: buildDiagnoseArgs(options) });
 }

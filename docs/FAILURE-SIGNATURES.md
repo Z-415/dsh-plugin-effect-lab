@@ -30,30 +30,36 @@ node bin/lab.js scan --log x.log --explain   # lines around each hit
 
 ## Entries
 
-| id | category | severity | root cause |
-|---|---|---|---|
-| `duplicate-loader-id` | plugin | fatal | two loader entries share one id; the tree will not mount |
-| `duplicate-tool` | plugin | fatal | two plugins register the same model tool name |
-| `keyed-slot-requires-key` | client | fatal | a slot registration does not match the host slot kind |
-| `unknown-slot-kind` | client | fatal | client registers a slot kind the host does not know |
-| `missing-module` | plugin | fatal | a plugin entry or import cannot resolve |
-| `plugin-tree-failed` | plugin | fatal | the composed plugin tree failed on one loader entry |
-| `unresolved-service` | plugin | fatal | a plugin injected a service the host never registered |
-| `engines-unsatisfied` | plugin | fatal | plugin engines range does not satisfy the runtime |
-| `yaml-parse-error` | profile | fatal | a `cordis.patch.yml` layer is not a valid YAML array |
-| `bundle-patch-missing` | profile | fatal | a bundle points at a patch file that does not exist |
-| `bundle-dependency-mismatch` | profile | fatal | a bundle has no matching dependency |
-| `fiber-pending` | boot | fatal | a plugin never settled during startup |
-| `port-in-use` | boot | fatal | the host could not bind its port |
-| `host-boot-timeout` | boot | fatal | no readiness line within the timeout |
-| `electron-main-crash` | crash | fatal | the shell main process crashed |
-| `client-module-load` | client | fatal | the renderer could not load a plugin client module |
-| `atomic-write-eperm` | env | fatal | an atomic write could not replace its target |
-| `permission-denied` | env | fatal | `EACCES` opening a file or directory |
-| `path-too-long` | env | fatal | a path hit the Windows length limit |
-| `schemastery-volatile-missing` | runtime | fatal | resolved `schemastery` is older than the plugin expects |
-| `configforms-missing` | runtime | fatal | plugin expects the 0.2.x `configForms` service |
-| `peer-conflict` | plugin | warning | a peer range disagrees with the host |
+| code | id | category | severity | root cause |
+|---|---|---|---|---|
+| `LAB-PLUGIN-001` | `duplicate-loader-id` | plugin | fatal | two loader entries share one id; the tree will not mount |
+| `LAB-PLUGIN-002` | `duplicate-tool` | plugin | fatal | two plugins register the same model tool name |
+| `LAB-CLIENT-001` | `keyed-slot-requires-key` | client | fatal | a slot registration does not match the host slot kind |
+| `LAB-CLIENT-002` | `unknown-slot-kind` | client | fatal | client registers a slot kind the host does not know |
+| `LAB-PLUGIN-003` | `missing-module` | plugin | fatal | a plugin entry or import cannot resolve |
+| `LAB-PLUGIN-004` | `plugin-tree-failed` | plugin | fatal | the composed plugin tree failed on one loader entry |
+| `LAB-PLUGIN-005` | `unresolved-service` | plugin | fatal | a plugin injected a service the host never registered |
+| `LAB-PLUGIN-006` | `engines-unsatisfied` | plugin | fatal | plugin engines range does not satisfy the runtime |
+| `LAB-PROFILE-001` | `yaml-parse-error` | profile | fatal | a `cordis.patch.yml` layer is not a valid YAML array |
+| `LAB-PROFILE-002` | `bundle-patch-missing` | profile | fatal | a bundle points at a patch file that does not exist |
+| `LAB-PROFILE-003` | `bundle-dependency-mismatch` | profile | fatal | a bundle has no matching dependency |
+| `LAB-BOOT-001` | `fiber-pending` | boot | fatal | a plugin never settled during startup |
+| `LAB-BOOT-002` | `port-in-use` | boot | fatal | the host could not bind its port |
+| `LAB-BOOT-003` | `host-boot-timeout` | boot | fatal | no readiness line within the timeout |
+| `LAB-CRASH-001` | `electron-main-crash` | crash | fatal | the shell main process crashed |
+| `LAB-CLIENT-003` | `client-module-load` | client | fatal | the renderer could not load a plugin client module |
+| `LAB-ENV-001` | `atomic-write-eperm` | env | fatal | an atomic write could not replace its target |
+| `LAB-ENV-002` | `permission-denied` | env | fatal | `EACCES` opening a file or directory |
+| `LAB-ENV-003` | `path-too-long` | env | fatal | a path hit the Windows length limit |
+| `LAB-RUNTIME-001` | `schemastery-volatile-missing` | runtime | fatal | resolved `schemastery` is older than the plugin expects |
+| `LAB-RUNTIME-002` | `configforms-missing` | runtime | fatal | plugin expects the 0.2.x `configForms` service |
+| `LAB-PLUGIN-007` | `peer-conflict` | plugin | warning | a peer range disagrees with the host |
+
+The codes are **stable**: once a code is published it keeps its meaning even if
+the wording of the signature changes. New signatures get the next free number
+in their category. `LAB-UNKNOWN` is reserved for a failed run that matched no
+signature (its evidence is the failed checks plus a bounded boot-log tail); a
+clean run reports `LAB-OK` with an empty `errorCodes` list.
 
 ## Adding a signature
 

@@ -15,6 +15,7 @@ export async function runVerifyCommand(options) {
     clonePlugins: options.clonePlugins,
     cloneExclude: options.cloneExclude,
     cloneDropLocal: options.cloneDropLocal,
+    diagnosticsBundle: options.diagnosticsBundle,
     mockModel: options.mockModel,
     online: options.online,
     screenshots: options.screenshots,

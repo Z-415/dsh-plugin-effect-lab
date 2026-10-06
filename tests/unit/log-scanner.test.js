@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  UNKNOWN_CODE,
   hasFatal,
   linesAroundMatch,
   listSignatures,
@@ -81,6 +82,7 @@ test('signature ids are unique and the library is browsable', () => {
   assert.equal(new Set(library.map((item) => item.id)).size, library.length, 'ids must be unique');
   for (const item of library) {
     assert.equal(typeof item.id, 'string');
+    assert.match(item.code, /^LAB-(BOOT|PLUGIN|CLIENT|PROFILE|ENV|RUNTIME|CRASH)-\d{3}$/, item.id);
     assert.equal(['fatal', 'warning'].includes(item.severity), true, item.id);
     assert.equal(typeof item.category, 'string');
     assert.equal(item.rootCause.length > 0, true, item.id);
@@ -88,10 +90,38 @@ test('signature ids are unique and the library is browsable', () => {
   }
 });
 
+test('every signature carries a unique, stable error code', () => {
+  const library = listSignatures();
+  assert.equal(library.length, 22, 'the 22 documented signatures');
+  const codes = library.map((item) => item.code);
+  assert.equal(new Set(codes).size, codes.length, 'error codes must be unique');
+  const byId = new Map(library.map((item) => [item.id, item.code]));
+  assert.equal(byId.get('duplicate-loader-id'), 'LAB-PLUGIN-001');
+  assert.equal(byId.get('fiber-pending'), 'LAB-BOOT-001');
+  assert.equal(byId.get('port-in-use'), 'LAB-BOOT-002');
+  assert.equal(byId.get('host-boot-timeout'), 'LAB-BOOT-003');
+  assert.equal(byId.get('unknown-slot-kind'), 'LAB-CLIENT-002');
+  assert.equal(byId.get('yaml-parse-error'), 'LAB-PROFILE-001');
+  assert.equal(byId.get('electron-main-crash'), 'LAB-CRASH-001');
+  assert.equal(byId.get('permission-denied'), 'LAB-ENV-002');
+  assert.equal(byId.get('configforms-missing'), 'LAB-RUNTIME-002');
+});
+
+test('scan hits and summarize expose the error code', () => {
+  const hits = scanLogs('Error: listen EADDRINUSE: address already in use 127.0.0.1:5566');
+  assert.equal(hits[0].code, 'LAB-BOOT-002');
+  assert.match(summarize(hits), /\[LAB-BOOT-002\] port-in-use/);
+});
+
+test('the unknown code is reserved for unmatched failures', () => {
+  assert.equal(UNKNOWN_CODE, 'LAB-UNKNOWN');
+  assert.equal(scanLogs('nothing here').length, 0);
+});
+
 test('summarize labels the category for each hit', () => {
   const text = summarize(scanLogs('Error: EADDRINUSE: address already in use 127.0.0.1:1'));
   assert.match(text, /BLOCKER/);
-  assert.match(text, /\[port-in-use\] \(boot\)/);
+  assert.match(text, /\[LAB-BOOT-002\] port-in-use \(boot\)/);
 });
 
 test('scanSources merges boot logs and console errors without duplicates', () => {

@@ -1,5 +1,6 @@
 import { runCaptureCommand } from './commands/capture.js';
 import { runCleanCommand } from './commands/clean.js';
+import { runDiagnoseCommand } from './commands/diagnose.js';
 import { runDoctor } from './commands/doctor.js';
 import { runGuiCommand } from './commands/gui.js';
 import { runProfileCommand } from './commands/profile.js';
@@ -24,6 +25,9 @@ const VALUE_FLAGS = new Set([
   'clone-profile',
   'clone-plugins',
   'clone-exclude',
+  'diagnostics-bundle',
+  'report',
+  'bundle',
   'artifacts',
   'browser',
   'boot-timeout',
@@ -112,6 +116,7 @@ export function browserCommandOptions(flags, common) {
     clonePlugins: flags['clone-plugins'] ?? 'all',
     cloneExclude: flags['clone-exclude'] ?? [],
     cloneDropLocal: flags['clone-drop-local'] === true,
+    diagnosticsBundle: flags['diagnostics-bundle'],
     mockModel: flags['mock-model'] === true,
     online: flags.online === true,
     screenshots: flags.screenshot ?? ['home'],
@@ -164,6 +169,15 @@ export async function main(argv) {
         explain: flags.explain === true,
         artifactsRoot: flags.artifacts,
       });
+    case 'diagnose':
+      return runDiagnoseCommand({
+        ...common,
+        reportPath: flags.report,
+        bundlePath: flags.bundle,
+        logPath: flags.log?.[0],
+        latest: flags.latest === true,
+        artifactsRoot: flags.artifacts,
+      });
     case 'clean':
       return runCleanCommand({
         ...common,
@@ -186,8 +200,8 @@ export async function main(argv) {
         runtimeTimeoutMs: numberFlag(flags, 'runtime-timeout'),
       });
     case 'shell':
-      if (flags['clone-profile'] !== undefined) {
-        process.stderr.write('--clone-profile is only supported by `lab verify` / `lab capture`; `lab shell` keeps its own runner.\n');
+      if (flags['clone-profile'] !== undefined || flags['diagnostics-bundle'] !== undefined) {
+        process.stderr.write('--clone-profile / --diagnostics-bundle are only supported by `lab verify` / `lab capture`; `lab shell` keeps its own runner.\n');
         return 2;
       }
       return runShellCommand({
@@ -251,6 +265,7 @@ Usage:
              [--profile-lab <name>]
              [--clone-profile web|desktop [--clone-plugins all|none]
               [--clone-exclude <plugin>] [--clone-drop-local]]
+             [--diagnostics-bundle <file>]
              [--artifacts <dir>] [--browser <exe>] [--no-fixture]
              [--boot-transport stdout|ipc]
              [--mock-model] [--route /plugin/health] [--no-html] [--json]
@@ -270,6 +285,7 @@ Usage:
   lab scan --log <boot.err.log> [--explain] [--json]
   lab scan --latest [--explain] [--artifacts <dir>] [--json]
   lab scan --list [--json]
+  lab diagnose --report <report.json> | --bundle <bundle.json> | --log <log> | --latest [--json]
   lab clean [--dry-run] [--older-than <minutes>] [--json]
 
 Phase 1 runs entirely inside a temp DSH_HOME and never installs into the real
@@ -292,6 +308,10 @@ none drops every third-party plugin, --clone-exclude <plugin> drops one, and
 fail to install or boot are reported as failures, not hidden. --clone-profile
 is supported by lab verify / lab capture; lab shell keeps its own runner
 and rejects it.
+--diagnostics-bundle <file> writes a redacted diagnostics bundle (stable error
+codes + failed checks + a bounded boot tail). It never contains credentials,
+sessions, settings, raw logs, or absolute home paths. lab diagnose turns a
+report.json / bundle / log into the same structured codes for the agent.
 lab shell boots the same isolated Host, opens it once in headless Edge and once
 through a minimal Electron shell, then diffs DOM slots, body attributes, and
 --dsw-* tokens. Pass --no-compare-web to skip the Edge baseline. --show makes

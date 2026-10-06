@@ -59,6 +59,7 @@ export function buildScanReport(options = {}) {
   } else if (explain) {
     report.explanations = hits.map((hit) => ({
       id: hit.id,
+      code: hit.code ?? 'LAB-UNKNOWN',
       matched: hit.matched,
       lines: linesAroundMatch(text, hit.matched, 3),
     }));
@@ -74,7 +75,7 @@ export async function runScanCommand(options = {}) {
     } else {
       process.stdout.write(`failure signature library: ${signatures.length} entries\n`);
       for (const item of signatures) {
-        process.stdout.write(`- [${item.severity}] ${item.id} (${item.category}): ${item.rootCause}\n`);
+        process.stdout.write(`- [${item.severity}] ${item.code} ${item.id} (${item.category}): ${item.rootCause}\n`);
         process.stdout.write(`    fix: ${item.fix}\n`);
       }
     }
@@ -104,13 +105,15 @@ export async function runScanCommand(options = {}) {
   } else {
     if (runDir) process.stdout.write(`scanning latest run: ${runDir}\n`);
     process.stdout.write(`${summaryLine(report)}\n`);
-    for (const hit of report.hits) process.stdout.write(`- [${hit.severity}] ${hit.id} (${hit.category}): ${hit.matched}\n`);
+    for (const hit of report.hits) {
+      process.stdout.write(`- [${hit.severity}] ${hit.code ?? 'LAB-UNKNOWN'} ${hit.id} (${hit.category}): ${hit.matched}\n`);
+    }
     if (report.tail?.length) {
       process.stdout.write(`no known signature matched; last ${report.tail.length} non-empty log line(s):\n`);
       for (const line of report.tail) process.stdout.write(`  | ${line}\n`);
     }
     for (const explanation of report.explanations ?? []) {
-      process.stdout.write(`context for ${explanation.id}:\n`);
+      process.stdout.write(`context for ${explanation.code} ${explanation.id}:\n`);
       for (const line of explanation.lines) process.stdout.write(`  | ${line}\n`);
     }
   }

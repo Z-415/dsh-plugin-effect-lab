@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { summarizeReport } from '../lib/report-summary.js';
+import { summarizeDiagnosticsOutcome, summarizeReport } from '../lib/report-summary.js';
 
 const REPORT = {
   ok: false,
@@ -47,4 +47,38 @@ test('a missing report is reported as unparsed with the stderr tail', () => {
   assert.equal(summary.ok, false);
   assert.equal(summary.timedOut, true);
   assert.equal(summary.stderrTail.length, 4000);
+});
+
+test('summarizeDiagnosticsOutcome keeps the codes, failed checks, and a bounded tail', () => {
+  const summary = summarizeDiagnosticsOutcome({
+    report: {
+      ok: false,
+      runId: 'run-7',
+      primaryCode: 'LAB-PLUGIN-004',
+      errorCodes: ['LAB-PLUGIN-004', 'LAB-CLIENT-003'],
+      unknown: false,
+      signatures: [
+        { code: 'LAB-PLUGIN-004', id: 'plugin-tree-failed', category: 'plugin', severity: 'fatal', matched: 'boom', rootCause: 'tree', fix: 'disable' },
+      ],
+      failedChecks: [{ name: 'plugin-postcheck', detail: 'blocker' }],
+      bootTail: Array.from({ length: 30 }, (_, index) => `line ${index}`),
+      evidence: { reportJson: 'C:/artifacts/run-7/report.json' },
+      source: 'C:/artifacts/run-7/report.json',
+    },
+    exitCode: 1,
+  });
+  assert.equal(summary.parsed, true);
+  assert.equal(summary.primaryCode, 'LAB-PLUGIN-004');
+  assert.deepEqual(summary.errorCodes, ['LAB-PLUGIN-004', 'LAB-CLIENT-003']);
+  assert.equal(summary.signatures[0].code, 'LAB-PLUGIN-004');
+  assert.deepEqual(summary.failedChecks, [{ name: 'plugin-postcheck', detail: 'blocker' }]);
+  assert.equal(summary.bootTail.length, 20);
+  assert.equal(summary.reportJson, 'C:/artifacts/run-7/report.json');
+});
+
+test('summarizeDiagnosticsOutcome reports an unparsed diagnostic payload', () => {
+  const summary = summarizeDiagnosticsOutcome({ report: null, exitCode: 2, stderr: 'boom' });
+  assert.equal(summary.parsed, false);
+  assert.equal(summary.exitCode, 2);
+  assert.match(summary.stderrTail, /boom/);
 });

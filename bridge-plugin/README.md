@@ -37,6 +37,14 @@ node <lab>/bin/lab.js gui
 可选配置：`nodePath`（真正的 node.exe；默认从 PATH 查找）、`timeoutMs`（默认 240000，
 agent 工具用）、`artifactsDir`（默认 `<os.tmpdir>/dsh-lab-bridge-artifacts`）。
 
+## Agent 工具
+
+- `lab_verify_plugin`：spawn `lab verify --plugin <spec> --json`，返回摘要报告。
+- `lab_diagnose`：spawn `lab diagnose --report <report.json> | --bundle <bundle.json>
+  | --log <log> | --latest --json`，返回结构化的稳定错误码、失败检查和有界日志
+  末尾，交给用户的 DSH agent 解释原因。实验舱负责产出证据，工具不读真实凭据、
+  `sessions` 或 `settings`；`--diagnostics-bundle` 已在实验舱侧脱敏。
+
 ## 安全红线
 
 - 启动与工具命令**从不**传 `--profile-lab`，也**从不**设置/继承真实 `DSH_HOME`；

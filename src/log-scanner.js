@@ -12,9 +12,13 @@
  * nothing broader than a real failure sentence belongs here. Add a positive
  * *and* a benign negative test in `tests/unit/log-scanner.test.js` for each.
  */
+/** The stable code a failed run gets when no signature matched. */
+export const UNKNOWN_CODE = 'LAB-UNKNOWN';
+
 export const SIGNATURES = [
   {
     id: 'duplicate-loader-id',
+    code: 'LAB-PLUGIN-001',
     category: 'plugin',
     pattern: /duplicate loader entry id[:\s]+([A-Za-z0-9@/_.-]+)/i,
     severity: 'fatal',
@@ -23,6 +27,7 @@ export const SIGNATURES = [
   },
   {
     id: 'duplicate-tool',
+    code: 'LAB-PLUGIN-002',
     category: 'plugin',
     pattern: /tool ["']([A-Za-z0-9_]+)["'] is already registered/i,
     severity: 'fatal',
@@ -31,6 +36,7 @@ export const SIGNATURES = [
   },
   {
     id: 'keyed-slot-requires-key',
+    code: 'LAB-CLIENT-001',
     category: 'client',
     pattern: /keyed slot ["']([^"']+)["'] requires options\.key|list slot ["']([^"']+)["'] requires options\.id/i,
     severity: 'fatal',
@@ -39,6 +45,7 @@ export const SIGNATURES = [
   },
   {
     id: 'unknown-slot-kind',
+    code: 'LAB-CLIENT-002',
     category: 'client',
     pattern: /unknown slot kind|unregistered slot kind|slot kind ["'][^"']*["'] is not registered/i,
     severity: 'fatal',
@@ -47,6 +54,7 @@ export const SIGNATURES = [
   },
   {
     id: 'missing-module',
+    code: 'LAB-PLUGIN-003',
     category: 'plugin',
     pattern: /Cannot find module ["']([^"']+)["']|ERR_MODULE_NOT_FOUND/i,
     severity: 'fatal',
@@ -55,6 +63,7 @@ export const SIGNATURES = [
   },
   {
     id: 'plugin-tree-failed',
+    code: 'LAB-PLUGIN-004',
     category: 'plugin',
     pattern: /plugin tree failed to load|failed to apply loader entry/i,
     severity: 'fatal',
@@ -63,6 +72,7 @@ export const SIGNATURES = [
   },
   {
     id: 'unresolved-service',
+    code: 'LAB-PLUGIN-005',
     category: 'plugin',
     pattern: /cannot (?:get|resolve|find) (?:the )?service ["']?([A-Za-z0-9_.:/-]+)|service ["']([A-Za-z0-9_.:/-]+)["'] is not (?:found|registered|available)/i,
     severity: 'fatal',
@@ -71,6 +81,7 @@ export const SIGNATURES = [
   },
   {
     id: 'engines-unsatisfied',
+    code: 'LAB-PLUGIN-006',
     category: 'plugin',
     pattern: /unsupported engine|engines?[^\n]{0,40}does not satisfy|engine [^\n]{0,40}is incompatible/i,
     severity: 'fatal',
@@ -79,6 +90,7 @@ export const SIGNATURES = [
   },
   {
     id: 'yaml-parse-error',
+    code: 'LAB-PROFILE-001',
     category: 'profile',
     pattern: /YAMLException|bad indentation of a mapping entry|unknown tag|unresolved tag|must be a top-level YAML array/i,
     severity: 'fatal',
@@ -87,6 +99,7 @@ export const SIGNATURES = [
   },
   {
     id: 'bundle-patch-missing',
+    code: 'LAB-PROFILE-002',
     category: 'profile',
     pattern: /bundle patch[^\n]{0,60}not found|cannot (?:find|load) bundle patch|missing bundle patch/i,
     severity: 'fatal',
@@ -95,6 +108,7 @@ export const SIGNATURES = [
   },
   {
     id: 'bundle-dependency-mismatch',
+    code: 'LAB-PROFILE-003',
     category: 'profile',
     pattern: /bundle ["']([^"']+)["'] has no matching dependency/i,
     severity: 'fatal',
@@ -103,6 +117,7 @@ export const SIGNATURES = [
   },
   {
     id: 'fiber-pending',
+    code: 'LAB-BOOT-001',
     category: 'boot',
     pattern: /fiber (?:is )?(?:still )?pending|waiting for fiber|startup timed out/i,
     severity: 'fatal',
@@ -111,6 +126,7 @@ export const SIGNATURES = [
   },
   {
     id: 'port-in-use',
+    code: 'LAB-BOOT-002',
     category: 'boot',
     pattern: /EADDRINUSE|address already in use/i,
     severity: 'fatal',
@@ -119,6 +135,7 @@ export const SIGNATURES = [
   },
   {
     id: 'host-boot-timeout',
+    code: 'LAB-BOOT-003',
     category: 'boot',
     pattern: /timed out waiting for (?:the )?dsh web|dsh web timed out|boot timeout after/i,
     severity: 'fatal',
@@ -127,6 +144,7 @@ export const SIGNATURES = [
   },
   {
     id: 'electron-main-crash',
+    code: 'LAB-CRASH-001',
     category: 'crash',
     pattern: /A JavaScript error occurred in the main process|FATAL ERROR:|Segmentation fault/i,
     severity: 'fatal',
@@ -135,6 +153,7 @@ export const SIGNATURES = [
   },
   {
     id: 'client-module-load',
+    code: 'LAB-CLIENT-003',
     category: 'client',
     pattern: /Failed to fetch dynamically imported module|does not provide an export named|Importing a module script failed|SyntaxError: Unexpected token '<'/i,
     severity: 'fatal',
@@ -143,6 +162,7 @@ export const SIGNATURES = [
   },
   {
     id: 'atomic-write-eperm',
+    code: 'LAB-ENV-001',
     category: 'env',
     pattern: /EPERM[^\n]*rename|atomic write[^\n]*failed|operation not permitted[^\n]*rename/i,
     severity: 'fatal',
@@ -151,6 +171,7 @@ export const SIGNATURES = [
   },
   {
     id: 'permission-denied',
+    code: 'LAB-ENV-002',
     category: 'env',
     pattern: /EACCES/i,
     severity: 'fatal',
@@ -159,6 +180,7 @@ export const SIGNATURES = [
   },
   {
     id: 'path-too-long',
+    code: 'LAB-ENV-003',
     category: 'env',
     pattern: /ENAMETOOLONG/i,
     severity: 'fatal',
@@ -167,6 +189,7 @@ export const SIGNATURES = [
   },
   {
     id: 'schemastery-volatile-missing',
+    code: 'LAB-RUNTIME-001',
     category: 'runtime',
     pattern: /field\.volatile is not a function|\.volatile is not a function/i,
     severity: 'fatal',
@@ -175,6 +198,7 @@ export const SIGNATURES = [
   },
   {
     id: 'configforms-missing',
+    code: 'LAB-RUNTIME-002',
     category: 'runtime',
     pattern: /this\.forms\.configure is not a function|configForms/i,
     severity: 'fatal',
@@ -183,6 +207,7 @@ export const SIGNATURES = [
   },
   {
     id: 'peer-conflict',
+    code: 'LAB-PLUGIN-007',
     category: 'plugin',
     pattern: /Conflicting peer dependencies:|missing peer @deepseek-ai\/[a-z-]+@/i,
     severity: 'warning',
@@ -205,6 +230,7 @@ export function scanLogs(text) {
     if (!match) continue;
     hits.push({
       id: signature.id,
+      code: signature.code ?? UNKNOWN_CODE,
       category: signature.category ?? 'general',
       severity: signature.severity,
       matched: match[0].trim().slice(0, 240),
@@ -247,6 +273,7 @@ export function hasFatal(hits) {
 export function listSignatures() {
   return SIGNATURES.map((signature) => ({
     id: signature.id,
+    code: signature.code ?? UNKNOWN_CODE,
     category: signature.category ?? 'general',
     severity: signature.severity,
     rootCause: signature.rootCause,
@@ -261,11 +288,11 @@ export function summarize(hits) {
   const lines = [];
   if (fatal.length) {
     lines.push(`BLOCKER (${fatal.length}):`);
-    for (const hit of fatal) lines.push(`  - [${hit.id}] (${hit.category}) ${hit.rootCause} -> ${hit.fix}`);
+    for (const hit of fatal) lines.push(`  - [${hit.code ?? UNKNOWN_CODE}] ${hit.id} (${hit.category}) ${hit.rootCause} -> ${hit.fix}`);
   }
   if (warn.length) {
     lines.push(`WARNINGS (${warn.length}):`);
-    for (const hit of warn) lines.push(`  - [${hit.id}] (${hit.category}) ${hit.rootCause} -> ${hit.fix}`);
+    for (const hit of warn) lines.push(`  - [${hit.code ?? UNKNOWN_CODE}] ${hit.id} (${hit.category}) ${hit.rootCause} -> ${hit.fix}`);
   }
   return lines.join('\n');
 }

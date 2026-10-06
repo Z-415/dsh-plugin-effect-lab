@@ -51,3 +51,49 @@ function tail(text, limit) {
   const value = String(text ?? '');
   return value.length <= limit ? value : value.slice(value.length - limit);
 }
+
+/**
+ * Compact the `lab diagnose --json` payload for the lab_diagnose tool. The lab
+ * already produced stable codes + redacted evidence; the agent only needs the
+ * codes, the failed checks, and a bounded tail to explain the cause.
+ */
+export function summarizeDiagnosticsOutcome({ report, exitCode, timedOut = false, stderr = '' }) {
+  if (!report || typeof report !== 'object') {
+    return {
+      ok: false,
+      parsed: false,
+      timedOut,
+      exitCode,
+      error: timedOut
+        ? `实验舱诊断超时（退出码 ${exitCode ?? 'null'}），未拿到结构化诊断。`
+        : '实验舱诊断没有输出可解析的 JSON。',
+      stderrTail: tail(String(stderr ?? ''), 4000),
+    };
+  }
+  return {
+    ok: report.ok === true,
+    parsed: true,
+    timedOut,
+    exitCode,
+    primaryCode: report.primaryCode ?? 'LAB-UNKNOWN',
+    errorCodes: Array.isArray(report.errorCodes) ? report.errorCodes : ['LAB-UNKNOWN'],
+    unknown: report.unknown === true,
+    runId: report.runId ?? null,
+    source: report.source ?? null,
+    signatures: (report.signatures ?? []).slice(0, 20).map((hit) => ({
+      code: hit?.code ?? 'LAB-UNKNOWN',
+      id: hit?.id ?? null,
+      category: hit?.category ?? null,
+      severity: hit?.severity ?? null,
+      matched: hit?.matched ?? null,
+      rootCause: hit?.rootCause ?? null,
+      fix: hit?.fix ?? null,
+    })),
+    failedChecks: (report.failedChecks ?? []).slice(0, 20).map((check) => ({
+      name: check?.name ?? null,
+      detail: check?.detail ?? null,
+    })),
+    bootTail: (report.bootTail ?? []).slice(-20),
+    reportJson: report.evidence?.reportJson ?? null,
+  };
+}
