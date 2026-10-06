@@ -34,12 +34,20 @@ window.labGui = {
       {
         name: 'dev',
         plugins: [{ spec: 'dsh-plugin-wallpaper-engine@1.2.0' }, { spec: 'dsh-ui-tweaks@0.20.0' }],
+        clonedFrom: { kind: 'web', sourceHash: 'ABCDEF123456', copiedFiles: 5, excluded: [] },
         nodeModulesExists: true,
         dependenciesCount: 2,
         bundlesCount: 4,
         lastRunAt: 1700000000000,
       },
       { name: 'plain', plugins: [], nodeModulesExists: false, dependenciesCount: 0, bundlesCount: 0, lastRunAt: null },
+    ],
+  }),
+  realProfiles: async () => ({
+    root: 'stub',
+    profiles: [
+      { name: 'web', dependenciesCount: 20, bundlesCount: 22, hasPatches: false },
+      { name: 'desktop', dependenciesCount: 25, bundlesCount: 23, hasPatches: true },
     ],
   }),
   openProfileDir: async (name) => { window.__profileDirCalls.push(name); return { opened: true }; },
@@ -162,7 +170,22 @@ const PROFILE_DRAWER = `(async () => {
   clickRowButton('打开目录');
   clickRowButton('卸载插件');
   clickRowButton('删除 profile');
+  const rowCalls = [...window.__calls];
+  const realSelect = document.getElementById('realProfileSelect');
+  const realPluginMode = document.getElementById('realClonePlugins');
+  const realOptions = [...realSelect.options].map((option) => option.value);
+  const pluginModeOptions = [...realPluginMode.options].map((option) => option.value);
+  window.__calls = [];
+  realPluginMode.value = 'none';
+  window.prompt = () => 'clone-web';
+  const persistentButton = document.getElementById('cloneRealPersistent');
+  const oneShotButton = document.getElementById('cloneRealOneShot');
+  persistentButton.disabled = false;
+  persistentButton.click();
+  oneShotButton.disabled = false;
+  oneShotButton.click();
   await new Promise((resolve) => setTimeout(resolve, 20));
+  const cloneCalls = [...window.__calls];
   const wasOpen = drawer.hidden === false;
   // Close before the layout probes so the fixed drawer is not measured on top
   // of the page buttons.
@@ -172,7 +195,10 @@ const PROFILE_DRAWER = `(async () => {
     rowCount: rows.length,
     firstText: first ? first.textContent : null,
     buttons,
-    calls: window.__calls,
+    calls: rowCalls,
+    cloneCalls,
+    realOptions,
+    pluginModeOptions,
     dirCalls: window.__profileDirCalls,
     errors: window.__rendererErrors,
   });
@@ -561,9 +587,10 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(profileDrawer.rowCount, 2, JSON.stringify(profileDrawer));
     assert.match(profileDrawer.firstText, /dev/);
     assert.match(profileDrawer.firstText, /dsh-plugin-wallpaper-engine@1\.2\.0/);
+    assert.match(profileDrawer.firstText, /克隆自 web/);
     assert.deepEqual(profileDrawer.buttons, [
       '在壳窗口打开',
-      '克隆为一次性运行',
+      '克隆为一次性运行（跑完即删）',
       '卸载插件',
       '打开目录',
       '删除 profile',
@@ -578,6 +605,19 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.deepEqual(uninstallCall.slice(0, 4), ['profile', 'remove-plugin', 'dev', 'dsh-ui-tweaks']);
     const removeCall = profileDrawer.calls.find((args) => args[0] === 'profile' && args[1] === 'remove');
     assert.deepEqual(removeCall, ['profile', 'remove', 'dev']);
+    // The clone bar is fed only by read-only real profiles.
+    assert.deepEqual(profileDrawer.realOptions, ['web', 'desktop']);
+    assert.deepEqual(profileDrawer.pluginModeOptions, ['all', 'none']);
+    const persistentCloneCall = profileDrawer.cloneCalls.find((args) => args.includes('--clone-to'));
+    assert.deepEqual(persistentCloneCall, [
+      'verify', '--clone-to', 'clone-web', '--clone-profile', 'web',
+      '--clone-plugins', 'none', '--no-fixture', '--screenshot', 'home',
+    ]);
+    const oneShotCloneCall = profileDrawer.cloneCalls.find((args) => !args.includes('--clone-to'));
+    assert.deepEqual(oneShotCloneCall, [
+      'verify', '--clone-profile', 'web',
+      '--clone-plugins', 'none', '--no-fixture', '--screenshot', 'home',
+    ]);
     assert.deepEqual(profileDrawer.errors, []);
 
     // The log pane must stay on screen; adding controls must not squeeze it out.

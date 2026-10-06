@@ -22,7 +22,13 @@ import {
 import { summarizeDiagnostics, writeDiagnosticsBundle } from './diagnostics.js';
 import { hasFatal, scanLogs, scanNoise, scanSources, summarize, tailLines } from './log-scanner.js';
 import { writeHtmlReport } from './html-report.js';
-import { openLabProfileHome, recordProfilePlugins } from './lab-profile.js';
+import {
+  openLabProfileHome,
+  profileExists,
+  recordProfileClone,
+  recordProfilePlugins,
+  removeLabProfile,
+} from './lab-profile.js';
 import { describeAgentCoverage, scanForCredentials } from './model-coverage.js';
 import { startMockLlmServer } from './mock-llm-server.js';
 import { installProfilePlugins } from './plugin-install.js';
@@ -86,6 +92,7 @@ export async function runLab(options = {}) {
   };
   const runId = options.runId ?? makeRunId();
   const realHomePath = options.realHome ?? REAL_HOME;
+  const profileLab = options.profileLab ?? options.cloneTo ?? null;
   const artifactsRoot = options.artifactsRoot ?? defaultArtifactsRoot();
   const runDir = prepareArtifacts(artifactsRoot, runId);
   const checks = [];
@@ -116,6 +123,7 @@ export async function runLab(options = {}) {
     cleanup: { homeRemoved: null, portsLeft: [], homeCleanup: null, processesLeft: 0, browserTempDirs: [] },
     realHome: null,
     errors,
+    hints: [],
     artifacts: {},
   };
   let iso = null;
@@ -156,8 +164,16 @@ export async function runLab(options = {}) {
     );
     progress('snapshot', `${Object.keys(realBefore.files).length} structural file(s) hashed`);
 
-    iso = options.profileLab
-      ? openLabProfileHome(options.profileLab)
+    const cloneTarget = options.cloneProfile ? profileLab : null;
+    if (cloneTarget && profileExists(cloneTarget)) {
+      if (options.force !== true) {
+        throw new Error(`lab profile "${cloneTarget}" already exists; pass --force to overwrite it, or choose another name`);
+      }
+      const removed = removeLabProfile(cloneTarget);
+      if (removed.error) throw new Error(removed.error);
+    }
+    iso = profileLab
+      ? openLabProfileHome(profileLab)
       : createIsolatedHome({ withAgents: true });
     report.isolation = {
       root: iso.root,
@@ -229,6 +245,26 @@ export async function runLab(options = {}) {
     }
     if (!fs.existsSync(path.join(profileDir, 'package.json'))) {
       writeMinimalProfile(profileDir, { name: profileName });
+    }
+    if (clone && iso.persistent) {
+      const clonedFrom = {
+        kind: clone.kind,
+        at: nowIso(),
+        sourceHash: clone.sourceSnapshot.hash.slice(0, 12),
+        copiedFiles: clone.copiedFiles.length,
+        excluded: [
+          ...clone.excluded.map((entry) => entry.spec ?? entry.name),
+          ...clone.droppedLocal.map((entry) => entry.spec ?? entry.name),
+        ],
+        plugins: clone.plugins,
+      };
+      recordProfileClone(iso.name, clonedFrom);
+      clone.persistent = true;
+      clone.profile = iso.name;
+      clone.clonedFrom = clonedFrom;
+    }
+    if (clone && !iso.persistent) {
+      report.hints.push('本次克隆是临时的，已随隔离 home 删除；想保留请加 --profile-lab <名字>（或 --clone-to <名字>）。');
     }
     report.profile = { name: profileName, dir: profileDir, ...(clone ? { clonedFrom: clone.kind } : {}) };
     addCheck(checks, 'profile-minimal', true, path.join(profileDir, 'package.json'));
@@ -333,9 +369,9 @@ export async function runLab(options = {}) {
       );
     }
     const recordedPlugins = (pluginPipeline.pluginList ?? []).filter((entry) => !entry.fixture);
-    if (options.profileLab && recordedPlugins.length) {
-      recordProfilePlugins(options.profileLab, recordedPlugins);
-      progress('install-plugins', `lab profile "${options.profileLab}" now records ${recordedPlugins.length} plugin spec(s)`);
+    if (profileLab && recordedPlugins.length) {
+      recordProfilePlugins(profileLab, recordedPlugins);
+      progress('install-plugins', `lab profile "${profileLab}" now records ${recordedPlugins.length} plugin spec(s)`);
     }
     progress(
       'install-plugins',
@@ -773,7 +809,7 @@ export async function runLab(options = {}) {
       checks,
       'cleanup-home',
       report.cleanup.homeRemoved === true || report.cleanup.homeKept === true,
-      report.cleanup.homeKept === true ? `kept lab profile "${options.profileLab}"` : String(report.cleanup.homeRemoved),
+      report.cleanup.homeKept === true ? `kept lab profile "${profileLab}"` : String(report.cleanup.homeRemoved),
     );
     addCheck(
       checks,

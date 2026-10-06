@@ -81,3 +81,30 @@ test('lab profile remove reports a missing profile without failing', () => {
     assert.match(output, /not found/);
   });
 });
+
+test('lab verify --clone-to refuses an existing target without --force', () => {
+  withProfilesRoot((_root, env) => {
+    lab(['profile', 'create', 'clone-web'], env);
+    let status = 0;
+    let stderr = '';
+    try {
+      lab(['verify', '--clone-to', 'clone-web', '--clone-profile', 'web', '--clone-plugins', 'none', '--no-fixture'], env);
+    } catch (error) {
+      status = error.status;
+      stderr = String(error.stderr ?? '');
+    }
+    assert.equal(status, 2, stderr);
+    assert.match(stderr, /already exists/);
+    assert.match(stderr, /--force/);
+  });
+});
+
+test('lab real-profiles lists only package.json profile directories, read-only', () => {
+  const parsed = JSON.parse(lab(['real-profiles', '--json'], {}));
+  assert.equal(parsed.profiles.some((profile) => profile.name === 'node_modules'), false);
+  for (const profile of parsed.profiles) {
+    assert.equal(fs.existsSync(path.join(profile.dir, 'package.json')), true, JSON.stringify(profile));
+    assert.equal(typeof profile.dependenciesCount, 'number');
+    assert.equal(typeof profile.bundlesCount, 'number');
+  }
+});

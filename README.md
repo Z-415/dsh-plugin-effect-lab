@@ -70,7 +70,11 @@ into the log pane; `中止` stops the running command.
   current one, so a cross-plugin conflict shows up.
 - `卸载这个插件` — removes the plugin named in the `插件` field from the selected
   persistent profile only.
-- `列出 profile` — lists everything under `.lab-profiles/`.
+- `列出 profile` — opens the profile drawer: every `.lab-profiles/` entry with
+  its plugin list, `克隆自 <kind>` source marker, and inline open / clone
+  one-shot / uninstall / open-directory / delete actions. The same drawer has a
+  read-only clone bar (**克隆为持久 profile** / **克隆为一次性运行（跑完即删）**)
+  fed by the real profiles discovered under `~/.dsh/profiles`.
 - `验证这个插件（出报告截图）` — the full isolated `lab verify` for that spec:
   checks, report, screenshots.
 - `原生桌面` — use the real folder dialog and OS notification instead of the
@@ -160,6 +164,27 @@ node bin/lab.js profile remove-plugin dev dsh-ui-tweaks@0.20.0
 The profile stays isolated under `.lab-profiles/<name>/`, never in your real `~/.dsh`.
 Adding a second plugin audits the whole profile, so an A+B conflict is reported even when
 B alone passes.
+
+### 4b. Clone your real profile (persistent or one-shot)
+
+```powershell
+# persistent: kept under .lab-profiles/clone-web and reusable
+node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-plugins none --no-fixture
+node bin/lab.js profile list        # clone-web: cloned from web (5 file(s)), no plugins recorded
+node bin/lab.js shell --profile-lab clone-web --show --show-hold 3000
+
+# overwrite an existing clone only on purpose
+node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-plugins none --no-fixture --force
+
+# one-shot: deleted at the end; the run prints how to keep it
+node bin/lab.js verify --clone-profile web --clone-plugins none --no-fixture
+```
+
+The real profile is read-only: only the structural files are copied, never
+`node_modules`, credentials, settings, sessions, or agents. `lab real-profiles`
+lists the read-only clone sources; the GUI drawer has the same
+**克隆为持久 profile** / **克隆为一次性运行（跑完即删）** actions and shows
+`克隆自 web` on the cloned row. See [docs/CLONE-PROFILE.md](docs/CLONE-PROFILE.md).
 
 ### 5. Run a real agent turn without a real model
 

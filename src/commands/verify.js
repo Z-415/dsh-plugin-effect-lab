@@ -18,6 +18,8 @@ export async function runVerifyCommand(options) {
     clonePlugins: options.clonePlugins,
     cloneExclude: options.cloneExclude,
     cloneDropLocal: options.cloneDropLocal,
+    cloneTo: options.cloneTo,
+    force: options.force,
     diagnosticsBundle: options.diagnosticsBundle,
     mockModel: options.mockModel,
     online: options.online,
@@ -48,6 +50,9 @@ export async function runVerifyCommand(options) {
     for (const check of report.checks) {
       const label = check.pass ? '通过' : check.informational ? '提示' : '失败';
       process.stdout.write(`[${label}] ${check.name}: ${check.detail ?? ''}\n`);
+    }
+    for (const hint of report.hints ?? []) {
+      process.stdout.write(`[提示] ${hint}\n`);
     }
   }
   return report.ok ? 0 : 1;

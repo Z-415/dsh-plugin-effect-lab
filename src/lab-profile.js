@@ -58,6 +58,18 @@ export function readLabProfile(name) {
   return JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
 }
 
+/**
+ * Whether a lab profile target already exists: either its manifest is present
+ * or it already holds a DSH profile package.json. Used to refuse a clone into
+ * an existing profile unless --force was passed.
+ */
+export function profileExists(name) {
+  const dir = labProfileDir(name);
+  if (!fs.existsSync(dir)) return false;
+  if (fs.existsSync(path.join(dir, LAB_PROFILE_MANIFEST))) return true;
+  return fs.existsSync(path.join(dir, 'home', 'profiles', `lab-${name}`, 'package.json'));
+}
+
 function writeManifest(dir, manifest) {
   fs.writeFileSync(path.join(dir, LAB_PROFILE_MANIFEST), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 }
@@ -98,6 +110,17 @@ export function recordProfilePlugins(name, specs, options = {}) {
     if (resolvedName) entry.name = resolvedName;
     manifest.plugins.push(entry);
   }
+  writeManifest(dir, manifest);
+  return manifest;
+}
+
+/**
+ * Mark a lab profile as a clone of a real profile:
+ * `{ kind, at, sourceHash, copiedFiles, excluded, ... }`.
+ */
+export function recordProfileClone(name, clonedFrom) {
+  const { dir, manifest } = createLabProfile(name);
+  manifest.clonedFrom = clonedFrom;
   writeManifest(dir, manifest);
   return manifest;
 }
@@ -197,6 +220,7 @@ export function listLabProfiles() {
       name: entry.name,
       dir,
       plugins: manifest?.plugins ?? [],
+      clonedFrom: manifest?.clonedFrom ?? null,
       createdAt: manifest?.createdAt ?? null,
       mtimeMs: fs.statSync(dir).mtimeMs,
       nodeModulesExists: fs.existsSync(path.join(dshProfileDir, 'node_modules')),

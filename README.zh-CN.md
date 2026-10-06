@@ -64,7 +64,10 @@ node bin/lab.js doctor  # 环境自检，必须 PASS
   `--dsw-*` token 和像素。
 - `再加一个插件一起验证` —— 在当前插件之外再加一个插件跑壳窗口，用来暴露跨插件冲突。
 - `卸载这个插件` —— 只从选中的持久 profile 里卸掉 `插件` 框里写的那个插件。
-- `列出 profile` —— 列出 `.lab-profiles/` 下的所有 profile。
+- `列出 profile` —— 打开 profile 抽屉：每个 `.lab-profiles/` 条目显示插件列表、
+  `克隆自 <kind>` 来源标记，以及行内的打开 / 一次性克隆 / 卸载 / 打开目录 / 删除。
+  抽屉顶部还有只读的来源下拉和 **克隆为持久 profile** /
+  **克隆为一次性运行（跑完即删）**（来源是 `~/.dsh/profiles` 下发现的真实 profile）。
 - `验证这个插件（出报告截图）` —— 对这个规格跑完整的隔离 `lab verify`：检查项、报告、截图。
 - `原生桌面` —— 用真实的文件夹对话框和系统通知，而不是默认的确定性桩
   （`--native-desktop`）；`启动时弹出文件夹对话框` 会在运行过程中真的弹出选择框
@@ -151,6 +154,26 @@ node bin/lab.js profile remove-plugin dev dsh-ui-tweaks@0.20.0
 
 profile 单独保存在 `.lab-profiles/<name>/` 下，不会进你真实的 `~/.dsh`。追加第二个
 插件时会审计整个 profile，所以即使 B 单独能过，A+B 的冲突也会被报出来。
+
+### 4b. 克隆真实 profile（可持久复用 / 一次性）
+
+```powershell
+# 持久：保存在 .lab-profiles/clone-web，可反复复用
+node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-plugins none --no-fixture
+node bin/lab.js profile list        # clone-web: cloned from web (5 file(s)), no plugins recorded
+node bin/lab.js shell --profile-lab clone-web --show --show-hold 3000
+
+# 只有明确要覆盖已有克隆时才加 --force
+node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-plugins none --no-fixture --force
+
+# 一次性：跑完即删，运行结束会提示怎么保留
+node bin/lab.js verify --clone-profile web --clone-plugins none --no-fixture
+```
+
+真实 profile 始终只读：只复制结构文件，不复制 `node_modules`、凭据、settings、
+sessions、agents。`lab real-profiles` 列出可用作克隆来源的真实 profile；GUI 抽屉里有
+**克隆为持久 profile** / **克隆为一次性运行（跑完即删）** 两个入口，克隆出来的行会显示
+`克隆自 web`。详见 [docs/CLONE-PROFILE.md](docs/CLONE-PROFILE.md)。
 
 ### 5. 不用真实模型跑一个真实回合
 

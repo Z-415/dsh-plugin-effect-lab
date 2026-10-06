@@ -12,8 +12,10 @@ import {
   labProfilesRoot,
   listLabProfiles,
   openLabProfileHome,
+  profileExists,
   profilePluginMatches,
   readLabProfile,
+  recordProfileClone,
   recordProfilePlugins,
   removeLabProfile,
 } from '../../src/lab-profile.js';
@@ -195,5 +197,34 @@ test('removeLabProfile reports not-found without an error', async () => {
     const result = removeLabProfile('missing');
     assert.equal(result.removed, false);
     assert.equal(result.error, undefined);
+  });
+});
+
+test('profileExists and recordProfileClone round-trip the clonedFrom marker', async () => {
+  await withTempRoot(() => {
+    assert.equal(profileExists('clone-web'), false);
+    const clonedFrom = {
+      kind: 'web',
+      at: '2026-10-06T00:00:00.000Z',
+      sourceHash: 'ABCDEF123456',
+      copiedFiles: 5,
+      excluded: ['dsh-better-sidebar@0.19.1'],
+      plugins: 'none',
+    };
+    recordProfileClone('clone-web', clonedFrom);
+    assert.equal(profileExists('clone-web'), true);
+    assert.deepEqual(readLabProfile('clone-web').clonedFrom, clonedFrom);
+    const listed = listLabProfiles().find((profile) => profile.name === 'clone-web');
+    assert.deepEqual(listed.clonedFrom, clonedFrom);
+  });
+});
+
+test('profileExists also sees a DSH package.json without a lab manifest', async () => {
+  await withTempRoot((root) => {
+    const dir = path.join(root, 'clone-y', 'home', 'profiles', 'lab-clone-y');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'package.json'), '{}\n', 'utf8');
+    assert.equal(profileExists('clone-y'), true);
+    assert.equal(readLabProfile('clone-y'), null);
   });
 });

@@ -15,6 +15,82 @@ node bin/lab.js verify --clone-profile web --clone-drop-local --no-fixture
 `--clone-profile` is supported by `lab verify` / `lab capture`. `lab shell`
 keeps its own runner and rejects the flag with a readable error.
 
+## One-shot vs persistent
+
+There are two ways to use a clone. The difference is whether it lands in an
+isolated temp home or in `.lab-profiles/`.
+
+| goal | command |
+|---|---|
+| temporary clone, deleted when the run ends | `lab verify --clone-profile web --no-fixture` |
+| persistent clone, visible and reusable | `lab verify --profile-lab clone-web --clone-profile web --no-fixture` |
+| same, with sugar | `lab verify --clone-to clone-web --clone-profile web --no-fixture` |
+| overwrite an existing target | add `--force` |
+
+**Persistent** means `--profile-lab <name>` (or `--clone-to <name>`, which is
+exactly `--profile-lab <name> --clone-profile <kind>`). The clone is written to
+`.lab-profiles/<name>/` and stays after the run:
+
+```text
+$ node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-plugins none --no-fixture
+[通过] clone-source: cloned real web profile structure: 5 file(s), 0 patch(es)
+[通过] clone-real-profile-unchanged: ... source hash ... unchanged
+[通过] clone-no-credentials: cloned home has no credential file or inline API key
+[通过] real-home-unchanged: all structural hashes unchanged
+DSH 插件效果实验舱: 通过
+
+$ node bin/lab.js profile list
+- clone-web: cloned from web (5 file(s)), no plugins recorded
+
+$ node bin/lab.js shell --profile-lab clone-web --show --show-hold 3000
+```
+
+`lab-profile.json` records the source so it is recognizable later:
+
+```json
+{
+  "name": "clone-web",
+  "plugins": [],
+  "clonedFrom": {
+    "kind": "web",
+    "at": "2026-10-06T...",
+    "sourceHash": "2D5846D10F08",
+    "copiedFiles": 5,
+    "excluded": ["dsh-better-sidebar@0.19.1", "..."],
+    "plugins": "none"
+  }
+}
+```
+
+`lab profile list` (text and `--json`), the GUI drawer row, and `report.md`
+(**真实 profile 克隆**) all show it. The GUI drawer's **克隆为持久 profile**
+button runs the same `--clone-to` command.
+
+Rules for a persistent target:
+
+- an existing `lab profile` target is **refused** by default with a message
+  telling you to pass `--force`; `--force` removes it with the junction-safe
+  `removeTreeSafely` and clones fresh;
+- `--clone-to X --profile-lab Y` with `X != Y` is an error;
+- `--clone-to` still needs `--clone-profile web|desktop` to say where to
+  clone from.
+
+**Temporary** means no `--profile-lab` / `--clone-to`. The clone is created in
+the throwaway isolated home and deleted at the end; the run prints:
+
+```text
+[提示] 本次克隆是临时的，已随隔离 home 删除；想保留请加 --profile-lab <名字>（或 --clone-to <名字>）。
+```
+
+The GUI labels the temporary action **克隆为一次性运行（跑完即删）** so the two
+are not confused.
+
+`lab real-profiles [--json]` lists the read-only clone sources discovered under
+`<real home>\profiles\*` (only directories containing `package.json`;
+`node_modules` is filtered out). The GUI uses it to fill the clone-source
+dropdown. Real profiles are **read-only**: the lab never offers delete,
+uninstall, or any write action for them.
+
 ## What is copied
 
 Only structural files under `<real home>\profiles\<web|desktop>`:

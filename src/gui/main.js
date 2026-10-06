@@ -172,6 +172,31 @@ function listProfiles() {
   }
 }
 
+/**
+ * Read-only real DSH profiles, for the clone-source dropdown. Uses the CLI
+ * (`real-profiles --json`) so the discovery rules live in one place; the GUI
+ * never offers delete/uninstall for these entries.
+ */
+function realProfiles() {
+  const result = spawnSync(process.execPath, [path.join(repo, 'bin', 'lab.js'), 'real-profiles', '--json'], {
+    cwd: repo,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', DSH_LAB_GUI: '1' },
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 30_000,
+  });
+  if (result.error) return { profiles: [], root: null, error: String(result.error.message ?? result.error) };
+  if (result.status !== 0) {
+    return { profiles: [], root: null, error: (result.stderr || '').trim() || `exit ${result.status}` };
+  }
+  try {
+    const parsed = JSON.parse(result.stdout);
+    return { profiles: parsed.profiles ?? [], root: parsed.root ?? null };
+  } catch (error) {
+    return { profiles: [], root: null, error: String(error?.message ?? error) };
+  }
+}
+
 ipcMain.handle('lab:run', (_event, args) => runLab(Array.isArray(args) ? args.map(String) : []));
 /**
  * The window draws its own title bar and menu (the OS one follows the Windows
@@ -229,6 +254,7 @@ ipcMain.handle('lab:notify', (_event, payload) => {
 });
 
 ipcMain.handle('lab:profiles', () => listProfiles());
+ipcMain.handle('lab:real-profiles', () => realProfiles());
 
 /**
  * Resolve a profile directory through the lab CLI (`profile path <name>`), then

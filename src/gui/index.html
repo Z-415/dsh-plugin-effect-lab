@@ -132,6 +132,10 @@
   .drawerhead { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
   .drawerhead h2 { margin: 0; font-size: 12.5px; font-weight: 650; }
   .drawerhead .tag { margin-left: auto; }
+  .clonebar { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .clonebar-row { display: flex; align-items: center; gap: 8px; }
+  .clonebar select { flex: 1 1 0; min-width: 0; }
+  .clonebar .note { margin: 0; }
   .drawerlist { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; }
   .prow { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
   .prow-head { display: flex; align-items: center; gap: 8px; }
@@ -273,6 +277,20 @@
         <span class="tag" id="profileRoot"></span>
         <button type="button" id="closeProfileDrawer" class="small">关闭</button>
       </div>
+      <div class="clonebar" id="clonebar">
+        <div class="clonebar-row">
+          <select id="realProfileSelect" title="真实 profile 来源（只读）" aria-label="真实 profile 来源"></select>
+          <select id="realClonePlugins" title="克隆插件范围" aria-label="克隆插件范围">
+            <option value="all">带真实插件</option>
+            <option value="none">不带插件</option>
+          </select>
+        </div>
+        <div class="clonebar-row">
+          <button type="button" id="cloneRealPersistent" class="strong" title="克隆成一个持久的 lab profile，可复用">克隆为持久 profile</button>
+          <button type="button" id="cloneRealOneShot" class="small" title="克隆到一次性临时 home，跑完即删">克隆为一次性运行（跑完即删）</button>
+        </div>
+        <p class="note" id="realProfileNote"></p>
+      </div>
       <div class="drawerlist" id="profileList"></div>
     </div>
     <div id="banner" class="banner" role="status" aria-live="polite" hidden></div>
@@ -319,6 +337,9 @@
   const profileDrawer = document.getElementById('profileDrawer');
   const profileList = document.getElementById('profileList');
   const profileRoot = document.getElementById('profileRoot');
+  const realProfileSelect = document.getElementById('realProfileSelect');
+  const realClonePlugins = document.getElementById('realClonePlugins');
+  const realProfileNote = document.getElementById('realProfileNote');
   const progressWrap = document.getElementById('progressWrap');
   const progressBar = document.getElementById('progress');
   const progressFill = document.getElementById('progressFill');
@@ -535,6 +556,69 @@
     if (!window.confirm(`删除 lab profile "${profile.name}"？这会删除它已安装的插件。`)) return;
     runWithArgs(['profile', 'remove', profile.name], `profile remove · ${profile.name}`);
   }
+  function selectedRealProfile() {
+    return realProfileSelect.value || '';
+  }
+  function selectedClonePluginMode() {
+    return realClonePlugins.value === 'none' ? 'none' : 'all';
+  }
+  function cloneRealOneShotRun() {
+    const kind = selectedRealProfile();
+    if (!kind) {
+      append('[gui] 没有可选的只读真实 profile。\n');
+      return;
+    }
+    runWithArgs(
+      ['verify', '--clone-profile', kind, '--clone-plugins', selectedClonePluginMode(), '--no-fixture', '--screenshot', 'home'],
+      `一次性克隆 · ${kind}（跑完即删）`,
+    );
+  }
+  function cloneRealPersistentRun() {
+    const kind = selectedRealProfile();
+    if (!kind) {
+      append('[gui] 没有可选的只读真实 profile。\n');
+      return;
+    }
+    const name = window.prompt(`新 lab profile 名字（从 ${kind} 克隆）`, `${kind}-clone`);
+    if (!name) return;
+    if (!/^[a-z0-9][a-z0-9._-]{0,31}$/.test(name)) {
+      append('[gui] profile 名字只能用小写字母、数字、. _ -，最多 32 位。\n');
+      return;
+    }
+    runWithArgs(
+      ['verify', '--clone-to', name, '--clone-profile', kind, '--clone-plugins', selectedClonePluginMode(), '--no-fixture', '--screenshot', 'home'],
+      `持久克隆 · ${name} <- ${kind}`,
+    );
+  }
+  async function refreshRealProfiles() {
+    let list = [];
+    let error = null;
+    try {
+      if (typeof window.labGui.realProfiles === 'function') {
+        const result = await window.labGui.realProfiles();
+        list = result.profiles ?? [];
+        error = result.error ?? null;
+      }
+    } catch (caught) {
+      error = String(caught?.message ?? caught);
+    }
+    realProfileSelect.innerHTML = '';
+    for (const profile of list) {
+      const option = document.createElement('option');
+      option.value = profile.name;
+      option.textContent = `${profile.name}（${profile.dependenciesCount ?? 0} 个第三方插件）`;
+      realProfileSelect.appendChild(option);
+    }
+    if (!list.length) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = error ? `读取失败：${error}` : '未发现真实 profile';
+      realProfileSelect.appendChild(option);
+    }
+    realProfileNote.textContent = list.length
+      ? '真实 profile 只读：只克隆结构文件，不会修改/删除/卸载它们。'
+      : '';
+  }
   function renderProfileList(profiles, root, error) {
     profileRoot.textContent = root ?? '';
     profileList.textContent = '';
@@ -568,6 +652,12 @@
       const specsLine = document.createElement('p');
       specsLine.className = 'note';
       specsLine.textContent = specs.length ? specs.join(', ') : '（空）';
+      const clonedLine = document.createElement('p');
+      clonedLine.className = 'note';
+      if (profile.clonedFrom) {
+        clonedLine.textContent = `克隆自 ${profile.clonedFrom.kind} · ${profile.clonedFrom.copiedFiles ?? 0} 个结构文件`
+          + ` · hash ${profile.clonedFrom.sourceHash ?? ''}`;
+      }
       const when = document.createElement('p');
       when.className = 'note';
       when.textContent = `最后运行：${formatWhen(profile.lastRunAt ?? profile.mtimeMs)}`;
@@ -578,12 +668,12 @@
           ['shell', '--no-compare-web', '--profile-lab', profile.name, '--keep-open'],
           `shell · ${profile.name}`,
         )),
-        profileButton('克隆为一次性运行', () => cloneProfileOneShot(profile)),
+        profileButton('克隆为一次性运行（跑完即删）', () => cloneProfileOneShot(profile)),
         profileButton('卸载插件', () => uninstallFromProfile(profile)),
         profileButton('打开目录', () => openProfileDir(profile)),
         profileButton('删除 profile', () => removeProfileFromDrawer(profile), 'danger'),
       );
-      row.append(head, specsLine, when, actions);
+      row.append(head, ...(profile.clonedFrom ? [clonedLine] : []), specsLine, when, actions);
       profileList.appendChild(row);
     }
   }
@@ -697,6 +787,8 @@
   document.getElementById('closeProfileDrawer').addEventListener('click', () => {
     profileDrawer.hidden = true;
   });
+  document.getElementById('cloneRealPersistent').addEventListener('click', cloneRealPersistentRun);
+  document.getElementById('cloneRealOneShot').addEventListener('click', cloneRealOneShotRun);
   document.getElementById('refreshProfiles').addEventListener('click', () => refreshProfiles());
   profileSelect.addEventListener('change', syncProfileNew);
 
@@ -777,6 +869,7 @@
   });
 
   refreshProfiles();
+  refreshRealProfiles();
   window.labGui.info().then((info) => {
     document.getElementById('env').textContent =
       `electron ${info.electron} · node ${info.node} · ${info.repo}`;

@@ -32,7 +32,10 @@ export async function runProfileCommand(options = {}) {
       process.stdout.write(`lab profiles: ${profiles.length} (${labProfilesRoot()})\n`);
       for (const profile of profiles) {
         const specs = profile.plugins.map((entry) => entry.spec);
-        process.stdout.write(`- ${profile.name}: ${specs.length ? specs.join(', ') : 'no plugins recorded'}\n`);
+        const cloneNote = profile.clonedFrom
+          ? `cloned from ${profile.clonedFrom.kind} (${profile.clonedFrom.copiedFiles ?? 0} file(s)), `
+          : '';
+        process.stdout.write(`- ${profile.name}: ${cloneNote}${specs.length ? specs.join(', ') : 'no plugins recorded'}\n`);
       }
       if (!profiles.length) process.stdout.write('(none yet - create one with: lab shell --profile-lab dev --plugin <spec>)\n');
     }

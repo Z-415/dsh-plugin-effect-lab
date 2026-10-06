@@ -4,11 +4,13 @@ import { runDiagnoseCommand } from './commands/diagnose.js';
 import { runDoctor } from './commands/doctor.js';
 import { runGuiCommand } from './commands/gui.js';
 import { runProfileCommand } from './commands/profile.js';
+import { runRealProfilesCommand } from './commands/real-profiles.js';
 import { runRuntimesCommand } from './commands/runtimes.js';
 import { runMatrixCommand } from './commands/matrix.js';
 import { runScanCommand } from './commands/scan.js';
 import { runShellCommand } from './commands/shell.js';
 import { runVerifyCommand } from './commands/verify.js';
+import { profileExists } from './lab-profile.js';
 
 const VALUE_FLAGS = new Set([
   'runtime',
@@ -25,6 +27,7 @@ const VALUE_FLAGS = new Set([
   'clone-profile',
   'clone-plugins',
   'clone-exclude',
+  'clone-to',
   'diagnostics-bundle',
   'report',
   'bundle',
@@ -51,7 +54,7 @@ const BOOLEAN_FLAGS = new Set([
   'no-html', 'native-desktop', 'probe-native-dialog',
   'list', 'latest', 'explain', 'runtime-matrix',
   'rebuild', 'install-shortcut', 'no-open',
-  'clone-drop-local',
+  'clone-drop-local', 'force',
 ]);
 
 /**
@@ -138,6 +141,47 @@ export function browserCommandOptions(flags, common) {
 /** Indirection so a unit test can assert what `main` forwards without booting a runtime. */
 export const browserRunners = { verify: runVerifyCommand, capture: runCaptureCommand };
 
+/**
+ * Normalize `--clone-to <name>` / `--profile-lab <name>` + `--clone-profile`
+ * and refuse to overwrite an existing lab profile without `--force`.
+ *
+ * `--clone-to clone-web` is sugar for
+ * `--profile-lab clone-web --clone-profile <kind>`, so the kind still comes
+ * from `--clone-profile` and the two names must agree when both are given.
+ */
+export function resolveCloneOptions(flags = {}) {
+  const cloneTo = flags['clone-to'];
+  const profileLab = flags['profile-lab'];
+  const cloneProfile = flags['clone-profile'];
+  if (cloneTo !== undefined && cloneProfile === undefined) {
+    return { error: '--clone-to needs --clone-profile web|desktop' };
+  }
+  if (cloneTo !== undefined && profileLab !== undefined && profileLab !== cloneTo) {
+    return { error: `--clone-to ${cloneTo} and --profile-lab ${profileLab} must name the same profile` };
+  }
+  const target = cloneTo ?? (cloneProfile !== undefined ? profileLab : undefined);
+  if (target !== undefined) {
+    let exists = false;
+    try {
+      exists = profileExists(target);
+    } catch (error) {
+      return { error: String(error?.message ?? error) };
+    }
+    if (exists && flags.force !== true) {
+      return {
+        error: `lab profile "${target}" already exists; pass --force to overwrite it, or choose another name`,
+        refused: true,
+        target,
+      };
+    }
+  }
+  return {
+    profileLab: cloneTo ?? profileLab,
+    cloneTo,
+    target: target ?? null,
+  };
+}
+
 export async function main(argv) {
   if (!argv.length || argv[0] === '--help' || argv[0] === '-h') {
     process.stdout.write(helpText());
@@ -157,9 +201,20 @@ export async function main(argv) {
     case 'doctor':
       return runDoctor(common);
     case 'verify':
-      return browserRunners.verify(browserCommandOptions(flags, common));
-    case 'capture':
-      return browserRunners.capture(browserCommandOptions(flags, common));
+    case 'capture': {
+      const cloneOptions = resolveCloneOptions(flags);
+      if (cloneOptions.error) {
+        process.stderr.write(`${cloneOptions.error}\n`);
+        return 2;
+      }
+      const options = {
+        ...browserCommandOptions(flags, common),
+        profileLab: cloneOptions.profileLab,
+        cloneTo: cloneOptions.cloneTo,
+        force: flags.force === true,
+      };
+      return command === 'verify' ? browserRunners.verify(options) : browserRunners.capture(options);
+    }
     case 'scan':
       return runScanCommand({
         ...common,
@@ -199,9 +254,11 @@ export async function main(argv) {
         ...common,
         runtimeTimeoutMs: numberFlag(flags, 'runtime-timeout'),
       });
+    case 'real-profiles':
+      return runRealProfilesCommand(common);
     case 'shell':
-      if (flags['clone-profile'] !== undefined || flags['diagnostics-bundle'] !== undefined) {
-        process.stderr.write('--clone-profile / --diagnostics-bundle are only supported by `lab verify` / `lab capture`; `lab shell` keeps its own runner.\n');
+      if (flags['clone-profile'] !== undefined || flags['clone-to'] !== undefined || flags['diagnostics-bundle'] !== undefined) {
+        process.stderr.write('--clone-profile / --clone-to / --diagnostics-bundle are only supported by `lab verify` / `lab capture`; `lab shell` keeps its own runner.\n');
         return 2;
       }
       return runShellCommand({
@@ -265,6 +322,7 @@ Usage:
              [--profile-lab <name>]
              [--clone-profile web|desktop [--clone-plugins all|none]
               [--clone-exclude <plugin>] [--clone-drop-local]]
+             [--clone-to <name> [--force]]
              [--diagnostics-bundle <file>]
              [--artifacts <dir>] [--browser <exe>] [--no-fixture]
              [--boot-transport stdout|ipc]
@@ -272,6 +330,7 @@ Usage:
   lab capture [same options as verify]
   lab matrix --config <file.json> [--online] [--runtime-matrix] [--json]
   lab runtimes [--runtime-timeout <ms>] [--json]
+  lab real-profiles [--json]      (read-only clone sources)
   lab shell [--no-cache] [--no-compare-web] [--shell-timeout <ms>]
             [--plugin <spec>] [--with <spec>] [--offline|--online] [--no-fixture]
             [--fixture-variant default|empty|long|rich]
@@ -308,6 +367,13 @@ none drops every third-party plugin, --clone-exclude <plugin> drops one, and
 fail to install or boot are reported as failures, not hidden. --clone-profile
 is supported by lab verify / lab capture; lab shell keeps its own runner
 and rejects it.
+Persistent clones: add --profile-lab <name> (or the sugar --clone-to <name>,
+which also needs --clone-profile web|desktop) to keep the clone as a visible
+lab profile. It then shows in lab profile list as "cloned from web", keeps
+its clonedFrom { kind, at, sourceHash, copiedFiles, excluded } marker, and can
+be reopened with lab shell --profile-lab <name>. An existing target is
+refused unless --force is given, which overwrites it junction-safely. Without
+persistence the clone is temporary and the run prints how to keep it.
 --diagnostics-bundle <file> writes a redacted diagnostics bundle (stable error
 codes + failed checks + a bounded boot tail). It never contains credentials,
 sessions, settings, raw logs, or absolute home paths. lab diagnose turns a

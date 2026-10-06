@@ -154,7 +154,7 @@ browser, or the `artifacts/` folder. **中止** kills the running child tree.
 | 按钮 | 走 lab 的哪条命令 |
 |---|---|
 | 在壳窗口打开 | `shell --no-compare-web --profile-lab <name> --keep-open` |
-| 克隆为一次性运行 | `verify --plugin <spec>...`（不传 `--profile-lab`，跑完即删；有远程插件时自动 `--online`） |
+| 克隆为一次性运行（跑完即删） | `verify --plugin <spec>...`（不传 `--profile-lab`，跑完即删；有远程插件时自动 `--online`） |
 | 卸载插件 | `profile remove-plugin <name> <spec>`（弹出输入框填插件名） |
 | 打开目录 | `profile path <name>`（主进程解析路径）后用系统资源管理器打开 |
 | 删除 profile | `profile remove <name>`（二次确认） |
@@ -163,6 +163,21 @@ browser, or the `artifacts/` folder. **中止** kills the running child tree.
 `lstat` 的 `removeTreeSafely`，所以 `node_modules` 里的 `file:`/`link:` junction
 只会被 unlink，不会顺着链接删掉插件源码。profile 正被别的 lab 运行时，删除会返回
 一行可读错误并以退出码 1 结束，而不是卡死或静默。
+
+### 从真实 profile 克隆
+
+抽屉顶部有一条克隆栏，来源下拉由只读的 `lab real-profiles --json` 填充（扫
+`%USERPROFILE%\.dsh\profiles\*`，只接受含 `package.json` 的目录，滤掉
+`node_modules`）。真实 profile 永远只读，抽屉里不会给它们删除/卸载按钮。
+
+| 按钮 | 走 lab 的哪条命令 |
+|---|---|
+| 克隆为持久 profile | `verify --clone-to <name> --clone-profile <kind> --clone-plugins all\|none --no-fixture`（先弹出名字输入框） |
+| 克隆为一次性运行（跑完即删） | `verify --clone-profile <kind> --clone-plugins all\|none --no-fixture` |
+
+持久克隆会出现在下方列表里，行内显示 `克隆自 web`（来自
+`lab-profile.json` 的 `clonedFrom`），可以立刻用「在壳窗口打开」复用。同名目标默认被
+拒绝；需要覆盖时在 CLI 上加 `--force`。
 
 ## 原生桌面开关
 

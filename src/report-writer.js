@@ -55,6 +55,17 @@ export function renderReportMarkdown(report) {
     lines.push('', '## 真实 profile 克隆', '');
     lines.push(`- 克隆来源: ${clone.kind} (${clone.sourceDir})`);
     lines.push(`- 来源快照: ${clone.sourceSnapshot?.files?.length ?? 0} 个结构文件，哈希 ${clone.sourceSnapshot?.hash ?? '不适用'}`);
+    lines.push(
+      clone.persistent
+        ? `- 持久化: 是（lab profile "${clone.profile}"，来源已写入 clonedFrom）`
+        : '- 持久化: 否（临时，运行结束随隔离 home 删除）',
+    );
+    if (clone.clonedFrom) {
+      lines.push(
+        `- 来源标记: ${clone.clonedFrom.kind} · hash ${clone.clonedFrom.sourceHash}`
+          + ` · ${clone.clonedFrom.copiedFiles} file(s) · 排除 ${clone.clonedFrom.excluded.length}`,
+      );
+    }
     lines.push(`- 已复制结构文件: [${(clone.copiedFiles ?? []).join(', ')}]`);
     if (clone.copiedPatches?.length) lines.push(`- 已复制 patches: [${clone.copiedPatches.join(', ')}]`);
     lines.push(`- 插件模式: ${clone.plugins}`);
@@ -219,6 +230,10 @@ export function renderReportMarkdown(report) {
   if (report.errors?.length) {
     lines.push('', '## 错误', '');
     for (const error of report.errors) lines.push(`- ${error}`);
+  }
+  if (report.hints?.length) {
+    lines.push('', '## 提示', '');
+    for (const hint of report.hints) lines.push(`- ${hint}`);
   }
   lines.push('', '## 产物', '');
   for (const [name, file] of Object.entries(report.artifacts ?? {})) {

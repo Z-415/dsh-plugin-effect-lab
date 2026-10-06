@@ -52,3 +52,36 @@ test('the markdown report echoes advertised spec -> resolved name@version', () =
   assert.match(markdown, /## 插件来源与真实包名/);
   assert.match(markdown, /github:author\/claimed#v2 -> dsh-real-name@2\.3\.4（来源：github）/);
 });
+
+test('the markdown report marks a persistent clone and prints hints', () => {
+  const markdown = renderReportMarkdown({
+    runId: 'run-1',
+    ok: true,
+    mode: 'web',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    finishedAt: '2026-01-01T00:00:01.000Z',
+    checks: [],
+    clone: {
+      kind: 'web',
+      sourceDir: 'C:/real/profiles/web',
+      sourceSnapshot: { files: [], hash: 'ABC123' },
+      persistent: true,
+      profile: 'clone-web',
+      clonedFrom: { kind: 'web', sourceHash: 'ABC123', copiedFiles: 5, excluded: ['dsh-x'] },
+      copiedFiles: ['package.json'],
+      copiedPatches: [],
+      plugins: 'none',
+      excluded: [],
+      droppedLocal: [],
+      localPlugins: [],
+      credentials: { ok: true },
+      install: { ok: true, code: 0, installed: [], missing: [] },
+    },
+    hints: ['本次克隆是临时的，已随隔离 home 删除；想保留请加 --profile-lab <名字>（或 --clone-to <名字>）。'],
+    artifacts: {},
+  });
+  assert.match(markdown, /持久化: 是（lab profile "clone-web"/);
+  assert.match(markdown, /来源标记: web · hash ABC123/);
+  assert.match(markdown, /## 提示/);
+  assert.match(markdown, /本次克隆是临时的/);
+});

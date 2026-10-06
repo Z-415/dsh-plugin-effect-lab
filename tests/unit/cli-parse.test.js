@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
-import { browserRunners, main, parseArgv } from '../../src/cli.js';
+import { browserRunners, main, parseArgv, resolveCloneOptions } from '../../src/cli.js';
+import { createLabProfile } from '../../src/lab-profile.js';
 
 test('--assert-token accepts token names that themselves start with --', () => {
   const { flags } = parseArgv([
@@ -151,4 +155,85 @@ test('lab shell rejects --diagnostics-bundle with exit 2', async () => {
 
 test('lab diagnose without a source fails with exit 2', async () => {
   assert.equal(await main(['diagnose']), 2);
+});
+
+test('--clone-to is sugar for --profile-lab + --clone-profile', () => {
+  const resolved = resolveCloneOptions({ 'clone-to': 'clone-web', 'clone-profile': 'web' });
+  assert.equal(resolved.error, undefined);
+  assert.equal(resolved.profileLab, 'clone-web');
+  assert.equal(resolved.cloneTo, 'clone-web');
+  assert.equal(resolved.target, 'clone-web');
+});
+
+test('--clone-to needs --clone-profile and matching --profile-lab', () => {
+  assert.match(resolveCloneOptions({ 'clone-to': 'x' }).error, /needs --clone-profile/);
+  assert.match(
+    resolveCloneOptions({ 'clone-to': 'x', 'clone-profile': 'web', 'profile-lab': 'y' }).error,
+    /must name the same profile/,
+  );
+});
+
+test('resolveCloneOptions refuses an existing target unless --force', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-cloneto-'));
+  const previous = process.env.DSH_LAB_PROFILES;
+  process.env.DSH_LAB_PROFILES = root;
+  try {
+    createLabProfile('clone-web');
+    const refused = resolveCloneOptions({ 'clone-to': 'clone-web', 'clone-profile': 'web' });
+    assert.equal(refused.refused, true);
+    assert.match(refused.error, /already exists/);
+    assert.match(refused.error, /--force/);
+    const forced = resolveCloneOptions({ 'clone-to': 'clone-web', 'clone-profile': 'web', force: true });
+    assert.equal(forced.error, undefined);
+    assert.equal(forced.profileLab, 'clone-web');
+  } finally {
+    if (previous === undefined) delete process.env.DSH_LAB_PROFILES;
+    else process.env.DSH_LAB_PROFILES = previous;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('main forwards --clone-to and --force into the verify runner', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-cloneto-fwd-'));
+  const previous = process.env.DSH_LAB_PROFILES;
+  process.env.DSH_LAB_PROFILES = root;
+  const original = { ...browserRunners };
+  let seen = null;
+  browserRunners.verify = async (options) => {
+    seen = options;
+    return 0;
+  };
+  try {
+    assert.equal(
+      await main(['verify', '--clone-to', 'clone-web', '--clone-profile', 'web', '--clone-plugins', 'none', '--force', '--no-html']),
+      0,
+    );
+  } finally {
+    Object.assign(browserRunners, original);
+    if (previous === undefined) delete process.env.DSH_LAB_PROFILES;
+    else process.env.DSH_LAB_PROFILES = previous;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+  assert.equal(seen.profileLab, 'clone-web');
+  assert.equal(seen.cloneTo, 'clone-web');
+  assert.equal(seen.cloneProfile, 'web');
+  assert.equal(seen.force, true);
+});
+
+test('main refuses an existing --clone-to target with exit 2', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-cloneto-refuse-'));
+  const previous = process.env.DSH_LAB_PROFILES;
+  process.env.DSH_LAB_PROFILES = root;
+  try {
+    createLabProfile('clone-web');
+    assert.equal(await main(['verify', '--clone-to', 'clone-web', '--clone-profile', 'web']), 2);
+  } finally {
+    if (previous === undefined) delete process.env.DSH_LAB_PROFILES;
+    else process.env.DSH_LAB_PROFILES = previous;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('lab shell rejects --clone-to', async () => {
+  assert.equal(await main(['shell', '--clone-to', 'x', '--clone-profile', 'web']), 2);
 });

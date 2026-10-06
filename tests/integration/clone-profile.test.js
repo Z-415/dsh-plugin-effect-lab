@@ -1,16 +1,19 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { REAL_HOME } from '../../src/config.js';
 import { createIsolatedHome } from '../../src/home-manager.js';
+import { listLabProfiles } from '../../src/lab-profile.js';
 import { scanForCredentials } from '../../src/model-coverage.js';
 import { cloneProfileInto, diffCloneSource, snapshotCloneSource } from '../../src/profile-cloner.js';
 import { diffRealHome, snapshotRealHome } from '../../src/real-home-guard.js';
 import { runLab } from '../../src/runner.js';
 
 const enabled = process.env.DSH_LAB_E2E === '1';
+const labEntry = path.resolve('bin', 'lab.js');
 
 test('lab verify --clone-profile web --clone-plugins none boots from a real structural clone', {
   skip: !enabled,
@@ -91,5 +94,110 @@ test('clone-exclude and clone-drop-local remove plugins and never touch the real
     assert.equal(diffRealHome(realBefore, snapshotRealHome()).ok, true);
   } finally {
     await iso.dispose();
+  }
+});
+
+test('--clone-to persists a marked, reusable clone, refuses a same-name rerun, and force-overwrites', {
+  skip: !enabled,
+  timeout: 600_000,
+}, async () => {
+  const profilesRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-clone-persist-'));
+  const artifactsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-clone-persist-artifacts-'));
+  const previous = process.env.DSH_LAB_PROFILES;
+  process.env.DSH_LAB_PROFILES = profilesRoot;
+  try {
+    const first = await runLab({
+      cloneTo: 'clone-web',
+      cloneProfile: 'web',
+      clonePlugins: 'none',
+      fixture: false,
+      screenshots: ['home'],
+      artifactsRoot,
+      html: false,
+    });
+    assert.equal(first.ok, true, JSON.stringify((first.checks ?? []).filter((check) => !check.pass), null, 2));
+    assert.equal(first.clone.persistent, true);
+    assert.equal(first.clone.profile, 'clone-web');
+    assert.equal(first.cleanup.homeKept, true);
+    assert.equal(fs.existsSync(path.join(profilesRoot, 'clone-web')), true);
+
+    // The source marker is written to lab-profile.json and surfaced by profile list.
+    const manifest = JSON.parse(fs.readFileSync(path.join(profilesRoot, 'clone-web', 'lab-profile.json'), 'utf8'));
+    assert.equal(manifest.clonedFrom.kind, 'web');
+    assert.equal(manifest.clonedFrom.copiedFiles, first.clone.copiedFiles.length, JSON.stringify(manifest.clonedFrom));
+    assert.equal(manifest.clonedFrom.sourceHash.length, 12);
+    assert.equal(Array.isArray(manifest.clonedFrom.excluded), true);
+    const listed = listLabProfiles().find((profile) => profile.name === 'clone-web');
+    assert.equal(listed.clonedFrom.kind, 'web');
+
+    // The safety assertions still hold.
+    for (const name of ['clone-real-profile-unchanged', 'clone-no-credentials', 'real-home-unchanged']) {
+      const check = (first.checks ?? []).find((item) => item.name === name);
+      assert.equal(check?.pass, true, `${name}: ${JSON.stringify(check)}`);
+    }
+
+    // A same-name rerun is refused (the CLI rejects it before the runner; the
+    // runner itself also refuses with the same message).
+    const refused = await runLab({
+      cloneTo: 'clone-web',
+      cloneProfile: 'web',
+      clonePlugins: 'none',
+      fixture: false,
+      screenshots: [],
+      artifactsRoot,
+      html: false,
+    });
+    assert.equal(refused.ok, false);
+    const refusedCheck = (refused.checks ?? []).find((check) => check.name === 'run');
+    assert.match(refusedCheck?.detail ?? '', /already exists/);
+    assert.match(refusedCheck?.detail ?? '', /--force/);
+
+    // --force overwrites it (junction-safely) and re-clones.
+    const forced = await runLab({
+      cloneTo: 'clone-web',
+      cloneProfile: 'web',
+      clonePlugins: 'none',
+      force: true,
+      fixture: false,
+      screenshots: [],
+      artifactsRoot,
+      html: false,
+    });
+    assert.equal(forced.ok, true, JSON.stringify((forced.checks ?? []).filter((check) => !check.pass), null, 2));
+    assert.equal(JSON.parse(fs.readFileSync(path.join(profilesRoot, 'clone-web', 'lab-profile.json'), 'utf8')).clonedFrom.kind, 'web');
+
+    // A non-persistent clone prints how to keep it.
+    const oneShot = await runLab({
+      cloneProfile: 'web',
+      clonePlugins: 'none',
+      fixture: false,
+      screenshots: [],
+      artifactsRoot,
+      html: false,
+    });
+    assert.equal(oneShot.hints.some((hint) => hint.includes('临时的')), true, JSON.stringify(oneShot.hints));
+
+    // Acceptance: the persistent clone can be reopened with lab shell.
+    const shellOut = execFileSync(process.execPath, [
+      labEntry,
+      'shell',
+      '--profile-lab', 'clone-web',
+      '--no-compare-web',
+      '--show',
+      '--show-hold', '3000',
+      '--no-html',
+      '--artifacts', artifactsRoot,
+    ], {
+      cwd: path.resolve('.'),
+      env: { ...process.env, DSH_LAB_PROFILES: profilesRoot },
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    assert.match(shellOut, /壳模式: 通过/);
+  } finally {
+    if (previous === undefined) delete process.env.DSH_LAB_PROFILES;
+    else process.env.DSH_LAB_PROFILES = previous;
+    fs.rmSync(profilesRoot, { recursive: true, force: true });
+    fs.rmSync(artifactsRoot, { recursive: true, force: true });
   }
 });
