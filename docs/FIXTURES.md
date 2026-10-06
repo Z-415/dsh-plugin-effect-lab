@@ -43,6 +43,10 @@ The `rich` variant also seeds a second turn with a tool call, so opening it in
 the UI covers the thinking area, a fenced code block, and tool rendering at
 once. The GUI's **思考 / 代码夹具** button runs the same variant.
 
+> Known flake (deferred): under full-suite load the rich variant's renderer text
+> probe can report `codeFound=false` even though the events are correct; running
+> the file alone passes. See `docs/KNOWN-ISSUES.md` §1.
+
 ### Shell windows show the fixture by default
 
 `lab shell` defaults to `--fixture-variant rich` (verify still defaults to

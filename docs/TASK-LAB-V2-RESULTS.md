@@ -65,6 +65,9 @@ $ node --test --test-name-pattern="rich fixture" tests/integration/fixture-varia
 `fixture-reasoning-block` 失败（`saw: thinking, text, tool-call`），
 且渲染端 `reasoningFound=false`——证明写错类型前端不渲染。恢复后 3 条全绿。
 
+> ⚠️ 已知（暂缓修复）：rich 的**渲染文本探针**在满负载下偶发 `codeFound=false`，
+> 单独复跑即通过——夹具数据本身没有问题。详见 `docs/KNOWN-ISSUES.md` §1。
+
 ## 项 1：复制用户真实 profile
 
 - 新增 `src/profile-cloner.js`：
