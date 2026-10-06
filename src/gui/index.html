@@ -109,6 +109,21 @@
   .banner.ok { color: #116033; background: var(--ok-bg); border-color: #bfe3ca; }
   .banner.bad { color: #8f1d14; background: var(--bad-bg); border-color: #f0c3bd; }
   .banner[hidden] { display: none; }
+  /* Profile drawer: the row actions live here so the main grid stays stable. */
+  .drawer { position: fixed; top: 36px; right: 0; bottom: 0; z-index: 40; display: flex; flex-direction: column;
+            width: min(600px, 94vw); background: var(--panel); border-left: 1px solid var(--line-strong); }
+  .drawer[hidden] { display: none; }
+  .drawerhead { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .drawerhead h2 { margin: 0; font-size: 12.5px; font-weight: 650; }
+  .drawerhead .tag { margin-left: auto; }
+  .drawerlist { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; }
+  .prow { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+  .prow-head { display: flex; align-items: center; gap: 8px; }
+  .prow-head strong { font-size: 12.5px; }
+  .prow-head .tag { margin-left: auto; }
+  .prow .note { margin: 6px 0 0; word-break: break-word; }
+  .prow-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  button.small { min-height: 26px; padding: 3px 9px; font-size: 11.5px; }
   @media (max-width: 900px) {
     #controls { grid-template-columns: minmax(0, 1fr); }
   }
@@ -236,6 +251,14 @@
         </div>
       </div>
     </section>
+    <div id="profileDrawer" class="drawer" hidden aria-label="已保存的 profile">
+      <div class="drawerhead">
+        <h2>已保存的 profile</h2>
+        <span class="tag" id="profileRoot"></span>
+        <button type="button" id="closeProfileDrawer" class="small">关闭</button>
+      </div>
+      <div class="drawerlist" id="profileList"></div>
+    </div>
     <div id="banner" class="banner" role="status" aria-live="polite" hidden></div>
     <div class="logwrap">
       <div class="logbar"><span class="dot" id="dot"></span><span id="status" role="status" aria-live="polite">空闲</span><span style="flex:1"></span><span id="hint"></span></div>
@@ -267,6 +290,9 @@
   const nativeDesktop = document.getElementById('nativeDesktop');
   const probeDialog = document.getElementById('probeDialog');
   const banner = document.getElementById('banner');
+  const profileDrawer = document.getElementById('profileDrawer');
+  const profileList = document.getElementById('profileList');
+  const profileRoot = document.getElementById('profileRoot');
   let runStartedAt = 0;
   let runLabel = '';
 
@@ -367,15 +393,123 @@
     const text = specs.join(', ');
     return text.length > 48 ? `${text.slice(0, 45)}…` : text;
   }
+  function profileSpecs(profile) {
+    return (profile.plugins ?? []).map((entry) => entry.spec).filter(Boolean);
+  }
+  function formatWhen(value) {
+    if (!value) return '未运行';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '未知' : date.toLocaleString('zh-CN');
+  }
+  function profileButton(label, handler, extraClass) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `small ${extraClass ?? ''}`.trim();
+    button.textContent = label;
+    button.addEventListener('click', handler);
+    return button;
+  }
+  function openProfileDrawer() {
+    profileDrawer.hidden = false;
+  }
+  function cloneProfileOneShot(profile) {
+    const specs = profileSpecs(profile);
+    if (!specs.length) {
+      append(`[gui] profile "${profile.name}" 没有记录插件；先安装一个再试。\n`);
+      return;
+    }
+    const args = ['verify'];
+    let online = false;
+    for (const spec of specs) {
+      args.push('--plugin', spec);
+      if (!isLocalSpec(spec) && !/^file:|^link:/i.test(spec)) online = true;
+    }
+    args.push(online ? '--online' : '--offline', '--screenshot', 'home');
+    runWithArgs(args, `一次性运行 · ${profile.name}`);
+  }
+  function uninstallFromProfile(profile) {
+    const spec = window.prompt(`要从 ${profile.name} 卸载哪个插件？（包名 / name@version / 原 spec）`, '');
+    if (!spec) return;
+    runWithArgs(['profile', 'remove-plugin', profile.name, spec], `remove-plugin · ${profile.name} / ${spec}`);
+  }
+  async function openProfileDir(profile) {
+    if (typeof window.labGui.openProfileDir !== 'function') {
+      append('[gui] 当前宿主不支持打开 profile 目录。\n');
+      return;
+    }
+    const result = await window.labGui.openProfileDir(profile.name);
+    if (!result || result.opened !== true) append(`\n[gui] ${result?.reason || result?.error || '打开目录失败'}\n`);
+  }
+  function removeProfileFromDrawer(profile) {
+    if (!window.confirm(`删除 lab profile "${profile.name}"？这会删除它已安装的插件。`)) return;
+    runWithArgs(['profile', 'remove', profile.name], `profile remove · ${profile.name}`);
+  }
+  function renderProfileList(profiles, root, error) {
+    profileRoot.textContent = root ?? '';
+    profileList.textContent = '';
+    if (error) {
+      const note = document.createElement('p');
+      note.className = 'note';
+      note.textContent = `读取 profile 失败：${error}`;
+      profileList.appendChild(note);
+      return;
+    }
+    if (!profiles.length) {
+      const note = document.createElement('p');
+      note.className = 'note';
+      note.textContent = '（还没有 profile；在 profile 下拉选「新建 profile…」后再跑一次即可。）';
+      profileList.appendChild(note);
+      return;
+    }
+    for (const profile of profiles) {
+      const row = document.createElement('div');
+      row.className = 'prow';
+      row.dataset.profile = profile.name;
+      const head = document.createElement('div');
+      head.className = 'prow-head';
+      const name = document.createElement('strong');
+      name.textContent = profile.name;
+      const meta = document.createElement('span');
+      meta.className = 'tag';
+      const specs = profileSpecs(profile);
+      meta.textContent = `${specs.length} 个插件 · ${profile.nodeModulesExists ? `node_modules ${profile.dependenciesCount ?? 0}` : '未装 node_modules'}`;
+      head.append(name, meta);
+      const specsLine = document.createElement('p');
+      specsLine.className = 'note';
+      specsLine.textContent = specs.length ? specs.join(', ') : '（空）';
+      const when = document.createElement('p');
+      when.className = 'note';
+      when.textContent = `最后运行：${formatWhen(profile.lastRunAt ?? profile.mtimeMs)}`;
+      const actions = document.createElement('div');
+      actions.className = 'prow-actions';
+      actions.append(
+        profileButton('在壳窗口打开', () => runWithArgs(
+          ['shell', '--no-compare-web', '--profile-lab', profile.name, '--keep-open'],
+          `shell · ${profile.name}`,
+        )),
+        profileButton('克隆为一次性运行', () => cloneProfileOneShot(profile)),
+        profileButton('卸载插件', () => uninstallFromProfile(profile)),
+        profileButton('打开目录', () => openProfileDir(profile)),
+        profileButton('删除 profile', () => removeProfileFromDrawer(profile), 'danger'),
+      );
+      row.append(head, specsLine, when, actions);
+      profileList.appendChild(row);
+    }
+  }
   async function refreshProfiles() {
     const previous = profileSelect.value;
     let list = [];
+    let root = null;
+    let error = null;
     try {
       if (typeof window.labGui.profiles === 'function') {
         const result = await window.labGui.profiles();
         list = result.profiles ?? [];
+        root = result.root ?? null;
+        error = result.error ?? null;
       }
-    } catch {
+    } catch (caught) {
+      error = String(caught?.message ?? caught);
       list = [];
     }
     profileSelect.innerHTML = '';
@@ -395,6 +529,7 @@
     profileSelect.appendChild(create);
     if ([...profileSelect.options].some((option) => option.value === previous)) profileSelect.value = previous;
     syncProfileNew();
+    renderProfileList(list, root, error);
   }
 
   for (const button of presetButtons) {
@@ -464,8 +599,12 @@
     runWithArgs(['profile', 'remove-plugin', profile, spec], `profile remove-plugin · ${profile} / ${spec}`);
   });
   document.getElementById('runListProfiles').addEventListener('click', async () => {
+    openProfileDrawer();
     await runWithArgs(['profile', 'list'], 'profile list');
     await refreshProfiles();
+  });
+  document.getElementById('closeProfileDrawer').addEventListener('click', () => {
+    profileDrawer.hidden = true;
   });
   document.getElementById('refreshProfiles').addEventListener('click', () => refreshProfiles());
   profileSelect.addEventListener('change', syncProfileNew);

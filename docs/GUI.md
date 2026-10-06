@@ -141,6 +141,29 @@ browser, or the `artifacts/` folder. **中止** kills the running child tree.
 `still installed …`。没匹配到会提示 `unmatched` 并以退出码 1 结束。选「一次性运行」
 时不能卸载（没有可卸载的对象），按钮会直接提示。
 
+## profile 面板（列表 + 行内操作）
+
+点 **列出 profile** 会打开右侧的 profile 抽屉。每个 profile 一行，显示：
+
+- 名称、插件数、`node_modules` 是否已建（及第三方依赖数）；
+- 记录的全部插件 spec；
+- 最后运行时间（`lastRunAt`，没有则回落到目录 `mtimeMs`）。
+
+每行的行内按钮：
+
+| 按钮 | 走 lab 的哪条命令 |
+|---|---|
+| 在壳窗口打开 | `shell --no-compare-web --profile-lab <name> --keep-open` |
+| 克隆为一次性运行 | `verify --plugin <spec>...`（不传 `--profile-lab`，跑完即删；有远程插件时自动 `--online`） |
+| 卸载插件 | `profile remove-plugin <name> <spec>`（弹出输入框填插件名） |
+| 打开目录 | `profile path <name>`（主进程解析路径）后用系统资源管理器打开 |
+| 删除 profile | `profile remove <name>`（二次确认） |
+
+删除、卸载都走 lab CLI，渲染进程不拼接路径、不直接做文件操作。删除内部用
+`lstat` 的 `removeTreeSafely`，所以 `node_modules` 里的 `file:`/`link:` junction
+只会被 unlink，不会顺着链接删掉插件源码。profile 正被别的 lab 运行时，删除会返回
+一行可读错误并以退出码 1 结束，而不是卡死或静默。
+
 ## 原生桌面开关
 
 第一组底部有两个复选框，作用于三个「壳窗口」按钮：

@@ -145,3 +145,55 @@ test('profilePluginMatches compares names without being confused by versions', (
   assert.equal(profilePluginMatches({ spec: 'pkg@1.2.3' }, 'other'), false);
   assert.equal(profilePluginMatches({ spec: 'pkg@1.2.3' }, ''), false);
 });
+
+test('listLabProfiles reports node_modules/bundles/lastRunAt for the GUI', async () => {
+  await withTempRoot((root) => {
+    createLabProfile('dev');
+    const profileDir = path.join(root, 'dev', 'home', 'profiles', 'lab-dev');
+    fs.mkdirSync(path.join(profileDir, 'node_modules'), { recursive: true });
+    fs.writeFileSync(
+      path.join(profileDir, 'package.json'),
+      `${JSON.stringify({
+        name: 'lab-dev',
+        dependencies: { '@deepseek-ai/dsh-base': '0.2.0-rc.2', 'dsh-x': '1.0.0' },
+        dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', 'dsh-x'] } },
+      }, null, 2)}\n`,
+      'utf8',
+    );
+    const [listed] = listLabProfiles();
+    assert.equal(listed.nodeModulesExists, true);
+    assert.equal(listed.dependenciesCount, 1, 'only third-party deps are counted');
+    assert.equal(listed.bundlesCount, 2);
+    assert.equal(typeof listed.lastRunAt, 'number');
+  });
+});
+
+test('removeLabProfile unlinks a junction instead of deleting its target', async () => {
+  await withTempRoot((root) => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-outside-'));
+    fs.writeFileSync(path.join(outside, 'source.js'), 'do not delete me', 'utf8');
+    try {
+      createLabProfile('dev');
+      const profileDir = path.join(root, 'dev', 'home', 'profiles', 'lab-dev');
+      fs.mkdirSync(path.join(profileDir, 'node_modules'), { recursive: true });
+      const link = path.join(profileDir, 'node_modules', 'local-source');
+      // pnpm links a `file:`/`link:` directory dependency with a junction.
+      fs.symlinkSync(outside, link, 'junction');
+      const result = removeLabProfile('dev');
+      assert.equal(result.removed, true);
+      assert.equal(fs.existsSync(path.join(root, 'dev')), false);
+      assert.equal(fs.existsSync(link), false);
+      assert.equal(fs.existsSync(path.join(outside, 'source.js')), true, 'the junction target must survive');
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test('removeLabProfile reports not-found without an error', async () => {
+  await withTempRoot(() => {
+    const result = removeLabProfile('missing');
+    assert.equal(result.removed, false);
+    assert.equal(result.error, undefined);
+  });
+});

@@ -230,6 +230,28 @@ ipcMain.handle('lab:notify', (_event, payload) => {
 
 ipcMain.handle('lab:profiles', () => listProfiles());
 
+/**
+ * Resolve a profile directory through the lab CLI (`profile path <name>`), then
+ * open it in Explorer. The renderer never joins paths itself.
+ */
+ipcMain.handle('lab:open-profile-dir', async (_event, name) => {
+  const safe = String(name ?? '');
+  if (!/^[a-z0-9][a-z0-9._-]{0,31}$/.test(safe)) return { opened: false, error: 'invalid profile name' };
+  const result = spawnSync(process.execPath, [path.join(repo, 'bin', 'lab.js'), 'profile', 'path', safe], {
+    cwd: repo,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', DSH_LAB_GUI: '1' },
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 30_000,
+  });
+  if (result.error) return { opened: false, error: String(result.error.message ?? result.error) };
+  if (result.status !== 0) return { opened: false, error: (result.stderr || '').trim() || `exit ${result.status}` };
+  const dir = result.stdout.trim();
+  if (!dir) return { opened: false, error: 'profile path is empty' };
+  const error = await shell.openPath(dir);
+  return { opened: !error, dir, error: error || null };
+});
+
 ipcMain.handle('lab:info', () => ({
   repo,
   electron: process.versions.electron,

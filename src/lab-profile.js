@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { removeTreeSafely } from './home-manager.js';
 import { parseNpmSpec } from './semver.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -174,20 +175,56 @@ export function listLabProfiles() {
     } catch {
       manifest = null;
     }
+    // Optional detail for the GUI list. The DSH profile inside a lab profile
+    // is always `lab-<name>` (see the runners).
+    const dshProfileDir = path.join(dir, 'home', 'profiles', `lab-${entry.name}`);
+    let dshPackage = null;
+    try {
+      dshPackage = JSON.parse(fs.readFileSync(path.join(dshProfileDir, 'package.json'), 'utf8'));
+    } catch {
+      dshPackage = null;
+    }
+    const dependencies = Object.keys(dshPackage?.dependencies ?? {}).filter((name) => !name.startsWith('@deepseek-ai/'));
+    let lastRunAt = null;
+    if (fs.existsSync(dshProfileDir)) {
+      try {
+        lastRunAt = fs.statSync(dshProfileDir).mtimeMs;
+      } catch {
+        lastRunAt = null;
+      }
+    }
     out.push({
       name: entry.name,
       dir,
       plugins: manifest?.plugins ?? [],
       createdAt: manifest?.createdAt ?? null,
       mtimeMs: fs.statSync(dir).mtimeMs,
+      nodeModulesExists: fs.existsSync(path.join(dshProfileDir, 'node_modules')),
+      dependenciesCount: dependencies.length,
+      bundlesCount: (dshPackage?.dsh?.profile?.bundles ?? []).length,
+      lastRunAt,
     });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Delete a lab profile. Uses the lstat-based `removeTreeSafely` so a
+ * `file:`/`link:` junction in `node_modules` is unlinked, never followed into
+ * the plugin source. A locked profile returns a readable error instead of
+ * looping forever.
+ */
 export function removeLabProfile(name) {
   const dir = labProfileDir(name);
   if (!fs.existsSync(dir)) return { removed: false, dir };
-  fs.rmSync(dir, { recursive: true, force: true });
+  try {
+    removeTreeSafely(dir);
+  } catch (error) {
+    return {
+      removed: false,
+      dir,
+      error: `lab profile "${name}" could not be removed (it may be in use by a running lab process): ${String(error?.message ?? error)}`,
+    };
+  }
   return { removed: !fs.existsSync(dir), dir };
 }

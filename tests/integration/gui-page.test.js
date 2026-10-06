@@ -17,6 +17,7 @@ window.__handlers = {};
 window.__notifyCalls = [];
 window.__menuCalls = [];
 window.__rendererErrors = [];
+window.__profileDirCalls = [];
 window.addEventListener('error', (event) => window.__rendererErrors.push(String(event.message)));
 window.prompt = () => null;
 window.confirm = () => false;
@@ -30,10 +31,18 @@ window.labGui = {
   profiles: async () => ({
     root: 'stub',
     profiles: [
-      { name: 'dev', plugins: [{ spec: 'dsh-plugin-wallpaper-engine@1.2.0' }, { spec: 'dsh-ui-tweaks@0.20.0' }] },
-      { name: 'plain', plugins: [] },
+      {
+        name: 'dev',
+        plugins: [{ spec: 'dsh-plugin-wallpaper-engine@1.2.0' }, { spec: 'dsh-ui-tweaks@0.20.0' }],
+        nodeModulesExists: true,
+        dependenciesCount: 2,
+        bundlesCount: 4,
+        lastRunAt: 1700000000000,
+      },
+      { name: 'plain', plugins: [], nodeModulesExists: false, dependenciesCount: 0, bundlesCount: 0, lastRunAt: null },
     ],
   }),
+  openProfileDir: async (name) => { window.__profileDirCalls.push(name); return { opened: true }; },
   info: async () => ({ electron: 'stub', node: 'stub', repo: 'stub' }),
   onStarted: (handler) => { window.__handlers.started = handler; },
   onOutput: (handler) => { window.__handlers.output = handler; },
@@ -123,6 +132,48 @@ const SOURCE_SELECT = `(async () => {
   return JSON.stringify({
     options: [...source.options].map((option) => option.value),
     calls,
+    errors: window.__rendererErrors,
+  });
+})()`;
+
+/** The profile drawer must list rows with the five inline actions. */
+const PROFILE_DRAWER = `(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const listButton = document.getElementById('runListProfiles');
+  listButton.disabled = false;
+  listButton.click();
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const drawer = document.getElementById('profileDrawer');
+  const rows = [...document.querySelectorAll('#profileList .prow')];
+  const first = rows[0];
+  const buttons = first ? [...first.querySelectorAll('button')].map((button) => button.textContent.trim()) : [];
+  window.__calls = [];
+  const cloneButton = first ? [...first.querySelectorAll('button')].find((button) => button.textContent.includes('克隆')) : null;
+  if (cloneButton) cloneButton.click();
+  window.prompt = () => 'dsh-ui-tweaks';
+  window.confirm = () => true;
+  const clickRowButton = (label) => {
+    const button = first ? [...first.querySelectorAll('button')].find((item) => item.textContent.includes(label)) : null;
+    if (!button) return;
+    button.disabled = false;
+    button.click();
+  };
+  window.__profileDirCalls = [];
+  clickRowButton('打开目录');
+  clickRowButton('卸载插件');
+  clickRowButton('删除 profile');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const wasOpen = drawer.hidden === false;
+  // Close before the layout probes so the fixed drawer is not measured on top
+  // of the page buttons.
+  drawer.hidden = true;
+  return JSON.stringify({
+    open: wasOpen,
+    rowCount: rows.length,
+    firstText: first ? first.textContent : null,
+    buttons,
+    calls: window.__calls,
+    dirCalls: window.__profileDirCalls,
     errors: window.__rendererErrors,
   });
 })()`;
@@ -380,6 +431,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
         desktop: CLICK_DESKTOP,
         profiles: PROFILE_SELECT,
         sourceSelect: SOURCE_SELECT,
+        profileDrawer: PROFILE_DRAWER,
         layout: LAYOUT_AND_BANNER,
         design: DESIGN,
         theme: THEME,
@@ -392,6 +444,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
     const desktop = JSON.parse(ui.extra.desktop);
     const profiles = JSON.parse(ui.extra.profiles);
     const sourceSelect = JSON.parse(ui.extra.sourceSelect);
+    const profileDrawer = JSON.parse(ui.extra.profileDrawer);
     const layout = JSON.parse(ui.extra.layout);
     const design = JSON.parse(ui.extra.design);
     const theme = JSON.parse(ui.extra.theme);
@@ -468,6 +521,30 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(tarballCall[tarballCall.indexOf('--plugin') + 1], 'C:\\tmp\\my-plugin.tgz');
     assert.equal(tarballCall.includes('--offline'), true);
     assert.deepEqual(sourceSelect.errors, []);
+
+    // The profile drawer lists every profile with the five inline actions.
+    assert.equal(profileDrawer.open, true);
+    assert.equal(profileDrawer.rowCount, 2, JSON.stringify(profileDrawer));
+    assert.match(profileDrawer.firstText, /dev/);
+    assert.match(profileDrawer.firstText, /dsh-plugin-wallpaper-engine@1\.2\.0/);
+    assert.deepEqual(profileDrawer.buttons, [
+      '在壳窗口打开',
+      '克隆为一次性运行',
+      '卸载插件',
+      '打开目录',
+      '删除 profile',
+    ]);
+    const cloneCall = profileDrawer.calls.find((args) => args[0] === 'verify' && args.includes('--plugin'));
+    assert.equal(cloneCall[0], 'verify');
+    assert.equal(cloneCall.includes('--plugin'), true);
+    assert.equal(cloneCall[cloneCall.indexOf('--plugin') + 1], 'dsh-plugin-wallpaper-engine@1.2.0');
+    assert.equal(cloneCall.includes('--online'), true);
+    assert.deepEqual(profileDrawer.dirCalls, ['dev']);
+    const uninstallCall = profileDrawer.calls.find((args) => args[0] === 'profile' && args[1] === 'remove-plugin');
+    assert.deepEqual(uninstallCall.slice(0, 4), ['profile', 'remove-plugin', 'dev', 'dsh-ui-tweaks']);
+    const removeCall = profileDrawer.calls.find((args) => args[0] === 'profile' && args[1] === 'remove');
+    assert.deepEqual(removeCall, ['profile', 'remove', 'dev']);
+    assert.deepEqual(profileDrawer.errors, []);
 
     // The log pane must stay on screen; adding controls must not squeeze it out.
     assert.equal(layout.layoutOk, true, JSON.stringify(layout));

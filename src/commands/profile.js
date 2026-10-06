@@ -54,8 +54,9 @@ export async function runProfileCommand(options = {}) {
   if (action === 'remove') {
     const result = removeLabProfile(options.name);
     if (options.json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    else if (result.error) process.stderr.write(`${result.error}\n`);
     else process.stdout.write(`${result.removed ? 'removed' : 'not found'}: ${result.dir}\n`);
-    return 0;
+    return result.error ? 1 : 0;
   }
 
   if (action === 'remove-plugin' || action === 'remove-plugins') {

@@ -59,6 +59,13 @@ node bin/lab.js profile remove-plugin dev B@2       # uninstall one plugin
 node bin/lab.js profile remove dev                  # delete the whole profile
 ```
 
+`lab profile list --json` returns `name` / `dir` / `plugins[]` /
+`createdAt` / `mtimeMs` plus `nodeModulesExists`, `dependenciesCount`,
+`bundlesCount`, and `lastRunAt` (the DSH profile directory's mtime). The
+desktop launcher renders the same payload as a profile drawer with inline
+open / clone-one-shot / uninstall / open-directory / delete actions; see
+[GUI.md](GUI.md).
+
 ## Uninstall a single plugin
 
 `remove-plugin` keeps the profile and every other installed plugin, which is the
@@ -81,6 +88,11 @@ by `profile list`. The command:
 
 Selectors that are not installed are reported and make the command exit 1; a
 fully unmatched invocation never starts the runtime.
+
+`profile remove` deletes entry by entry with the `lstat`-based
+`removeTreeSafely`, so a `file:`/`link:` junction in `node_modules` is
+unlinked instead of followed into the plugin source. A profile locked by a
+running lab process returns a readable error and exit 1.
 
 Delete `.lab-profiles/` by hand to clear everything.
 
