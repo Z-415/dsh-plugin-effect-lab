@@ -4,7 +4,7 @@ import { findDeclarationConflicts, scanPluginDeclarations } from './declaration-
 import { createFixtureWorkspace, seederPluginDir } from './fixture-manager.js';
 import { removeTreeSafely } from './home-manager.js';
 import { postcheckPlugins, precheckPlugins, summarizePluginEntries } from './plugin-check.js';
-import { classifyInstallFailure } from './plugin-install-diagnostics.js';
+import { diagnoseInstallFailure } from './plugin-install-diagnostics.js';
 import { appendBundles, detectAddedDependencies, removeBundles } from './profile-builder.js';
 import { readInstalledManifest } from './plugin-resolver.js';
 import { runCommand } from './process-tree.js';
@@ -286,7 +286,11 @@ export async function installProfilePlugins(options) {
     if (install.code !== 0) {
       // Capture the pnpm reason here so every caller (verify, capture, shell)
       // reports the same detail and stable code instead of `exit 1`.
-      const installDiagnosis = classifyInstallFailure(install);
+      const installDiagnosis = await diagnoseInstallFailure({
+        install,
+        specs: resolvedSpecs,
+        online,
+      });
       return {
         ok: false,
         stage: 'install',

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   classifyInstallFailure,
+  diagnoseInstallFailure,
   describePluginInstall,
   extractInstallKeyLines,
   formatInstallDetail,
@@ -76,4 +77,78 @@ test('describePluginInstall passes once the install stage is over', () => {
   assert.equal(describePluginInstall('install', { code: 1 }, failure).pass, false);
   assert.equal(describePluginInstall('postcheck', { code: 0 }, null).pass, true);
   assert.match(describePluginInstall('install', { code: 1 }, failure).detail, /ERR_PNPM_FETCH_404/);
+});
+
+test('diagnoseInstallFailure probes a GitHub spec and suggests the published package', async () => {
+  let probedSpec = null;
+  const diagnosis = await diagnoseInstallFailure({
+    install: { code: 1, stdout: GITHUB_RETRY_LOG, stderr: '' },
+    specs: ['github:mini-yifan/dsh-orb-cordis'],
+    online: true,
+    probeRepo: async (spec) => {
+      probedSpec = spec;
+      return {
+        repo: { slug: 'mini-yifan/dsh-orb-cordis', repo: 'dsh-orb-cordis' },
+        monorepo: true,
+        manifestName: 'dsh-orb-cordis',
+        packages: [{ name: 'dsh-orb', version: '0.1.3', path: 'packages/bundle/package.json', plugin: true, private: false }],
+        suggestions: ['该仓库发布到 npm 的包是 dsh-orb@0.1.3，请安装 npm:dsh-orb。'],
+      };
+    },
+  });
+  assert.equal(diagnosis.code, 'LAB-INSTALL-NETWORK');
+  assert.equal(diagnosis.githubDownload, true);
+  assert.equal(probedSpec, 'github:mini-yifan/dsh-orb-cordis');
+  assert.equal(diagnosis.repos[0].slug, 'mini-yifan/dsh-orb-cordis');
+  assert.equal(diagnosis.repos[0].monorepo, true);
+  assert.match(diagnosis.suggestions.join(' '), /npm:dsh-orb/);
+});
+
+test('diagnoseInstallFailure does not probe an npm name or an offline install', async () => {
+  let probeCalls = 0;
+  const probeRepo = async () => {
+    probeCalls += 1;
+    return null;
+  };
+  const npmName = await diagnoseInstallFailure({
+    install: { code: 1, stdout: NOT_FOUND_LOG, stderr: '' },
+    specs: ['dsh-orb-cordis'],
+    online: true,
+    probeRepo,
+  });
+  assert.deepEqual(npmName.repos, []);
+  assert.deepEqual(npmName.suggestions, []);
+  const offline = await diagnoseInstallFailure({
+    install: { code: 1, stdout: GITHUB_RETRY_LOG, stderr: '' },
+    specs: ['github:mini-yifan/dsh-orb-cordis'],
+    online: false,
+    probeRepo,
+  });
+  assert.equal(probeCalls, 0, 'neither an npm name nor an offline install may probe the network');
+  assert.deepEqual(offline.repos, []);
+});
+
+test('diagnoseInstallFailure swallows a probe failure', async () => {
+  const diagnosis = await diagnoseInstallFailure({
+    install: { code: 1, stdout: GITHUB_RETRY_LOG, stderr: '' },
+    specs: ['github:owner/repo'],
+    online: true,
+    probeRepo: async () => { throw new Error('network down'); },
+    probeTimeoutMs: 200,
+  });
+  assert.equal(diagnosis.code, 'LAB-INSTALL-NETWORK');
+  assert.deepEqual(diagnosis.repos, []);
+  assert.deepEqual(diagnosis.suggestions, []);
+});
+
+test('diagnoseInstallFailure bounds a hanging probe', async () => {
+  const diagnosis = await diagnoseInstallFailure({
+    install: { code: 1, stdout: GITHUB_RETRY_LOG, stderr: '' },
+    specs: ['github:owner/repo'],
+    online: true,
+    probeRepo: () => new Promise(() => {}),
+    probeTimeoutMs: 120,
+  });
+  assert.deepEqual(diagnosis.repos, []);
+  assert.deepEqual(diagnosis.suggestions, []);
 });

@@ -7,6 +7,8 @@
  * diagnostics, the CLI, and the GUI all say the same thing.
  */
 
+import { looksLikeGithubSpec, probeGithubRepo } from './plugin-repo-probe.js';
+
 /** Stable codes for an install-stage failure, before the host ever boots. */
 export const INSTALL_ERROR_CODES = {
   NOTFOUND: 'LAB-INSTALL-NOTFOUND',
@@ -103,7 +105,8 @@ export function classifyInstallFailure(install = {}) {
 /** `exit 1; [ERR_PNPM_FETCH_404] ...` - the `plugin-install` check detail. */
 export function formatInstallDetail(diagnosis, install = {}) {
   const exit = install.timedOut === true ? 'timeout' : (install.code ?? '?');
-  const bits = [`exit ${exit}${install.timedOut === true ? ' (timeout)' : ''}`];
+  const duration = Number.isFinite(install.durationMs) ? ` after ${install.durationMs}ms` : '';
+  const bits = [`exit ${exit}${install.timedOut === true ? ` (timeout${duration})` : ''}`];
   if (diagnosis?.keyLines?.length) bits.push(diagnosis.keyLines.join(' | '));
   return clip(bits.join('; '), MAX_DETAIL_LENGTH);
 }
@@ -125,4 +128,73 @@ export function installFailureMessage(diagnosis, install = {}) {
 export function describePluginInstall(stage, install, diagnosis) {
   const detail = formatInstallDetail(diagnosis, install);
   return { pass: stage !== 'install', detail };
+}
+
+async function withTimeout(promise, timeoutMs) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise;
+  let timer = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('repo probe timeout')), timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * Full install diagnosis: classify the pnpm failure, then (only when the
+ * install was attempted online and failed) pre-check any GitHub-looking spec
+ * for the repo's real npm package. The probe is best-effort and bounded; it
+ * never blocks the failure report for long and never changes the install.
+ *
+ * @param {{ install: object, specs?: string[], online?: boolean, probeRepo?: Function, probeTimeoutMs?: number }} options
+ */
+export async function diagnoseInstallFailure(options = {}) {
+  const {
+    install,
+    specs = [],
+    online = false,
+    probeRepo = probeGithubRepo,
+    probeTimeoutMs = 15_000,
+  } = options;
+  const diagnosis = classifyInstallFailure(install);
+  const repos = [];
+  const suggestions = [];
+  const githubSpecs = [...new Set(
+    specs.map((spec) => String(spec ?? '')).filter((spec) => spec && looksLikeGithubSpec(spec)),
+  )];
+  const canProbe = online
+    && githubSpecs.length > 0
+    && (diagnosis.code === INSTALL_ERROR_CODES.NOTFOUND || diagnosis.code === INSTALL_ERROR_CODES.NETWORK);
+  if (canProbe) {
+    for (const spec of githubSpecs.slice(0, 2)) {
+      try {
+        const probed = await withTimeout(probeRepo(spec, { totalBudgetMs: probeTimeoutMs }), probeTimeoutMs);
+        if (!probed?.repo) continue;
+        repos.push({
+          slug: probed.repo.slug,
+          monorepo: probed.monorepo === true,
+          manifestName: probed.manifestName ?? null,
+          packages: (probed.packages ?? []).map((entry) => ({
+            name: entry.name,
+            version: entry.version ?? null,
+            path: entry.path,
+            plugin: entry.plugin === true,
+            private: entry.private === true,
+          })),
+        });
+        for (const suggestion of probed.suggestions ?? []) suggestions.push(suggestion);
+      } catch {
+        // A probe failure must never break the install diagnosis.
+      }
+    }
+  }
+  diagnosis.repos = repos;
+  diagnosis.suggestions = [...new Set(suggestions)];
+  return diagnosis;
 }
