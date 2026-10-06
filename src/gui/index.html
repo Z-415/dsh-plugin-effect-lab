@@ -393,6 +393,7 @@
   let outputBuffer = '';
   let dialogResolve = null;
   let confirmResolve = null;
+  let lastFailureLine = '';
 
   function setBusy(busy, label) {
     allButtons.forEach((b) => { b.disabled = busy; });
@@ -481,6 +482,7 @@
           // A malformed progress line is ignored; the human line still logs.
         }
       } else {
+        if (line.startsWith('[失败]')) lastFailureLine = line.trim();
         append(`${line}\n`);
       }
     }
@@ -488,6 +490,7 @@
 
   async function runWithArgs(args, label) {
     log.textContent = '';
+    lastFailureLine = '';
     hint.textContent = label || args.join(' ');
     runLabel = label || args.join(' ');
     progressWrap.hidden = false;
@@ -961,18 +964,21 @@
     const ok = code === 0;
     const seconds = runStartedAt ? (Date.now() - runStartedAt) / 1000 : null;
     const elapsedText = seconds === null ? '?' : seconds.toFixed(1);
+    const failureNote = !ok && lastFailureLine
+      ? ` · ${lastFailureLine.replace(/^\[失败\]\s*/, '').slice(0, 220)}`
+      : '';
     finishProgress(ok);
     elapsed.textContent = seconds === null ? '' : `已用 ${elapsedText}s`;
     setBusy(false, ok ? '完成' : `结束（退出码 ${code}）`);
     dot.className = 'dot' + (ok ? ' ok' : ' bad');
-    append(`\n[gui] 退出码 ${code} · 用时 ${elapsedText}s${ok ? '，可点下方按钮打开报告' : ''}\n`);
-    showBanner(ok, `${ok ? '完成' : '失败'}：${runLabel} · 退出码 ${code} · 用时 ${elapsedText}s`, !ok);
+    append(`\n[gui] 退出码 ${code} · 用时 ${elapsedText}s${ok ? '，可点下方按钮打开报告' : failureNote}\n`);
+    showBanner(ok, `${ok ? '完成' : '失败'}：${runLabel} · 退出码 ${code} · 用时 ${elapsedText}s${failureNote}`, !ok);
     // Quick successful commands only flash the banner; long or failed ones
     // also raise a real desktop notification so the result is not missed.
     if ((!ok || (seconds !== null && seconds >= 5)) && typeof window.labGui.notify === 'function') {
       window.labGui.notify({
         title: ok ? '实验舱：完成' : '实验舱：失败',
-        body: `${runLabel} · 退出码 ${code} · 用时 ${elapsedText}s`,
+        body: `${runLabel} · 退出码 ${code} · 用时 ${elapsedText}s${failureNote}`,
       });
     }
     refreshProfiles();

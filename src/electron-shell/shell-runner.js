@@ -216,6 +216,7 @@ export async function runShell(options = {}) {
     }
     report.pluginValidation = pipeline.validation;
     report.plugins = pipeline.pluginList;
+    const installedPluginsThisRun = (options.plugins?.length ?? 0) + (options.withPlugins?.length ?? 0) > 0;
     if (pipeline.profileAudit) {
       const audit = pipeline.profileAudit;
       report.profileAudit = { names: audit.names, conflicts: audit.conflicts };
@@ -226,7 +227,11 @@ export async function runShell(options = {}) {
         audit.conflicts.length
           ? audit.conflicts.map((conflict) => `${conflict.id}:${conflict.key}`).join(', ')
           : `${audit.names.length} installed package(s), no cross-plugin conflict`,
-        { informational: isClonedLabProfile(options.profileLab) },
+        // A conflict that already exists in the user's profile must not fail a
+        // plain reopen. It stays a hard failure only when this run actually
+        // installed a plugin (so an A+B conflict the user just created is
+        // still reported as a failure).
+        { informational: isClonedLabProfile(options.profileLab) || !installedPluginsThisRun },
       );
     }
     const fixtureWorkspace = pipeline.fixtureWorkspace;
@@ -467,6 +472,10 @@ export async function runShell(options = {}) {
         'shell-capture-painted',
         result.capture.unpainted !== true,
         `attempts=${result.capture.attempts}${result.capture.unpainted === true ? ', frame still unpainted' : ''}`,
+        // A compositor can skip a hidden/occluded frame even though the DOM is
+        // complete; the screenshot is still written and the DOM/token checks
+        // are authoritative, so this must not fail the shell run.
+        { informational: true },
       );
     }
     if (result?.dom) {

@@ -241,6 +241,7 @@ const LAYOUT_AND_BANNER = `(() => {
   const openLayoutOk = rect(document.getElementById('log')).height >= 120
     && rect(controls).bottom <= rect(document.querySelector('.logwrap')).top + 1;
   // Simulate a failed run finishing so the banner and the toast fire.
+  window.__handlers.output('[失败] shell-ui-ready: 0 slot(s)\\n');
   window.__handlers.done({ code: 1 });
   const banner = document.getElementById('banner');
   return JSON.stringify({
@@ -647,6 +648,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
     // A failed run must show the banner and raise a desktop notification.
     assert.equal(layout.bannerHidden, false, JSON.stringify(layout));
     assert.match(layout.bannerText, /失败/);
+    assert.match(layout.bannerText, /shell-ui-ready/, 'the banner must name the failing check');
     assert.match(layout.bannerClass, /bad/);
     assert.equal(layout.notifyCalls.length, 1, JSON.stringify(layout.notifyCalls));
     assert.match(layout.notifyCalls[0].title, /失败/);
