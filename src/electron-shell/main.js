@@ -4,6 +4,7 @@ const {
 const fs = require('node:fs');
 const path = require('node:path');
 const { createDesktopBridge } = require('./desktop-bridge.cjs');
+const { earlyCloseOutcome } = require('./close-policy.cjs');
 
 const configFile = process.env.DSH_LAB_SHELL_CONFIG;
 const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
@@ -29,6 +30,7 @@ const pageErrors = [];
 let finished = false;
 let mainWindow = null;
 let tray = null;
+let probePayload = null;
 
 /** 16x16 opaque dot, so the minimal shell ships no asset files. */
 const TRAY_ICON_PNG = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAHElEQVR4nGNgGDRAP//Cf1LwqAGjBgxXAwYMAADtRF1gVZC2EwAAAABJRU5ErkJggg==';
@@ -667,6 +669,20 @@ app.whenReady().then(async () => {
     },
   });
   mainWindow = window;
+  // Registered before the (slow) probe on purpose: closing the window while
+  // the probe runs must still write shell-result.json. Otherwise Electron
+  // quits on window-all-closed and the runner reports "shell-result missing".
+  const onWindowClosedEarly = () => {
+    if (finished) return;
+    const outcome = earlyCloseOutcome({
+      keepOpen: config.keepOpen === true,
+      show: config.show === true,
+      probePayload,
+    });
+    finish(outcome.ok, outcome.extra);
+  };
+  window.on('close', onWindowClosedEarly);
+  window.on('closed', onWindowClosedEarly);
   const trayFacts = (config.show || config.keepOpen)
     ? createTrayFacts(window)
     : { created: false, skipped: true, reason: 'hidden run (pass --show or --keep-open)', tooltip: null, menuItems: [] };
@@ -718,12 +734,10 @@ app.whenReady().then(async () => {
       webContents: { url: window.webContents.getURL(), userAgent: window.webContents.getUserAgent() },
       screenshotFile: config.screenshotFile,
     };
+    probePayload = payload;
     if (config.keepOpen) {
-      // Leave the real window open for the user; the runner only cleans up
-      // after the window is closed and the result file is written.
-      window.on('closed', () => {
-        finish(true, payload);
-      });
+      // Leave the real window open for the user; the early close handler
+      // writes this payload (or a probeIncomplete result) when they close it.
       return;
     }
     if (config.show && Number(config.showHoldMs) > 0) {

@@ -442,6 +442,17 @@ export async function runShell(options = {}) {
       });
       recordShellRun(described.pass, described.detail);
     }
+    if (result?.closedByUser === true) {
+      addCheck(
+        checks,
+        'shell-closed-by-user',
+        true,
+        result.probeIncomplete === true
+          ? '窗口在自动探测完成前被关闭；DOM/截图检查已跳过（手动检查运行）'
+          : '窗口在探测完成后由用户关闭',
+        { informational: true },
+      );
+    }
     // The shell window must show the seeded conversation, not just boot the
     // host: the fixture workspace is registered and the shell auto-opens the
     // session before probing.

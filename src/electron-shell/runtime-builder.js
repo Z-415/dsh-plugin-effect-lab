@@ -29,7 +29,7 @@ export const COPY_FILES = [
 export const COPY_DIRS = ['locales'];
 
 /** Files copied into the cached app dir; refreshed when their source changes. */
-export const APP_FILES = ['main.js', 'preload.js', 'desktop-bridge.cjs'];
+export const APP_FILES = ['main.js', 'preload.js', 'desktop-bridge.cjs', 'close-policy.cjs'];
 
 function directorySize(dir) {
   let total = 0;

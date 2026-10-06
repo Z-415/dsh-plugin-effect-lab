@@ -105,6 +105,13 @@ By default the window renders at `opacity: 0` so automation stays invisible.
 6000, before closing); `--keep-open` waits until you close it, then writes the
 result and cleans up the isolated home.
 
+The close handler is registered as soon as the window exists, before the
+automated probe/capture sequence. Closing a visible window while a heavy plugin
+is still being probed therefore still writes `shell-result.json` (with
+`closedByUser: true` and, if the probe had not finished, `probeIncomplete:
+true`) instead of letting Electron quit and reporting "shell-result missing".
+A hidden run that closes early is still a failure.
+
 Cleanup does not assume the window closed synchronously: after the shell is
 stopped the runner reaps every `DeepSeek Harness.exe` / `msedge.exe` process
 that references the run root, waits for them to disappear, and retries the
