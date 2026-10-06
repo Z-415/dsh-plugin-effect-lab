@@ -187,6 +187,9 @@ export function planClone(options = {}) {
     plugins: mode,
     manifest: nextManifest,
     dependencies,
+    // The unfiltered dependency map, used only to rewrite the copied lockfile's
+    // profile-relative `file:`/`link:` resolutions to absolute paths.
+    sourceDependencies: { ...(manifest.dependencies ?? {}) },
     bundles,
     localPlugins,
     excluded,
@@ -204,6 +207,36 @@ function inside(parent, child) {
 function copyRegularFile(from, to) {
   fs.mkdirSync(path.dirname(to), { recursive: true });
   fs.copyFileSync(from, to);
+}
+
+/**
+ * Rewrite a copied `pnpm-lock.yaml` so `file:`/`link:` dependencies that the
+ * real profile recorded as *relative to itself* point at the real absolute
+ * source path instead.
+ *
+ * pnpm stores e.g. `version: file:../../plugins/dsh-desktop-restart` for a
+ * `file:C:/Users/.../.dsh/plugins/dsh-desktop-restart` dependency. That
+ * relative path only resolves inside the real profile; in a clone at a
+ * different depth it points at the wrong directory and the install fails. The
+ * package.json spec is absolute, so making the lockfile absolute keeps the
+ * real source read-only while letting the clone install it.
+ */
+export function rewriteLockfileLocalPaths(text, sourceDir, dependencies = {}) {
+  const posix = (value) => String(value).replace(/\\/g, '/');
+  let out = String(text ?? '');
+  for (const spec of Object.values(dependencies ?? {})) {
+    const match = /^(file|link):(.+)$/.exec(String(spec).trim());
+    if (!match) continue;
+    const [, kind, raw] = match;
+    const absolute = path.isAbsolute(raw) ? raw : path.resolve(sourceDir, raw);
+    const relative = path.relative(sourceDir, absolute);
+    if (!relative) continue;
+    const posixRelative = posix(relative);
+    const posixAbsolute = posix(path.resolve(absolute));
+    out = out.split(`${kind}:${posixRelative}`).join(`${kind}:${posixAbsolute}`);
+    out = out.split(`directory: ${posixRelative}`).join(`directory: ${posixAbsolute}`);
+  }
+  return out;
 }
 
 /**
@@ -240,6 +273,18 @@ export function cloneProfileInto(options = {}) {
     }
   }
   fs.writeFileSync(path.join(target, 'package.json'), `${JSON.stringify(plan.manifest, null, 2)}\n`, 'utf8');
+  // The copied lockfile still resolves local deps relative to the real profile;
+  // make those paths absolute so the clone installs from the same real source.
+  const lockfile = path.join(target, 'pnpm-lock.yaml');
+  let lockfileRewritten = false;
+  if (fs.existsSync(lockfile)) {
+    const original = fs.readFileSync(lockfile, 'utf8');
+    const rewritten = rewriteLockfileLocalPaths(original, source, plan.sourceDependencies);
+    if (rewritten !== original) {
+      fs.writeFileSync(lockfile, rewritten, 'utf8');
+      lockfileRewritten = true;
+    }
+  }
   const sourceAfter = snapshotCloneSource(realHome, plan.kind);
   const diff = diffCloneSource(plan.sourceSnapshot, sourceAfter);
   if (!diff.ok) {
@@ -259,6 +304,7 @@ export function cloneProfileInto(options = {}) {
     sourceUnchangedAfterCopy: diff.ok,
     copiedFiles,
     copiedPatches,
+    lockfileRewritten,
     nodeModulesCopied: false,
     credentialsCopied: false,
     dependencies: plan.dependencies,
@@ -304,10 +350,14 @@ export async function rebuildClonedProfile(options = {}) {
     profileDir,
     profileName,
     timeoutMs,
+    online = false,
     runCommandImpl = runCommand,
   } = options;
   const dependencies = readJson(path.join(profileDir, 'package.json')).dependencies ?? {};
-  const args = ['plugin', '--profile', profileName, 'install', '--offline', '--no-frozen-lockfile'];
+  const args = ['plugin', '--profile', profileName, 'install', '--no-frozen-lockfile'];
+  // `--online` is the explicit opt-in to fetch packages missing from the
+  // offline store (pnpm's default); no `--online` switch exists for pnpm.
+  if (online !== true) args.push('--offline');
   const command = await runCommandImpl(runtime.cmd, args, { cwd: profileDir, env, timeoutMs });
   const { installed, missing } = installedNames(profileDir, dependencies);
   const output = `${command.stdout}\n${command.stderr}`;

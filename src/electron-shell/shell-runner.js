@@ -5,7 +5,7 @@ import { openUi } from '../browser-driver.js';
 import { snapshotLabResidue, verifyNoResidue } from '../cleanup.js';
 import { evaluateDomAssertions } from '../dom-assertions.js';
 import { writeHtmlReport } from '../html-report.js';
-import { openLabProfileHome, recordProfilePlugins } from '../lab-profile.js';
+import { isClonedLabProfile, openLabProfileHome, recordProfilePlugins } from '../lab-profile.js';
 import { hasFatal, scanSources, summarize, tailLines } from '../log-scanner.js';
 import { defaultArtifactsRoot } from '../config.js';
 import { createIsolatedHome } from '../home-manager.js';
@@ -221,6 +221,7 @@ export async function runShell(options = {}) {
         audit.conflicts.length
           ? audit.conflicts.map((conflict) => `${conflict.id}:${conflict.key}`).join(', ')
           : `${audit.names.length} installed package(s), no cross-plugin conflict`,
+        { informational: isClonedLabProfile(options.profileLab) },
       );
     }
     const fixtureWorkspace = pipeline.fixtureWorkspace;

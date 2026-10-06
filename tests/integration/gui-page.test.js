@@ -627,12 +627,12 @@ test('every GUI button dispatches a lab command without a renderer error', {
     const persistentCloneCall = profileDrawer.cloneCalls.find((args) => args.includes('--clone-to'));
     assert.deepEqual(persistentCloneCall, [
       'verify', '--clone-to', 'clone-web', '--clone-profile', 'web',
-      '--clone-plugins', 'all', '--clone-accept-risk', '--no-fixture', '--screenshot', 'home',
+      '--clone-plugins', 'all', '--clone-accept-risk', '--online', '--no-fixture', '--screenshot', 'home',
     ]);
     const oneShotCloneCall = profileDrawer.cloneCalls.find((args) => !args.includes('--clone-to'));
     assert.deepEqual(oneShotCloneCall, [
       'verify', '--clone-profile', 'web',
-      '--clone-plugins', 'all', '--clone-accept-risk', '--no-fixture', '--screenshot', 'home',
+      '--clone-plugins', 'all', '--clone-accept-risk', '--online', '--no-fixture', '--screenshot', 'home',
     ]);
     assert.deepEqual(profileDrawer.errors, []);
 

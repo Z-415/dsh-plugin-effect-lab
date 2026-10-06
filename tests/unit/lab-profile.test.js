@@ -8,6 +8,7 @@ import {
   assertSafeProfileName,
   createLabProfile,
   forgetProfilePlugins,
+  isClonedLabProfile,
   labProfileDir,
   labProfilesRoot,
   listLabProfiles,
@@ -226,5 +227,22 @@ test('profileExists also sees a DSH package.json without a lab manifest', async 
     fs.writeFileSync(path.join(dir, 'package.json'), '{}\n', 'utf8');
     assert.equal(profileExists('clone-y'), true);
     assert.equal(readLabProfile('clone-y'), null);
+  });
+});
+
+test('isClonedLabProfile distinguishes a cloned profile from a normal one', async () => {
+  await withTempRoot(() => {
+    createLabProfile('dev');
+    recordProfileClone('clone-web', {
+      kind: 'web',
+      at: '2026-10-06T00:00:00.000Z',
+      sourceHash: 'ABCDEF123456',
+      copiedFiles: 6,
+      excluded: [],
+    });
+    assert.equal(isClonedLabProfile('clone-web'), true);
+    assert.equal(isClonedLabProfile('dev'), false);
+    assert.equal(isClonedLabProfile('missing'), false);
+    assert.equal(isClonedLabProfile(null), false);
   });
 });

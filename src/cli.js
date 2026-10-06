@@ -374,7 +374,9 @@ range does not match this runtime; --clone-accept-risk grants the exact-version
 exemption inside the clone (allow-version --accept-risk) and re-runs the
 install, so the plugin loads. --clone-plugins none / --clone-exclude are the
 escape hatches. The report always lists installed, missing, denied, and
-exempted plugins.
+exempted plugins. --online also lets the clone install fetch packages missing
+from the offline store (the desktop profile needs this for one registry
+tarball).
 Persistent clones: add --profile-lab <name> (or the sugar --clone-to <name>,
 which also needs --clone-profile web|desktop) to keep the clone as a visible
 lab profile. It then shows in lab profile list as "cloned from web", keeps

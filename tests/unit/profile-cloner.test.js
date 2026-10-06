@@ -15,12 +15,14 @@ import {
   parseIncompatiblePlugins,
   planClone,
   rebuildClonedProfile,
+  rewriteLockfileLocalPaths,
   snapshotCloneSource,
 } from '../../src/profile-cloner.js';
 
 function makeRealHome(kind = 'web') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-realhome-'));
   const dir = path.join(root, 'profiles', kind);
+  const posixRoot = root.replace(/\\/g, '/');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(
     path.join(dir, 'package.json'),
@@ -29,15 +31,18 @@ function makeRealHome(kind = 'web') {
       dependencies: {
         '@deepseek-ai/dsh-base': '0.2.0-rc.2',
         'dsh-x': '^1.2.0',
-        'local-dir': 'file:C:/Users/someone/.dsh/plugins/local-dir',
-        'local-link': 'link:C:/Users/someone/Desktop/local-link',
+        'local-dir': `file:${posixRoot}/plugins/local-dir`,
+        'local-link': `link:${posixRoot}/linked/local-link`,
       },
       dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', 'dsh-x', 'local-dir', 'local-link'] } },
     }, null, 2)}\n`,
     'utf8',
   );
   for (const name of ['cordis.yml', 'cordis.patch.yml', 'pnpm-workspace.yaml', 'pnpm-lock.yaml']) {
-    fs.writeFileSync(path.join(dir, name), `${name}\n`, 'utf8');
+    const body = name === 'pnpm-lock.yaml'
+      ? 'lockfileVersion: 9\nversion: file:../../plugins/local-dir\n'
+      : `${name}\n`;
+    fs.writeFileSync(path.join(dir, name), body, 'utf8');
   }
   fs.writeFileSync(
     path.join(dir, 'compatibility.json'),
@@ -97,6 +102,10 @@ test('cloneProfileInto copies only the structural allowlist and never credential
       assert.equal(fs.existsSync(path.join(target.profileDir, dir)), true, dir);
     }
     assert.equal(fs.existsSync(path.join(target.profileDir, 'patches', 'a.patch')), true);
+    assert.equal(clone.lockfileRewritten, true);
+    const clonedLock = fs.readFileSync(path.join(target.profileDir, 'pnpm-lock.yaml'), 'utf8');
+    assert.equal(clonedLock.includes(`file:${real.root.replace(/\\/g, '/')}/plugins/local-dir`), true, clonedLock);
+    assert.equal(clonedLock.includes('file:../../plugins/local-dir'), false);
 
     for (const forbidden of ['node_modules', 'sessions', 'agents', '.credentials.yaml', 'settings.yaml']) {
       assert.equal(fs.existsSync(path.join(target.profileDir, forbidden)), false, forbidden);
@@ -287,6 +296,30 @@ test('grantClonedProfileExemptions runs allow-version --accept-risk in the clone
   assert.equal(calls.length, 2);
 });
 
+test('rebuildClonedProfile uses the network only when online:true', async () => {
+  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-rebuild-online-'));
+  try {
+    fs.writeFileSync(path.join(profileDir, 'package.json'), `${JSON.stringify({ name: 'p', dependencies: {} })}\n`, 'utf8');
+    const calls = [];
+    await rebuildClonedProfile({
+      runtime: { cmd: 'dsh.cmd' },
+      env: {},
+      profileDir,
+      profileName: 'lab-x',
+      timeoutMs: 1000,
+      online: true,
+      runCommandImpl: async (file, args) => {
+        calls.push(args);
+        return { code: 0, timedOut: false, durationMs: 1, stdout: '', stderr: '' };
+      },
+    });
+    assert.equal(calls[0].includes('--offline'), false);
+    assert.equal(calls[0].includes('--no-frozen-lockfile'), true);
+  } finally {
+    fs.rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
 test('grantClonedProfileExemptions reports per-plugin failures', async () => {
   const result = await grantClonedProfileExemptions({
     runtime: { cmd: 'dsh.cmd' },
@@ -302,4 +335,28 @@ test('grantClonedProfileExemptions reports per-plugin failures', async () => {
   assert.equal(result.failures.length, 2);
   assert.match(result.failures[0].reason, /exit 1: boom/);
   assert.match(result.failures[1].reason, /incomplete/);
+});
+
+test('rewriteLockfileLocalPaths makes profile-relative file:/link: resolutions absolute', () => {
+  const sourceDir = 'C:/Users/someone/.dsh/profiles/desktop';
+  const text = [
+    'lockfileVersion: 9',
+    'version: file:../../plugins/dsh-desktop-restart',
+    'version: link:../../../Desktop/新建文件夹 (2)/bridge-plugin',
+    'resolution: {directory: ../../plugins/dsh-desktop-restart, type: directory}',
+    'resolution: {tarball: file:../../plugins/dsh-whale-widget-1.0.0.tgz}',
+    'version: 1.2.3',
+  ].join('\n');
+  const out = rewriteLockfileLocalPaths(text, sourceDir, {
+    'dsh-desktop-restart': 'file:C:/Users/someone/.dsh/plugins/dsh-desktop-restart',
+    'dsh-plugin-effect-lab-bridge': 'link:C:/Users/someone/Desktop/新建文件夹 (2)/bridge-plugin',
+    'dsh-whale-widget': 'file:C:/Users/someone/.dsh/plugins/dsh-whale-widget-1.0.0.tgz',
+    'registry-dep': '^1.2.3',
+  });
+  assert.match(out, /version: file:C:\/Users\/someone\/\.dsh\/plugins\/dsh-desktop-restart/);
+  assert.match(out, /directory: C:\/Users\/someone\/\.dsh\/plugins\/dsh-desktop-restart/);
+  assert.match(out, /link:C:\/Users\/someone\/Desktop\/新建文件夹 \(2\)\/bridge-plugin/);
+  assert.match(out, /tarball: file:C:\/Users\/someone\/\.dsh\/plugins\/dsh-whale-widget-1\.0\.0\.tgz/);
+  assert.match(out, /version: 1\.2\.3/);
+  assert.equal(out.includes('file:../../plugins/'), false);
 });

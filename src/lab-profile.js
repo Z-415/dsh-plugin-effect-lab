@@ -125,6 +125,20 @@ export function recordProfileClone(name, clonedFrom) {
   return manifest;
 }
 
+/**
+ * Whether a lab profile was created by cloning a real profile. Cross-plugin
+ * conflicts found in a clone are pre-existing properties of the user's real
+ * profile, so the lab reports them as informational instead of failing the run.
+ */
+export function isClonedLabProfile(name) {
+  if (!name) return false;
+  try {
+    return Boolean(readLabProfile(name)?.clonedFrom);
+  } catch {
+    return false;
+  }
+}
+
 /** The package name a recorded entry answers to, from its name or its spec. */
 export function profilePluginName(entry) {
   if (entry?.name) return entry.name;

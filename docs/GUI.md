@@ -179,10 +179,12 @@ browser, or the `artifacts/` folder. **中止** kills the running child tree.
 `lab-profile.json` 的 `clonedFrom`），可以立刻用「在壳窗口打开」复用。同名目标默认被
 拒绝；需要覆盖时在 CLI 上加 `--force`。
 
-克隆栏默认「带真实插件」并勾选「接受 peer 风险」：在**克隆出来的 profile 里**为 DSH
-拒绝的不兼容插件授予 exact-version 豁免，然后重新安装，让它们真正加载。真实 profile
-永远只读；不想接受风险的插件可以取消勾选，或在列表里用
-`--clone-exclude <plugin>` / `--clone-plugins none` 降级。
+克隆栏默认「带真实插件」，并勾选「接受 peer 风险」和「允许联网补齐离线库里缺失的
+插件」：前者在**克隆出来的 profile 里**为 DSH 拒绝的不兼容插件授予 exact-version
+豁免，后者让 pnpm 去 registry 取离线库里没有的包（desktop profile 至少有一个这样的
+包）。真实 profile 永远只读；不想接受风险的插件可以取消勾选，或在列表里用
+`--clone-exclude <plugin>` / `--clone-plugins none` 降级。克隆 profile 里本来就存在的
+跨插件 slot/tool 冲突会显示为「提示」，不再把壳窗口退出标成失败。
 
 ## 原生桌面开关
 

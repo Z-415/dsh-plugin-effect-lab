@@ -133,7 +133,7 @@
   .drawerhead h2 { margin: 0; font-size: 12.5px; font-weight: 650; }
   .drawerhead .tag { margin-left: auto; }
   .clonebar { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
-  .clonebar-row { display: flex; align-items: center; gap: 8px; }
+  .clonebar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .clonebar select { flex: 1 1 0; min-width: 0; }
   .clonebar .note { margin: 0; }
   .drawerlist { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; }
@@ -297,6 +297,7 @@
         </div>
         <div class="clonebar-row">
           <label class="chk"><input type="checkbox" id="realCloneAcceptRisk" checked> 接受 peer 风险：给不兼容插件在克隆里授予 exact-version 豁免</label>
+          <label class="chk"><input type="checkbox" id="realCloneOnline" checked> 允许联网补齐离线库里缺失的插件</label>
         </div>
         <div class="clonebar-row">
           <button type="button" id="cloneRealPersistent" class="strong" title="克隆成一个持久的 lab profile，可复用">克隆为持久 profile</button>
@@ -372,6 +373,7 @@
   const realProfileSelect = document.getElementById('realProfileSelect');
   const realClonePlugins = document.getElementById('realClonePlugins');
   const realCloneAcceptRisk = document.getElementById('realCloneAcceptRisk');
+  const realCloneOnline = document.getElementById('realCloneOnline');
   const realProfileNote = document.getElementById('realProfileNote');
   const textDialog = document.getElementById('textDialog');
   const textDialogForm = document.getElementById('textDialogForm');
@@ -639,6 +641,8 @@
     // Opt in to granting the exact-version exemptions DSH asks for, inside the
     // clone only, so peer-mismatched real plugins actually load.
     if (realCloneAcceptRisk.checked) flags.push('--clone-accept-risk');
+    // Opt in to fetching packages missing from the offline store.
+    if (realCloneOnline.checked) flags.push('--online');
     return flags;
   }
   function cloneRealOneShotRun() {

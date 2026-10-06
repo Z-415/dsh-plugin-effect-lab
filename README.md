@@ -181,12 +181,19 @@ node bin/lab.js verify --clone-profile web --clone-accept-risk --no-fixture
 
 # only if you explicitly want config without plugins
 node bin/lab.js verify --clone-profile web --clone-plugins none --no-fixture
+
+# desktop needs --online for a registry tarball missing from the offline store
+node bin/lab.js verify --clone-to clone-desktop --clone-profile desktop --clone-accept-risk --online --no-fixture
 ```
 
 `--clone-accept-risk` grants the exact-version exemptions DSH asks for **inside
 the clone** (never the real profile), so peer-mismatched real plugins actually
 load. Without it the plugins are still installed and listed, but DSH keeps the
 denied ones off at startup.
+
+Use `--online` when a dependency is not in the pnpm offline store (the desktop
+profile needs it). Pre-existing multi-plugin conflicts in a cloned profile are
+reported as 提示 in the shell run, not as a failure.
 
 The real profile is read-only: only the structural files are copied, never
 `node_modules`, credentials, settings, sessions, or agents. `lab real-profiles`

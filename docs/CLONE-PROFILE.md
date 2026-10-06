@@ -166,6 +166,12 @@ profile that is 6 of 20 plugins. The lab now:
   `dsh plugin --profile <clone> allow-version <name>@<version> --dsh-version <runtime> --accept-risk`
   **inside the clone** for each denied plugin, then re-runs the install so the
   gate approves and the plugins actually load. The real profile is untouched.
+- a package that is not in the pnpm offline store needs the explicit `--online`
+  opt-in; without it the dependency is reported as `missing` (a real install
+  failure). The desktop profile needs this for at least one registry tarball.
+- cross-plugin slot/tool conflicts found in a cloned profile are reported as
+  **informational** (`plugin-profile-audit`), because they are pre-existing in
+  the real profile the user started from.
 
 ```powershell
 # full clone: 20 plugins installed, 6 exemptions granted in the clone
@@ -173,6 +179,10 @@ node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-accept-r
 # -> [通过] clone-install: pnpm/DSH exit 0; 20 present, 0 missing
 # -> [通过] clone-compat: no incompatible plugin was denied by DSH
 # -> [通过] clone-exemptions: granted 6 exact-version exemption(s) inside the clone
+
+# desktop has a registry tarball missing from the offline store
+node bin/lab.js verify --clone-to clone-desktop --clone-profile desktop --clone-accept-risk --online --no-fixture
+# -> [通过] clone-install: pnpm/DSH exit 0; 26 present, 0 missing
 ```
 
 Without `--clone-accept-risk` the plugins are still installed and the clone is

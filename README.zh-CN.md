@@ -171,11 +171,17 @@ node bin/lab.js verify --clone-profile web --clone-accept-risk --no-fixture
 
 # 只有明确"只要配置不要插件"时才用
 node bin/lab.js verify --clone-profile web --clone-plugins none --no-fixture
+
+# desktop 有一个包不在离线库里，需要显式 --online
+node bin/lab.js verify --clone-to clone-desktop --clone-profile desktop --clone-accept-risk --online --no-fixture
 ```
 
 `--clone-accept-risk` 只对**克隆出来的 profile** 授予 DSH 要求的精确版本豁免
 （绝不碰真实 profile），让 peer 不满足的真实插件也能真正加载。不加它时插件仍会
 安装并在报告里列出，只是启动时会被 DSH 拒绝。
+
+依赖不在 pnpm 离线库里时用 `--online`（desktop profile 至少有一个这样的包）。
+克隆 profile 里原本就存在的跨插件冲突在壳运行里显示为「提示」，不会把退出标成失败。
 
 真实 profile 始终只读：只复制结构文件，不复制 `node_modules`、凭据、settings、
 sessions、agents。`lab real-profiles` 列出可用作克隆来源的真实 profile；GUI 抽屉里有

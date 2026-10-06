@@ -23,6 +23,7 @@ import { summarizeDiagnostics, writeDiagnosticsBundle } from './diagnostics.js';
 import { hasFatal, scanLogs, scanNoise, scanSources, summarize, tailLines } from './log-scanner.js';
 import { writeHtmlReport } from './html-report.js';
 import {
+  isClonedLabProfile,
   openLabProfileHome,
   profileExists,
   recordProfileClone,
@@ -260,6 +261,7 @@ export async function runLab(options = {}) {
         profileDir,
         profileName,
         timeoutMs: options.installTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS,
+        online: options.online === true,
       };
       let rebuilt = await rebuildClonedProfile(installOptions);
       clone.install = rebuilt;
@@ -410,6 +412,9 @@ export async function runLab(options = {}) {
         audit.conflicts.length
           ? audit.conflicts.map((conflict) => `${conflict.id}:${conflict.key}`).join(', ')
           : `${audit.names.length} installed package(s), no cross-plugin conflict`,
+        // Conflicts inside a cloned profile are pre-existing in the real
+        // profile the user started from; report them, don't fail the run.
+        { informational: isClonedLabProfile(profileLab) },
       );
     }
     const recordedPlugins = (pluginPipeline.pluginList ?? []).filter((entry) => !entry.fixture);
