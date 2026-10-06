@@ -53,6 +53,32 @@ test('an unmatched failure reports LAB-UNKNOWN with evidence', () => {
   assert.equal(diagnostics.bootTail.length, 1);
 });
 
+test('an install-stage failure is the primary code even before the host boots', () => {
+  const diagnostics = summarizeDiagnostics(fakeReport({
+    signatureHits: [],
+    bootTail: [],
+    installFailure: {
+      code: 'LAB-INSTALL-NOTFOUND',
+      category: 'notfound',
+      keyLines: ['[ERR_PNPM_FETCH_404] GET https://registry.npmmirror.com/dsh-orb-cordis: Not Found - 404'],
+      timedOut: false,
+      githubDownload: false,
+      suggestions: ['真实包名可能是 dsh-orb'],
+    },
+  }));
+  assert.equal(diagnostics.primaryCode, 'LAB-INSTALL-NOTFOUND');
+  assert.deepEqual(diagnostics.errorCodes, ['LAB-INSTALL-NOTFOUND']);
+  assert.equal(diagnostics.unknown, false);
+  assert.equal(diagnostics.install.code, 'LAB-INSTALL-NOTFOUND');
+  assert.match(diagnostics.install.keyLines[0], /ERR_PNPM_FETCH_404/);
+  assert.deepEqual(diagnostics.install.suggestions, ['真实包名可能是 dsh-orb']);
+});
+
+test('a clean report with no installFailure omits the install block', () => {
+  const diagnostics = summarizeDiagnostics(fakeReport({ ok: true, checks: [], signatureHits: [] }));
+  assert.equal(diagnostics.install, null);
+});
+
 test('a clean run carries LAB-OK and no error codes', () => {
   const diagnostics = summarizeDiagnostics(fakeReport({ ok: true, checks: [], signatureHits: [], bootTail: [] }));
   assert.equal(diagnostics.ok, true);

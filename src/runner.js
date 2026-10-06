@@ -34,6 +34,7 @@ import {
 import { describeAgentCoverage, scanForCredentials } from './model-coverage.js';
 import { startMockLlmServer } from './mock-llm-server.js';
 import { installProfilePlugins, listInstalledProfilePlugins } from './plugin-install.js';
+import { describePluginInstall, installFailureMessage } from './plugin-install-diagnostics.js';
 import { mintAuthCookie } from './port-and-token.js';
 import { MOCK_API_KEY_ENV, MOCK_MODEL, MOCK_PROVIDER, writeMockProviderPatch } from './provider-patcher.js';
 import { writeMinimalProfile } from './profile-builder.js';
@@ -389,14 +390,14 @@ export async function runLab(options = {}) {
     }
     if (pluginPipeline.install) {
       writeText(runDir, 'install.log', `$ dsh ${pluginPipeline.installArgs.join(' ')}\n\n${pluginPipeline.install.stdout}\n${pluginPipeline.install.stderr}`);
-      addCheck(
-        checks,
-        'plugin-install',
-        pluginPipeline.stage !== 'install',
-        `exit ${pluginPipeline.install.code}${pluginPipeline.install.timedOut ? ' (timeout)' : ''}`,
-      );
+      const install = pluginPipeline.install;
+      const installDiagnosis = pluginPipeline.installDiagnosis ?? null;
+      const described = describePluginInstall(pluginPipeline.stage, install, installDiagnosis);
+      addCheck(checks, 'plugin-install', described.pass, described.detail);
       if (pluginPipeline.stage === 'install') {
-        throw new Error(`plugin install failed (exit ${pluginPipeline.install.code})\n${tail(`${pluginPipeline.install.stdout}\n${pluginPipeline.install.stderr}`, 4000)}`);
+        report.installFailure = installDiagnosis;
+        for (const hint of installDiagnosis?.suggestions ?? []) report.hints.push(hint);
+        throw new Error(`${installFailureMessage(installDiagnosis, install)}\n${tail(`${install.stdout}\n${install.stderr}`, 4000)}`);
       }
       addCheck(
         checks,

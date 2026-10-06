@@ -60,10 +60,21 @@ function dedupeHits(report) {
   return hits;
 }
 
+/** The install-stage diagnosis attached by the runners, if any. */
+export function installFailureOf(report = {}) {
+  return report?.installFailure ?? report?.installDiagnosis ?? null;
+}
+
 /** Build the redacted diagnostics summary from a finished run report. */
 export function summarizeDiagnostics(report = {}) {
   const hits = dedupeHits(report);
-  const codes = [...new Set(hits.map((hit) => hit.code ?? UNKNOWN_CODE).filter(Boolean))];
+  const installFailure = installFailureOf(report);
+  // An install-stage failure happens before the host boots, so it never shows
+  // up in signatureHits. Its stable code is still the primary code.
+  const codes = [...new Set([
+    ...(installFailure?.code ? [installFailure.code] : []),
+    ...hits.map((hit) => hit.code ?? UNKNOWN_CODE),
+  ].filter(Boolean))];
   const ok = report.ok === true;
   // A failed run with no signature is the only LAB-UNKNOWN case; a clean run
   // carries no error code at all.
@@ -85,6 +96,16 @@ export function summarizeDiagnostics(report = {}) {
     primaryCode: codes[0] ?? (ok ? 'LAB-OK' : UNKNOWN_CODE),
     errorCodes: codes.length ? codes : (ok ? [] : [UNKNOWN_CODE]),
     unknown,
+    install: installFailure
+      ? {
+        code: installFailure.code ?? UNKNOWN_CODE,
+        category: installFailure.category ?? 'unknown',
+        timedOut: installFailure.timedOut === true,
+        githubDownload: installFailure.githubDownload === true,
+        keyLines: (installFailure.keyLines ?? []).map(redactText),
+        suggestions: (installFailure.suggestions ?? []).map(redactText),
+      }
+      : null,
     signatures: hits.map((hit) => ({
       code: hit.code ?? UNKNOWN_CODE,
       id: hit.id,
@@ -169,6 +190,11 @@ export function renderDiagnosticsText(diagnostics) {
   lines.push(`实验舱诊断: ${diagnostics.ok ? '通过' : '未通过'} (run ${diagnostics.runId ?? '未知'})`);
   const codeText = diagnostics.errorCodes?.length ? diagnostics.errorCodes.join(', ') : '(无)';
   lines.push(`错误码: ${codeText}${diagnostics.unknown ? ' (没有命中已知签名，附证据)' : ''}`);
+  if (diagnostics.install) {
+    lines.push(`插件安装失败 [${diagnostics.install.code}]${diagnostics.install.timedOut ? ' (超时)' : ''}:`);
+    for (const line of diagnostics.install.keyLines ?? []) lines.push(`  | ${line}`);
+    for (const suggestion of diagnostics.install.suggestions ?? []) lines.push(`  建议: ${suggestion}`);
+  }
   for (const hit of diagnostics.signatures ?? []) {
     lines.push(`- [${hit.code}] ${hit.id} (${hit.category}): ${hit.matched}`);
     if (hit.rootCause) lines.push(`    原因: ${hit.rootCause}`);

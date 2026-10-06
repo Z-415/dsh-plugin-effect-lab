@@ -4,6 +4,7 @@ import { findDeclarationConflicts, scanPluginDeclarations } from './declaration-
 import { createFixtureWorkspace, seederPluginDir } from './fixture-manager.js';
 import { removeTreeSafely } from './home-manager.js';
 import { postcheckPlugins, precheckPlugins, summarizePluginEntries } from './plugin-check.js';
+import { classifyInstallFailure } from './plugin-install-diagnostics.js';
 import { appendBundles, detectAddedDependencies, removeBundles } from './profile-builder.js';
 import { readInstalledManifest } from './plugin-resolver.js';
 import { runCommand } from './process-tree.js';
@@ -283,6 +284,9 @@ export async function installProfilePlugins(options) {
       timeoutMs: installTimeoutMs,
     });
     if (install.code !== 0) {
+      // Capture the pnpm reason here so every caller (verify, capture, shell)
+      // reports the same detail and stable code instead of `exit 1`.
+      const installDiagnosis = classifyInstallFailure(install);
       return {
         ok: false,
         stage: 'install',
@@ -293,6 +297,7 @@ export async function installProfilePlugins(options) {
         pluginList: [],
         install,
         installArgs,
+        installDiagnosis,
         fixtureWorkspace,
       };
     }

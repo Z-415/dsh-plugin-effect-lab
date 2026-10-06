@@ -18,11 +18,13 @@ import {
   readFixtureSpec,
 } from '../fixture-manager.js';
 import { installProfilePlugins, listInstalledProfilePlugins } from '../plugin-install.js';
+import { describePluginInstall, installFailureMessage } from '../plugin-install-diagnostics.js';
 import { spawnTracked, stopTracked } from '../process-tree.js';
 import { reapProcessesByCommandLine } from '../process-reaper.js';
 import { writeMinimalProfile } from '../profile-builder.js';
 import { progressEvent } from '../progress.js';
 import { diffRealHome, snapshotRealHome } from '../real-home-guard.js';
+import { summarizeDiagnostics } from '../diagnostics.js';
 import { copyIfExists, prepareArtifacts, renderReportMarkdown, writeJson, writeText } from '../report-writer.js';
 import { rpc } from '../rpc-client.js';
 import { locateRuntime, readRuntimeVersion } from '../runtime-locator.js';
@@ -101,6 +103,7 @@ export async function runShell(options = {}) {
     desktopBridge: desktop,
     checks,
     errors,
+    hints: [],
     cleanup: { homeRemoved: null, portsLeft: [], processesLeft: 0 },
     realHome: null,
     artifacts: {},
@@ -207,14 +210,14 @@ export async function runShell(options = {}) {
     }
     if (pipeline.install) {
       writeText(runDir, 'install.log', `$ dsh ${pipeline.installArgs.join(' ')}\n\n${pipeline.install.stdout}\n${pipeline.install.stderr}`);
-      addCheck(
-        checks,
-        'plugin-install',
-        pipeline.stage !== 'install',
-        `exit ${pipeline.install.code}${pipeline.install.timedOut ? ' (timeout)' : ''}`,
-      );
+      const install = pipeline.install;
+      const installDiagnosis = pipeline.installDiagnosis ?? null;
+      const described = describePluginInstall(pipeline.stage, install, installDiagnosis);
+      addCheck(checks, 'plugin-install', described.pass, described.detail);
       if (pipeline.stage === 'install') {
-        throw new Error(`plugin install failed (exit ${pipeline.install.code})\n${tail(`${pipeline.install.stdout}\n${pipeline.install.stderr}`, 4000)}`);
+        report.installFailure = installDiagnosis;
+        for (const hint of installDiagnosis?.suggestions ?? []) report.hints.push(hint);
+        throw new Error(`${installFailureMessage(installDiagnosis, install)}\n${tail(`${install.stdout}\n${install.stderr}`, 4000)}`);
       }
       addCheck(
         checks,
@@ -726,8 +729,11 @@ export async function runShell(options = {}) {
       stderr: tail(shellProc.getOutput().stderr, 4000),
     };
   } catch (error) {
+    const message = String(error?.message ?? error);
     errors.push(String(error?.stack ?? error));
-    recordShellRun(false, `shell-run 异常: ${String(error?.message ?? error)}（详见 errors 与 shell-result）`);
+    // The GUI banner keeps the first `[失败]` line only; keep the real reason
+    // there and leave the full stack/tail in `errors`.
+    recordShellRun(false, `shell-run 异常: ${message.split('\n')[0]}（详见 errors 与 shell-result）`);
   } finally {
     progress('cleanup', 'cleaning up processes and the isolated home');
     if (webBrowser) {
@@ -850,6 +856,11 @@ export async function runShell(options = {}) {
         pageErrors: (shellResult?.pageErrors ?? []).slice(0, 10),
       };
     }
+    // The shell path used to skip the diagnostics/errorCode summary entirely,
+    // so an install failure on this path had a null errorCode.
+    report.diagnostics = summarizeDiagnostics(report);
+    report.errorCode = report.diagnostics.primaryCode;
+    writeJson(runDir, 'cleanup.json', report.cleanup);
     report.artifacts = {
       runDir,
       reportMd: path.join(runDir, 'report.md'),

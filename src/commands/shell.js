@@ -55,6 +55,8 @@ export async function runShellCommand(options) {
       const label = check.pass ? '通过' : check.informational ? '提示' : '失败';
       process.stdout.write(`[${label}] ${check.name}: ${check.detail ?? ''}\n`);
     }
+    if (!report.ok && report.errorCode) process.stdout.write(`错误码: ${report.errorCode}\n`);
+    for (const hint of report.hints ?? []) process.stdout.write(`[提示] ${hint}\n`);
     const shellProbe = report.shell?.probeSummary;
     if (shellProbe) {
       process.stdout.write(
