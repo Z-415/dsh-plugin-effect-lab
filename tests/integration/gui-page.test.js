@@ -158,6 +158,47 @@ const SOURCE_SELECT = `(async () => {
 })()`;
 
 /**
+ * Pasting a GitHub URL (or owner/repo) must switch the source dropdown instead
+ * of silently treating the repo as an npm name.
+ */
+const SOURCE_AUTODETECT = `(async () => {
+  const input = document.getElementById('plugin');
+  const source = document.getElementById('pluginSource');
+  const hint = document.getElementById('hint');
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const results = {};
+
+  source.value = 'npm';
+  input.value = 'https://github.com/mini-yifan/dsh-orb-cordis';
+  input.dispatchEvent(new Event('paste'));
+  await wait(20);
+  results.urlSource = source.value;
+  results.urlHint = hint.textContent;
+
+  source.value = 'npm';
+  input.value = 'mini-yifan/dsh-orb-cordis';
+  input.dispatchEvent(new Event('change'));
+  await wait(20);
+  results.slashSource = source.value;
+
+  // A confident GitHub URL wins even over an explicit path selection.
+  source.value = 'path';
+  input.value = 'https://github.com/mini-yifan/dsh-orb-cordis';
+  input.dispatchEvent(new Event('change'));
+  await wait(20);
+  results.explicitOverride = source.value;
+
+  // A bare owner/repo must not clobber an explicit path selection.
+  source.value = 'path';
+  input.value = 'mini-yifan/dsh-orb-cordis';
+  input.dispatchEvent(new Event('change'));
+  await wait(20);
+  results.pathKept = source.value;
+
+  return JSON.stringify({ results, errors: window.__rendererErrors });
+})()`;
+
+/**
  * The profile drawer: each row lists its installed plugins with a per-plugin
  * uninstall, keeps only the three row actions, and reserves its own column
  * instead of covering the controls on the left.
@@ -576,6 +617,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
         desktop: CLICK_DESKTOP,
         profiles: PROFILE_SELECT,
         sourceSelect: SOURCE_SELECT,
+        sourceAutoDetect: SOURCE_AUTODETECT,
         profileDrawer: PROFILE_DRAWER,
         runtimesDialog: RUNTIMES_DIALOG,
         layout: LAYOUT_AND_BANNER,
@@ -591,6 +633,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
     const desktop = JSON.parse(ui.extra.desktop);
     const profiles = JSON.parse(ui.extra.profiles);
     const sourceSelect = JSON.parse(ui.extra.sourceSelect);
+    const sourceAutoDetect = JSON.parse(ui.extra.sourceAutoDetect);
     const profileDrawer = JSON.parse(ui.extra.profileDrawer);
     const runtimesDialog = JSON.parse(ui.extra.runtimesDialog);
     const layout = JSON.parse(ui.extra.layout);
@@ -674,6 +717,14 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(tarballCall[tarballCall.indexOf('--plugin') + 1], 'C:\\tmp\\my-plugin.tgz');
     assert.equal(tarballCall.includes('--offline'), true);
     assert.deepEqual(sourceSelect.errors, []);
+
+    // Pasting a GitHub URL / owner/repo switches the source away from npm.
+    assert.equal(sourceAutoDetect.results.urlSource, 'github', JSON.stringify(sourceAutoDetect));
+    assert.match(sourceAutoDetect.results.urlHint ?? '', /GitHub/);
+    assert.equal(sourceAutoDetect.results.slashSource, 'github', JSON.stringify(sourceAutoDetect));
+    assert.equal(sourceAutoDetect.results.explicitOverride, 'github', JSON.stringify(sourceAutoDetect));
+    assert.equal(sourceAutoDetect.results.pathKept, 'path', JSON.stringify(sourceAutoDetect));
+    assert.deepEqual(sourceAutoDetect.errors, []);
 
     // The profile drawer lists every profile, its plugins, and only the three
     // row actions; each plugin carries its own uninstall.

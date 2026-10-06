@@ -632,6 +632,37 @@
         return raw;
     }
   }
+  /**
+   * What source a pasted spec looks like. A GitHub URL / `github:` / `git@`
+   * clone URL is confident; a bare `owner/repo` is a suggestion because an npm
+   * name never contains a slash (scoped packages start with `@`).
+   */
+  function detectPluginSource(raw) {
+    const text = String(raw ?? '').trim();
+    if (!text) return null;
+    if (/^(github:|git@github\.com:)/i.test(text)) return { source: 'github', confident: true };
+    if (/^https?:\/\/(?:www\.)?github\.com\//i.test(text)) return { source: 'github', confident: true };
+    if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:#.*)?$/.test(text) && !/^[A-Za-z]:[\\/]/.test(text)) {
+      return { source: 'github', confident: false };
+    }
+    return null;
+  }
+  /**
+   * Switching the dropdown is the fix for the "npm:https://github.com/..."
+   * failure: the source used to stay on npm when a repo URL was pasted.
+   */
+  function applyDetectedSource() {
+    const detected = detectPluginSource(pluginInput.value);
+    if (!detected || detected.source === pluginSource.value) return false;
+    // A confident GitHub URL always wins; a bare owner/repo only replaces the
+    // generic npm default, never an explicit path/tarball choice.
+    if (!detected.confident && pluginSource.value !== 'npm') return false;
+    pluginSource.value = detected.source;
+    if (typeof hint !== 'undefined' && hint) {
+      hint.textContent = `来源已自动识别为 ${detected.source === 'github' ? 'GitHub' : detected.source}（可手动改回）`;
+    }
+    return true;
+  }
   function networkFlag() {
     return pluginSource.value === 'path' || pluginSource.value === 'tarball' ? '--offline' : '--online';
   }
@@ -1048,6 +1079,10 @@
   document.getElementById('runRuntimes').addEventListener('click', showRuntimesDialog);
   document.getElementById('refreshProfiles').addEventListener('click', () => refreshProfiles());
   profileSelect.addEventListener('change', syncProfileNew);
+  // Paste/change on the plugin field auto-detects a GitHub URL or owner/repo.
+  pluginInput.addEventListener('paste', () => setTimeout(applyDetectedSource, 0));
+  pluginInput.addEventListener('change', () => applyDetectedSource());
+  pluginInput.addEventListener('blur', () => applyDetectedSource());
 
   document.getElementById('stop').addEventListener('click', async () => {
     await window.labGui.stop();
