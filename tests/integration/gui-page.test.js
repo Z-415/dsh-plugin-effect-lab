@@ -360,6 +360,12 @@ const LAYOUT_AND_BANNER = `(() => {
   window.__handlers.output('[失败] shell-ui-ready: 0 slot(s)\\n');
   window.__handlers.done({ code: 1 });
   const banner = document.getElementById('banner');
+  const bannerText = banner.textContent;
+  // A failed install must put the pnpm key line in the first [失败] line, so
+  // the banner does not stop at a bare exit 1.
+  window.__handlers.output('[失败] plugin-install: exit 1; elapsed 3507ms; [ERR_PNPM_FETCH_404] GET https://registry.npmmirror.com/dsh-orb-cordis: Not Found - 404\\n');
+  window.__handlers.done({ code: 1 });
+  const pnpmBannerText = banner.textContent;
   return JSON.stringify({
     layoutOk,
     moreCollapsed,
@@ -369,7 +375,8 @@ const LAYOUT_AND_BANNER = `(() => {
     controls: { visible: Math.round(controlsRect.height), content: controls.scrollHeight },
     bodyClipped: document.body.scrollHeight > window.innerHeight + 1,
     bannerHidden: banner.hidden,
-    bannerText: banner.textContent,
+    bannerText,
+    pnpmBannerText,
     bannerClass: banner.className,
     notifyCalls: window.__notifyCalls,
     errors: window.__rendererErrors,
@@ -797,8 +804,10 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(layout.bannerHidden, false, JSON.stringify(layout));
     assert.match(layout.bannerText, /失败/);
     assert.match(layout.bannerText, /shell-ui-ready/, 'the banner must name the failing check');
+    assert.match(layout.pnpmBannerText, /ERR_PNPM_FETCH_404/, 'the banner must carry the real pnpm line');
+    assert.match(layout.pnpmBannerText, /dsh-orb-cordis/);
     assert.match(layout.bannerClass, /bad/);
-    assert.equal(layout.notifyCalls.length, 1, JSON.stringify(layout.notifyCalls));
+    assert.equal(layout.notifyCalls.length >= 1, true, JSON.stringify(layout.notifyCalls));
     assert.match(layout.notifyCalls[0].title, /失败/);
 
     // The button area must stay on a regular grid: equal cells, no clipped
