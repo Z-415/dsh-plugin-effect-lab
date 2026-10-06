@@ -27,6 +27,12 @@ export const LAB_PROCESS_NAMES = ['msedge.exe', 'DeepSeek Harness.exe'];
 /** Substring every lab-spawned process carries in its command line. */
 export const LAB_COMMAND_HINT = 'dsh-lab';
 
+/**
+ * Process names that may hold an isolated run root open: the Electron shell
+ * (its `--user-data-dir` lives under the root) and the headless Edge baseline.
+ */
+export const ROOT_PROCESS_NAMES = ['DeepSeek Harness.exe', 'msedge.exe'];
+
 /** Long-lived caches: real, reusable, and never a "run directory". */
 export const LAB_CACHE_PREFIXES = ['dsh-lab-electron-', 'dsh-lab-gui-'];
 
@@ -95,6 +101,12 @@ export function reapProcessesByCommandLine(target, options = {}) {
     processes: query.processes,
     status: query.status,
   };
+}
+
+/** List (without killing) processes whose command line references `target`. */
+export function listProcessesByCommandLine(target, options = {}) {
+  const query = runProcessQuery(target, { ...options, kill: false });
+  return { supported: query.supported, processes: query.processes, status: query.status };
 }
 
 /** Lab temp-dir tokens in a command line, minus the long-lived caches. */

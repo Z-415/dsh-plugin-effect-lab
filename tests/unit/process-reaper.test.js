@@ -8,6 +8,7 @@ import {
   extractLabTokens,
   isOrphanLabProcess,
   labProcessDirs,
+  listProcessesByCommandLine,
   parseProcessLines,
   planLabProcesses,
   reapLabProcesses,
@@ -127,6 +128,17 @@ test('reapProcessesByCommandLine is a no-op off Windows or with an empty target'
   const empty = reapProcessesByCommandLine('', { platform: 'win32' });
   assert.equal(empty.supported, true);
   assert.equal(empty.matched, 0);
+});
+
+test('listProcessesByCommandLine is a no-op off Windows or with an empty target', () => {
+  assert.deepEqual(listProcessesByCommandLine('dsh-lab', { platform: 'linux' }), {
+    supported: false,
+    processes: [],
+    status: null,
+  });
+  const empty = listProcessesByCommandLine('', { platform: 'win32' });
+  assert.equal(empty.supported, true);
+  assert.deepEqual(empty.processes, []);
 });
 
 test('reapProcessesByCommandLine matches nothing for a name that cannot exist', {

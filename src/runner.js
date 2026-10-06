@@ -11,7 +11,7 @@ import {
   REAL_HOME,
   defaultArtifactsRoot,
 } from './config.js';
-import { createIsolatedHome } from './home-manager.js';
+import { createIsolatedHome, describeHomeCleanup } from './home-manager.js';
 import {
   clearLabFixtureState,
   createFixtureWorkspace,
@@ -876,7 +876,9 @@ export async function runLab(options = {}) {
       checks,
       'cleanup-home',
       report.cleanup.homeRemoved === true || report.cleanup.homeKept === true,
-      report.cleanup.homeKept === true ? `kept lab profile "${profileLab}"` : String(report.cleanup.homeRemoved),
+      report.cleanup.homeKept === true
+        ? `kept lab profile "${profileLab}"`
+        : describeHomeCleanup(report.cleanup.homeCleanup),
     );
     addCheck(
       checks,
@@ -894,13 +896,17 @@ export async function runLab(options = {}) {
         browserDirs: report.cleanup.browserTempDirs,
       });
       report.cleanup.residue = residue;
+      const rootRemoved = residue.checks['isolated-root-removed'] !== false;
+      const lockDetail = !rootRemoved && report.cleanup.homeCleanup
+        ? `; ${describeHomeCleanup(report.cleanup.homeCleanup)}`
+        : '';
       addCheck(
         checks,
         'cleanup-no-residue',
         residue.ok,
         residue.ok
           ? `isolated root removed, ports released; new lab homes: ${residue.newHomes.length}`
-          : `failed: ${residue.failures.join(', ')}`,
+          : `failed: ${residue.failures.join(', ')}${lockDetail}`,
       );
       const orphans = residue.labProcesses?.orphans ?? [];
       report.cleanup.orphanProcesses = orphans.map((entry) => ({ pid: entry.pid, name: entry.name }));

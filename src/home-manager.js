@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { REAL_HOME, TEMP_PREFIX } from './config.js';
+import { listProcessesByCommandLine, reapProcessesByCommandLine, ROOT_PROCESS_NAMES } from './process-reaper.js';
 import { ensureDir, sleep } from './util.js';
 
 /**
@@ -90,26 +91,155 @@ export function removeTreeSafely(target) {
   fs.rmdirSync(target);
 }
 
-/** Delete an isolated root, retrying briefly for Windows file-handle release. */
+/**
+ * Cleanup budget. A `--keep-open` run is finished by the human closing the
+ * window; the Electron tree (renderer/GPU/crashpad) and the DSH host release
+ * their handles asynchronously after that, and a heavy plugin makes it slower.
+ * 6 x 400ms (2.4s) was too short: the run failed with EBUSY even though the
+ * directory could be removed a moment later.
+ */
+export const DEFAULT_CLEANUP_BUDGET_MS = 30_000;
+export const DEFAULT_CLEANUP_INITIAL_DELAY_MS = 250;
+export const DEFAULT_CLEANUP_MAX_DELAY_MS = 2_000;
+export const DEFAULT_HOLDER_WAIT_MS = 5_000;
+const HOLDER_POLL_MS = 250;
+
+/** Processes referencing this exact root (the shell's user-data-dir is under it). */
+function defaultProbeHolders(root) {
+  return listProcessesByCommandLine(root, { names: ROOT_PROCESS_NAMES }).processes;
+}
+
+/** Reap shell/Edge processes still referencing this root, between retries. */
+function defaultReapHolders(root) {
+  return reapProcessesByCommandLine(root, { names: ROOT_PROCESS_NAMES });
+}
+
+/** EBUSY/EPERM-style code from a removal failure, for the report. */
+export function cleanupErrorCode(error) {
+  if (!error) return null;
+  if (error.code) return String(error.code);
+  const match = /(EBUSY|EPERM|EACCES|ENOTEMPTY|EEXIST)\b/.exec(String(error.message ?? error));
+  return match ? match[1] : null;
+}
+
+/**
+ * Poll until no process references the root, so the delete runs against a
+ * released directory instead of racing the shell tree's shutdown.
+ */
+async function waitForHoldersGone(root, options) {
+  const { probeHolders, timeoutMs, pollMs, sleepFn, now } = options;
+  const deadline = now() + timeoutMs;
+  let holders = probeHolders(root) ?? [];
+  while (holders.length && now() < deadline) {
+    await sleepFn(Math.min(pollMs, Math.max(0, deadline - now())));
+    holders = probeHolders(root) ?? [];
+  }
+  return holders;
+}
+
+/**
+ * Delete an isolated root with exponential backoff and process reaping.
+ *
+ * The hooks (`probeHolders`, `reapHolders`, `sleepFn`, `now`) are injectable so
+ * the retry/backoff behavior is unit-testable without PowerShell or real shell
+ * processes. A failure returns the locked path, the EBUSY/EPERM code, and the
+ * processes still referencing the root, so cleanup.json explains itself.
+ */
 export async function disposeIsolatedHome(root, options = {}) {
-  const { retries = 6, delayMs = 400 } = options;
+  const {
+    totalBudgetMs = DEFAULT_CLEANUP_BUDGET_MS,
+    initialDelayMs = DEFAULT_CLEANUP_INITIAL_DELAY_MS,
+    maxDelayMs = DEFAULT_CLEANUP_MAX_DELAY_MS,
+    holderWaitMs = DEFAULT_HOLDER_WAIT_MS,
+    pollMs = HOLDER_POLL_MS,
+    probeHolders = defaultProbeHolders,
+    reapHolders = defaultReapHolders,
+    sleepFn = sleep,
+    now = Date.now,
+  } = options;
   assertSafeHome(root);
+  const startedAt = now();
+  let attempts = 0;
   let lastError = null;
-  for (let attempt = 0; attempt < retries; attempt += 1) {
+  let holders = [];
+  let delay = Math.max(0, initialDelayMs);
+  for (;;) {
+    attempts += 1;
     try {
       removeTreeSafely(root);
-      if (!fs.existsSync(root)) return { removed: true, root, attempts: attempt + 1 };
     } catch (error) {
       lastError = error;
     }
-    await sleep(delayMs);
+    if (!fs.existsSync(root)) {
+      return {
+        removed: true,
+        root,
+        attempts,
+        elapsedMs: now() - startedAt,
+        error: null,
+        errorCode: null,
+        lockedPath: null,
+        holders: [],
+      };
+    }
+    // Still locked: reap whatever references this exact root before retrying,
+    // then wait for the process tree to actually disappear.
+    try {
+      holders = probeHolders(root) ?? [];
+      reapHolders(root);
+    } catch {
+      // Reaping is best-effort; the backoff below still gives the handles time.
+    }
+    const remaining = totalBudgetMs - (now() - startedAt);
+    if (remaining <= 0) break;
+    holders = await waitForHoldersGone(root, {
+      probeHolders,
+      timeoutMs: Math.min(holderWaitMs, remaining),
+      pollMs,
+      sleepFn,
+      now,
+    });
+    const afterWait = totalBudgetMs - (now() - startedAt);
+    if (afterWait <= 0) break;
+    await sleepFn(Math.min(delay, afterWait));
+    delay = Math.min(delay * 2, maxDelayMs);
+  }
+  try {
+    holders = probeHolders(root) ?? holders;
+  } catch {
+    // Keep the last known holder list.
   }
   return {
     removed: !fs.existsSync(root),
     root,
-    attempts: retries,
+    attempts,
+    elapsedMs: now() - startedAt,
     error: lastError ? String(lastError) : null,
+    errorCode: cleanupErrorCode(lastError),
+    lockedPath: lastError?.path ?? root,
+    holders: (holders ?? []).map((entry) => ({ pid: entry.pid, name: entry.name })),
   };
+}
+
+/** Human detail for the `cleanup-home` / `cleanup-no-residue` checks. */
+export function describeHomeCleanup(cleanup) {
+  if (!cleanup) return 'unknown';
+  if (cleanup.kept === true) return `kept persistent profile ${cleanup.root}`;
+  if (cleanup.removed === true) {
+    return `removed ${cleanup.root} in ${cleanup.elapsedMs ?? '?'}ms (${cleanup.attempts ?? 1} attempt(s))`;
+  }
+  const parts = [
+    'removed=false',
+    `locked=${cleanup.lockedPath ?? cleanup.root}`,
+  ];
+  if (cleanup.errorCode) parts.push(`errorCode=${cleanup.errorCode}`);
+  else if (cleanup.error) parts.push(`error=${String(cleanup.error).slice(0, 200)}`);
+  if (cleanup.holders?.length) {
+    parts.push(`holders=${cleanup.holders.map((entry) => `${entry.pid} ${entry.name}`).join(', ')}`);
+  }
+  parts.push(`attempts=${cleanup.attempts ?? '?'}`);
+  if (cleanup.elapsedMs !== undefined && cleanup.elapsedMs !== null) parts.push(`elapsedMs=${cleanup.elapsedMs}`);
+  return parts.join('; ');
 }
 
 export function listOrphanLabHomes() {

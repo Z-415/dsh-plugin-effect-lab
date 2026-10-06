@@ -8,7 +8,7 @@ import { writeHtmlReport } from '../html-report.js';
 import { isClonedLabProfile, openLabProfileHome, recordProfilePlugins } from '../lab-profile.js';
 import { hasFatal, scanSources, summarize, tailLines } from '../log-scanner.js';
 import { defaultArtifactsRoot } from '../config.js';
-import { createIsolatedHome } from '../home-manager.js';
+import { createIsolatedHome, describeHomeCleanup } from '../home-manager.js';
 import { mintAuthCookie } from '../port-and-token.js';
 import {
   clearLabFixtureState,
@@ -770,9 +770,15 @@ export async function runShell(options = {}) {
       }
     }
     if (iso) {
-      const cleanup = await iso.dispose();
-      report.cleanup.homeRemoved = cleanup.removed;
-      report.cleanup.homeKept = cleanup.kept === true;
+      try {
+        const cleanup = await iso.dispose();
+        report.cleanup.homeCleanup = cleanup;
+        report.cleanup.homeRemoved = cleanup.removed;
+        report.cleanup.homeKept = cleanup.kept === true;
+      } catch (error) {
+        errors.push(`isolated home cleanup failed: ${String(error)}`);
+        report.cleanup.homeRemoved = false;
+      }
     }
     if (realBefore) {
       try {
@@ -787,7 +793,9 @@ export async function runShell(options = {}) {
       checks,
       'cleanup-home',
       report.cleanup.homeRemoved === true || report.cleanup.homeKept === true,
-      report.cleanup.homeKept === true ? `kept lab profile "${options.profileLab}"` : String(report.cleanup.homeRemoved),
+      report.cleanup.homeKept === true
+        ? `kept lab profile "${options.profileLab}"`
+        : describeHomeCleanup(report.cleanup.homeCleanup),
     );
     addCheck(checks, 'cleanup-ports', report.cleanup.portsLeft.length === 0, report.cleanup.portsLeft.join(', ') || 'none');
     try {
@@ -797,13 +805,17 @@ export async function runShell(options = {}) {
         before: residueBefore,
       });
       report.cleanup.residue = residue;
+      const rootRemoved = residue.checks['isolated-root-removed'] !== false;
+      const lockDetail = !rootRemoved && report.cleanup.homeCleanup
+        ? `; ${describeHomeCleanup(report.cleanup.homeCleanup)}`
+        : '';
       addCheck(
         checks,
         'cleanup-no-residue',
         residue.ok,
         residue.ok
           ? `root removed, ports released; new lab homes: ${residue.newHomes.length}`
-          : `failed: ${residue.failures.join(', ')}`,
+          : `failed: ${residue.failures.join(', ')}${lockDetail}`,
       );
       const orphans = residue.labProcesses?.orphans ?? [];
       report.cleanup.orphanProcesses = orphans.map((entry) => ({ pid: entry.pid, name: entry.name }));

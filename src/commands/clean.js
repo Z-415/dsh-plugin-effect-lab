@@ -1,5 +1,5 @@
 import { listLabResidue } from '../cleanup.js';
-import { disposeIsolatedHome } from '../home-manager.js';
+import { describeHomeCleanup, disposeIsolatedHome } from '../home-manager.js';
 import { planLabProcesses, reapLabProcesses } from '../process-reaper.js';
 
 export async function runCleanCommand(options = {}) {
@@ -31,7 +31,13 @@ export async function runCleanCommand(options = {}) {
     }
     const result = await disposeIsolatedHome(target.path);
     if (result.removed) removed.push({ path: target.path, attempts: result.attempts });
-    else failed.push({ path: target.path, error: result.error });
+    else failed.push({
+      path: target.path,
+      error: result.error,
+      errorCode: result.errorCode,
+      holders: result.holders,
+      detail: describeHomeCleanup(result),
+    });
   }
 
   const report = { dryRun: Boolean(options.dryRun), removed, failed, processes };
@@ -41,7 +47,7 @@ export async function runCleanCommand(options = {}) {
       ? `clean (dry-run): would remove ${removed.length} dir(s), would reap ${processes.orphans.length} of ${processes.matched} lab process(es)\n`
       : `clean: removed ${removed.length}, failed ${failed.length}, reaped ${processes.killed.length} of ${processes.matched} lab process(es)\n`);
     for (const item of removed) process.stdout.write(`- ${item.path}${item.dryRun ? ' (dry-run)' : ''}\n`);
-    for (const item of failed) process.stdout.write(`- FAILED ${item.path}: ${item.error}\n`);
+    for (const item of failed) process.stdout.write(`- FAILED ${item.path}: ${item.detail ?? item.error}\n`);
     for (const item of processes.orphans) {
       process.stdout.write(`- ${options.dryRun ? 'ORPHAN' : 'reaped'} pid ${item.pid} ${item.name}${item.commandLine ? ` :: ${item.commandLine.slice(0, 160)}` : ''}\n`);
     }
