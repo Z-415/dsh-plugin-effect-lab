@@ -41,13 +41,18 @@ the same width and height instead of ragged flex wrapping:
 
 - **Left column — 插件 / 持久 profile** (the main workflow): plugin field,
   profile dropdown, a profile tag that mirrors the current selection, the
-  plugin actions (verify, open the shell window, uninstall, list, two plugins
-  together), and the desktop-mode switches.
+  plugin actions (verify, install + real package name, open the shell window,
+  shell-vs-web, uninstall one plugin, open the profile drawer) and the
+  desktop-mode switches.
 - **Right column — 检查 / 清理**: `doctor`, the `verify` presets, the
-  failure-signature tools and **查看已装的 DSH 版本**; then dry-run/clean of
-  leaked temp directories. A collapsed **更多：矩阵（较慢）** disclosure holds
-  the three `matrix` presets (including the cross-version matrix), so they cost
-  no height until opened.
+  failure-signature tools and **查看已装的 DSH 版本** (an in-page dialog listing
+  every discovered runtime); then dry-run/clean of leaked temp directories. A
+  collapsed **更多：矩阵（较慢）** disclosure holds the three `matrix` presets
+  (including the cross-version matrix), so they cost no height until opened.
+
+Opening the profile drawer reserves its own column on the right (`--drawer-w`,
+about the width of the 检查 column) and the controls collapse to one column, so
+the drawer never covers the buttons on the left.
 
 At the 1080×760 default size the whole layout fits without scrolling; below
 900px wide the two columns stack and the control area scrolls on its own. The
@@ -86,17 +91,16 @@ the bar to maximise or restore the window.
 | 插件 / 持久 profile | 在壳窗口打开（自己关） | `shell --no-compare-web [--plugin <spec>] [--profile-lab <name>] --keep-open` |
 | 插件 / 持久 profile | 在壳窗口打开（20 秒） | `shell --no-compare-web [--plugin <spec>] … --show --show-hold 20000` |
 | 插件 / 持久 profile | 壳 vs web 对比 | `shell [--plugin <spec>] [--profile-lab <name>]` |
-| 插件 / 持久 profile | 再加一个插件一起验证 | `shell --plugin A --with B --show --show-hold 20000` |
 | 插件 / 持久 profile | 卸载这个插件 | `profile remove-plugin <name> <spec>` |
-| 插件 / 持久 profile | 列出 profile | `profile list`, then refresh the dropdown |
+| 插件 / 持久 profile | 列出 profile（整行） | `profile list`, opens the right-hand profile drawer |
 | 插件 / 持久 profile | 刷新 | re-read `.lab-profiles` for the dropdown |
 | 检查 | 自检 doctor | `doctor` |
 | 检查 | 快速验证 | `verify` |
 | 检查 | 验证 + 设置页截图 | `verify --screenshot home --screenshot settings` |
-| 检查 | 空会话 / 长会话 / 思考代码夹具 | `verify --fixture-variant empty\|long\|rich` |
+| 检查 | 长会话 / 思考代码夹具 | `verify --fixture-variant long\|rich` |
 | 检查 | 失败签名库 | `scan --list` |
 | 检查 | 扫描最近一次日志 | `scan --latest` |
-| 检查 | 查看已装的 DSH 版本 | `runtimes` |
+| 检查 | 查看已装的 DSH 版本 | `runtimes --json`（在页内对话框里逐条列出，不打日志） |
 | 检查（更多 ▾） | 主题冲突矩阵 | `matrix --config fixtures/matrix/theme-conflict.json --online` |
 | 检查（更多 ▾） | 效果探针矩阵 | `matrix --config fixtures/matrix/effect-conflict.json` |
 | 检查（更多 ▾） | 跨版本矩阵 | `matrix --config fixtures/matrix/effect-conflict.json --runtime-matrix` |
@@ -132,32 +136,38 @@ browser, or the `artifacts/` folder. **中止** kills the running child tree.
 
 ## 卸载单个插件（鼠标操作）
 
-1. **profile 下拉**选要操作的持久 profile（例如 `dev`）。
-2. **插件**框填要卸载的插件名或 spec（`dsh-ui-tweaks`、`dsh-ui-tweaks@0.20.0`、
-   或当初装的本地路径都行）。
-3. 点 **卸载这个插件**。
+两条路都只卸掉这一个插件，profile 和其余插件保留：
 
-只会卸掉这一个插件，profile 和其余插件保留；日志会打印 `removed …` 和
-`still installed …`。没匹配到会提示 `unmatched` 并以退出码 1 结束。选「一次性运行」
-时不能卸载（没有可卸载的对象），按钮会直接提示。
+1. **profile 面板（推荐）**：点 **列出 profile** 打开右侧抽屉，每个 profile 下面会
+   列出已安装插件，每行右边有 **卸载**，点它 → 确认即可。
+2. **主界面**：profile 下拉选好，**插件**框填插件名或 spec（`dsh-ui-tweaks`、
+   `dsh-ui-tweaks@0.20.0`、或当初装的本地路径都行），点 **卸载这个插件**。
+
+日志会打印 `removed …` 和 `still installed …`。没匹配到会提示 `unmatched` 并以退出码 1
+结束。选「一次性运行」时不能卸载（没有可卸载的对象），按钮会直接提示。
 
 ## profile 面板（列表 + 行内操作）
 
-点 **列出 profile** 会打开右侧的 profile 抽屉。每个 profile 一行，显示：
+点 **列出 profile** 会打开右侧的 profile 抽屉。它不再是覆盖整页的 600px 浮层：
+抽屉占用右侧自己的列（宽度约等于原来的检查栏），打开时左侧控件区收成单列，所以
+不会挡住左边的按钮。每个 profile 一张卡，显示：
 
 - 名称、插件数、`node_modules` 是否已建（及第三方依赖数）；
-- 记录的全部插件 spec；
-- 最后运行时间（`lastRunAt`，没有则回落到目录 `mtimeMs`）。
+- **已安装插件清单**：记录在 `lab-profile.json` 里的 spec，加上克隆 profile 实际装进
+  `package.json` 的第三方依赖（自动去掉 `dsh-lab-session-fixture`、按包名去重）；
+  每一行右边都有 **卸载**；
+- 最后运行时间（`lastRunAt`，没有则回落到目录 `mtimeMs`）；
+- 克隆来源（`clonedFrom`，例如「克隆自 web」）。
 
-每行的行内按钮：
+每张卡的行内按钮只剩三个：
 
 | 按钮 | 走 lab 的哪条命令 |
 |---|---|
 | 在壳窗口打开 | `shell --no-compare-web --profile-lab <name> --keep-open` |
-| 克隆为一次性运行（跑完即删） | `verify --plugin <spec>...`（不传 `--profile-lab`，跑完即删；有远程插件时自动 `--online`） |
-| 卸载插件 | `profile remove-plugin <name> <spec>`（弹出输入框填插件名） |
 | 打开目录 | `profile path <name>`（主进程解析路径）后用系统资源管理器打开 |
 | 删除 profile | `profile remove <name>`（二次确认） |
+
+插件行右边的 **卸载** → `profile remove-plugin <name> <插件名>`（二次确认）。
 
 删除、卸载都走 lab CLI，渲染进程不拼接路径、不直接做文件操作。删除内部用
 `lstat` 的 `removeTreeSafely`，所以 `node_modules` 里的 `file:`/`link:` junction

@@ -36,13 +36,21 @@ window.labGui = {
       {
         name: 'dev',
         plugins: [{ spec: 'dsh-plugin-wallpaper-engine@1.2.0' }, { spec: 'dsh-ui-tweaks@0.20.0' }],
+        dependencies: ['dsh-plugin-wallpaper-engine', 'dsh-ui-tweaks', 'dsh-extra-plugin'],
         clonedFrom: { kind: 'web', sourceHash: 'ABCDEF123456', copiedFiles: 5, excluded: [] },
         nodeModulesExists: true,
-        dependenciesCount: 2,
+        dependenciesCount: 3,
         bundlesCount: 4,
         lastRunAt: 1700000000000,
       },
-      { name: 'plain', plugins: [], nodeModulesExists: false, dependenciesCount: 0, bundlesCount: 0, lastRunAt: null },
+      { name: 'plain', plugins: [], dependencies: [], nodeModulesExists: false, dependenciesCount: 0, bundlesCount: 0, lastRunAt: null },
+    ],
+  }),
+  runtimes: async () => ({
+    count: 2,
+    runtimes: [
+      { version: '0.2.0-rc.2', status: 'verified', isDefault: true, cmd: 'D:\\DeepSeek Harness\\resources\\runtime\\cli\\bin\\dsh.cmd', detail: '0.2.0-rc.2 (verified)' },
+      { version: '0.2.0-rc.1', status: 'untested', isDefault: false, cmd: 'C:\\other\\dsh.cmd', detail: 'inside >=0.2.0-rc.1 <0.3.0 but unverified' },
     ],
   }),
   realProfiles: async () => ({
@@ -70,8 +78,10 @@ function stubPage() {
 }
 
 const CLICK_ALL = `(() => {
-  const skip = new Set(['stop', 'report', 'artifacts']);
-  const buttons = [...document.querySelectorAll('button')].filter((b) => !skip.has(b.id));
+  // Drawer/dialog buttons have their own probes; runtimes opens a dialog.
+  const skip = new Set(['stop', 'report', 'artifacts', 'runRuntimes']);
+  const buttons = [...document.querySelectorAll('button')]
+    .filter((b) => !skip.has(b.id) && !b.closest('#profileDrawer') && !b.closest('.dialog'));
   const thrown = [];
   for (const button of buttons) {
     // setBusy() disables every button during a run; re-enable so this click
@@ -147,39 +157,67 @@ const SOURCE_SELECT = `(async () => {
   });
 })()`;
 
-/** The profile drawer must list rows with the five inline actions. */
+/**
+ * The profile drawer: each row lists its installed plugins with a per-plugin
+ * uninstall, keeps only the three row actions, and reserves its own column
+ * instead of covering the controls on the left.
+ */
 const PROFILE_DRAWER = `(async () => {
-  await new Promise((resolve) => setTimeout(resolve, 80));
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  await wait(80);
   const listButton = document.getElementById('runListProfiles');
   listButton.disabled = false;
   listButton.click();
-  await new Promise((resolve) => setTimeout(resolve, 80));
+  await wait(120);
+
   const drawer = document.getElementById('profileDrawer');
+  const main = document.querySelector('main');
+  const drawerRect = drawer.getBoundingClientRect();
+  const mainRect = main.getBoundingClientRect();
+  const paddingRight = parseFloat(getComputedStyle(main).paddingRight) || 0;
+  const gutter = Math.round(drawerRect.left - (mainRect.right - paddingRight));
+  const controlsColumns = getComputedStyle(document.getElementById('controls')).gridTemplateColumns.split(' ').length;
+
   const rows = [...document.querySelectorAll('#profileList .prow')];
   const first = rows[0];
-  const buttons = first ? [...first.querySelectorAll('button')].map((button) => button.textContent.trim()) : [];
+  const firstButtons = first ? [...first.querySelectorAll('button')].map((button) => button.textContent.trim()) : [];
+  const pluginItems = first
+    ? [...first.querySelectorAll('.pitem')].map((item) => item.textContent.replace(/卸载$/, '').trim())
+    : [];
+  const rowButtons = first
+    ? [...first.querySelectorAll('.prow-actions button')].map((button) => button.textContent.trim())
+    : [];
+  const clickConfirm = async () => {
+    const ok = document.getElementById('confirmDialogOk');
+    ok.disabled = false;
+    ok.click();
+    await wait(20);
+  };
+
   window.__calls = [];
-  const cloneButton = first ? [...first.querySelectorAll('button')].find((button) => button.textContent.includes('克隆')) : null;
-  if (cloneButton) cloneButton.click();
+  window.__profileDirCalls = [];
+
+  // Per-plugin uninstall -> confirm -> profile remove-plugin <name> <selector>.
+  const firstPluginUninstall = first?.querySelector('.pitem button');
+  if (firstPluginUninstall) {
+    firstPluginUninstall.disabled = false;
+    firstPluginUninstall.click();
+    await wait(20);
+    await clickConfirm();
+  }
+
   const clickRowButton = (label) => {
-    const button = first ? [...first.querySelectorAll('button')].find((item) => item.textContent.includes(label)) : null;
+    const button = first
+      ? [...first.querySelectorAll('.prow-actions button')].find((item) => item.textContent.includes(label))
+      : null;
     if (!button) return;
     button.disabled = false;
     button.click();
   };
-  window.__profileDirCalls = [];
   clickRowButton('打开目录');
-  clickRowButton('卸载插件');
-  await Promise.resolve();
-  document.getElementById('textDialogInput').value = 'dsh-ui-tweaks';
-  document.getElementById('textDialogForm').requestSubmit();
-  await new Promise((resolve) => setTimeout(resolve, 10));
   clickRowButton('删除 profile');
-  await Promise.resolve();
-  const confirmOk = document.getElementById('confirmDialogOk');
-  confirmOk.disabled = false;
-  confirmOk.click();
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await wait(20);
+  await clickConfirm();
   const rowCalls = [...window.__calls];
   const realSelect = document.getElementById('realProfileSelect');
   const realPluginMode = document.getElementById('realClonePlugins');
@@ -205,7 +243,13 @@ const PROFILE_DRAWER = `(async () => {
     open: wasOpen,
     rowCount: rows.length,
     firstText: first ? first.textContent : null,
-    buttons,
+    firstButtons,
+    rowButtons,
+    pluginItems,
+    drawerWidth: Math.round(drawerRect.width),
+    paddingRight: Math.round(paddingRight),
+    gutter,
+    controlsColumns,
     calls: rowCalls,
     cloneCalls,
     realOptions,
@@ -213,6 +257,22 @@ const PROFILE_DRAWER = `(async () => {
     dirCalls: window.__profileDirCalls,
     errors: window.__rendererErrors,
   });
+})()`;
+
+/** 查看已装的 DSH 版本 opens an in-page list dialog instead of logging. */
+const RUNTIMES_DIALOG = `(async () => {
+  const button = document.getElementById('runRuntimes');
+  button.disabled = false;
+  button.click();
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const dialog = document.getElementById('listDialog');
+  const title = document.getElementById('listDialogTitle').textContent;
+  const rows = [...document.querySelectorAll('#listDialogBody .rrow')].map((row) => row.textContent);
+  const open = dialog.hidden === false;
+  const close = document.getElementById('listDialogClose');
+  close.disabled = false;
+  close.click();
+  return JSON.stringify({ open, closed: dialog.hidden, title, rows, errors: window.__rendererErrors });
 })()`;
 
 const LAYOUT_AND_BANNER = `(() => {
@@ -502,6 +562,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
         profiles: PROFILE_SELECT,
         sourceSelect: SOURCE_SELECT,
         profileDrawer: PROFILE_DRAWER,
+        runtimesDialog: RUNTIMES_DIALOG,
         layout: LAYOUT_AND_BANNER,
         design: DESIGN,
         theme: THEME,
@@ -516,6 +577,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
     const profiles = JSON.parse(ui.extra.profiles);
     const sourceSelect = JSON.parse(ui.extra.sourceSelect);
     const profileDrawer = JSON.parse(ui.extra.profileDrawer);
+    const runtimesDialog = JSON.parse(ui.extra.runtimesDialog);
     const layout = JSON.parse(ui.extra.layout);
     const design = JSON.parse(ui.extra.design);
     const theme = JSON.parse(ui.extra.theme);
@@ -538,7 +600,6 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(result.calls.some((args) => args[0] === 'profile'), true, JSON.stringify(result.calls));
     assert.equal(result.calls.some((args) => args[0] === 'scan'), true, 'the signature-library button must dispatch scan');
     assert.equal(result.calls.some((args) => args[0] === 'matrix'), true, 'the collapsed 更多 area must dispatch matrix');
-    assert.equal(result.calls.some((args) => args[0] === 'runtimes'), true, 'the collapsed 更多 area must dispatch runtimes');
     assert.equal(
       result.calls.some((args) => args[0] === 'verify' && args.includes('--fixture-variant') && args.includes('rich')),
       true,
@@ -599,27 +660,33 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(tarballCall.includes('--offline'), true);
     assert.deepEqual(sourceSelect.errors, []);
 
-    // The profile drawer lists every profile with the five inline actions.
+    // The profile drawer lists every profile, its plugins, and only the three
+    // row actions; each plugin carries its own uninstall.
     assert.equal(profileDrawer.open, true);
     assert.equal(profileDrawer.rowCount, 2, JSON.stringify(profileDrawer));
     assert.match(profileDrawer.firstText, /dev/);
     assert.match(profileDrawer.firstText, /dsh-plugin-wallpaper-engine@1\.2\.0/);
     assert.match(profileDrawer.firstText, /克隆自 web/);
-    assert.deepEqual(profileDrawer.buttons, [
-      '在壳窗口打开',
-      '克隆为一次性运行（跑完即删）',
-      '卸载插件',
-      '打开目录',
-      '删除 profile',
-    ]);
-    const cloneCall = profileDrawer.calls.find((args) => args[0] === 'verify' && args.includes('--plugin'));
-    assert.equal(cloneCall[0], 'verify');
-    assert.equal(cloneCall.includes('--plugin'), true);
-    assert.equal(cloneCall[cloneCall.indexOf('--plugin') + 1], 'dsh-plugin-wallpaper-engine@1.2.0');
-    assert.equal(cloneCall.includes('--online'), true);
+    assert.deepEqual(profileDrawer.pluginItems, [
+      'dsh-plugin-wallpaper-engine@1.2.0',
+      'dsh-ui-tweaks@0.20.0',
+      'dsh-extra-plugin',
+    ], JSON.stringify(profileDrawer.pluginItems));
+    assert.deepEqual(profileDrawer.rowButtons, ['在壳窗口打开', '打开目录', '删除 profile']);
+    assert.equal(
+      profileDrawer.firstButtons.some((label) => label.includes('克隆为一次性运行')),
+      false,
+      `row clone buttons must be gone: ${JSON.stringify(profileDrawer.firstButtons)}`,
+    );
+    // The drawer is about as wide as the main grid's right column and reserves
+    // its own space, so it never covers the controls on the left.
+    assert.equal(profileDrawer.drawerWidth <= 440, true, JSON.stringify(profileDrawer));
+    assert.equal(profileDrawer.paddingRight >= profileDrawer.drawerWidth, true, JSON.stringify(profileDrawer));
+    assert.equal(profileDrawer.gutter >= 1, true, `drawer overlaps the controls: ${JSON.stringify(profileDrawer)}`);
+    assert.equal(profileDrawer.controlsColumns, 1, `controls must collapse to one column: ${JSON.stringify(profileDrawer)}`);
+    const pluginCall = profileDrawer.calls.find((args) => args[0] === 'profile' && args[1] === 'remove-plugin');
+    assert.deepEqual(pluginCall, ['profile', 'remove-plugin', 'dev', 'dsh-plugin-wallpaper-engine']);
     assert.deepEqual(profileDrawer.dirCalls, ['dev']);
-    const uninstallCall = profileDrawer.calls.find((args) => args[0] === 'profile' && args[1] === 'remove-plugin');
-    assert.deepEqual(uninstallCall.slice(0, 4), ['profile', 'remove-plugin', 'dev', 'dsh-ui-tweaks']);
     const removeCall = profileDrawer.calls.find((args) => args[0] === 'profile' && args[1] === 'remove');
     assert.deepEqual(removeCall, ['profile', 'remove', 'dev']);
     // The clone bar is fed only by read-only real profiles.
@@ -636,6 +703,18 @@ test('every GUI button dispatches a lab command without a renderer error', {
       '--clone-plugins', 'all', '--clone-accept-risk', '--online', '--no-fixture', '--screenshot', 'home',
     ]);
     assert.deepEqual(profileDrawer.errors, []);
+
+    // 查看已装的 DSH 版本 lists the discovered runtimes in an in-page dialog.
+    assert.equal(runtimesDialog.open, true, JSON.stringify(runtimesDialog));
+    assert.equal(runtimesDialog.closed, true, JSON.stringify(runtimesDialog));
+    assert.equal(runtimesDialog.title, '已安装的 DSH 版本');
+    assert.equal(runtimesDialog.rows.length, 2, JSON.stringify(runtimesDialog.rows));
+    assert.match(runtimesDialog.rows[0], /0\.2\.0-rc\.2/);
+    assert.match(runtimesDialog.rows[0], /verified/);
+    assert.match(runtimesDialog.rows[0], /默认/);
+    assert.match(runtimesDialog.rows[1], /0\.2\.0-rc\.1/);
+    assert.match(runtimesDialog.rows[1], /untested/);
+    assert.deepEqual(runtimesDialog.errors, []);
 
     // The log pane must stay on screen; adding controls must not squeeze it out.
     assert.equal(layout.layoutOk, true, JSON.stringify(layout));

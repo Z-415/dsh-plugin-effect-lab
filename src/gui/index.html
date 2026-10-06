@@ -18,6 +18,9 @@
     --ok-bg: #eef8f1;
     --bad: #c0271c;
     --bad-bg: #fdf2f1;
+    /* Width of the profile drawer: about the main grid's right column, so the
+       drawer can sit beside the controls instead of covering them. */
+    --drawer-w: clamp(320px, 34vw, 430px);
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -125,10 +128,16 @@
   .banner.ok { color: #116033; background: var(--ok-bg); border-color: #bfe3ca; }
   .banner.bad { color: #8f1d14; background: var(--bad-bg); border-color: #f0c3bd; }
   .banner[hidden] { display: none; }
-  /* Profile drawer: the row actions live here so the main grid stays stable. */
+  /* Profile drawer: the row actions live here so the main grid stays stable.
+     It reserves its own column (the :has() rule below), so opening it never
+     covers the controls on the left the way the old 600px overlay did. */
   .drawer { position: fixed; top: 36px; right: 0; bottom: 0; z-index: 40; display: flex; flex-direction: column;
-            width: min(600px, 94vw); background: var(--panel); border-left: 1px solid var(--line-strong); }
+            width: var(--drawer-w); background: var(--panel); border-left: 1px solid var(--line-strong); }
   .drawer[hidden] { display: none; }
+  body:has(#profileDrawer:not([hidden])) main { padding-right: calc(var(--drawer-w) + 18px); }
+  /* While the drawer is open the controls get one column instead of two, so the
+     narrower working area does not wrap every button label. */
+  body:has(#profileDrawer:not([hidden])) #controls { grid-template-columns: minmax(0, 1fr); }
   .drawerhead { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
   .drawerhead h2 { margin: 0; font-size: 12.5px; font-weight: 650; }
   .drawerhead .tag { margin-left: auto; }
@@ -153,7 +162,19 @@
   .prow-head .tag { margin-left: auto; }
   .prow .note { margin: 6px 0 0; word-break: break-word; }
   .prow-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .plist { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .pitem { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 8px;
+           border-radius: 6px; background: #f7f8fa; }
+  .pitem > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  .pitem button { flex: 0 0 auto; }
   button.small { min-height: 26px; padding: 3px 9px; font-size: 11.5px; }
+  .dialogbox.wide { width: min(560px, 92vw); }
+  .dialoglist { display: flex; flex-direction: column; gap: 8px; max-height: 52vh; overflow-y: auto; }
+  .rrow { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .rrow-head { display: flex; align-items: center; gap: 8px; }
+  .rrow-head strong { font-size: 12.5px; }
+  .rrow-head .tag { margin-left: auto; }
+  .rrow .note { margin: 4px 0 0; word-break: break-all; }
   @media (max-width: 900px) {
     #controls { grid-template-columns: minmax(0, 1fr); }
   }
@@ -234,9 +255,8 @@
           <button id="runShellPlugin" class="strong" title="打开壳窗口，你自己关">在壳窗口打开（自己关）</button>
           <button id="runShellPluginTimed" title="打开壳窗口，20 秒后自动关闭">在壳窗口打开（20 秒）</button>
           <button id="runShellCompare" title="同一份插件分别跑壳与 web，对比 DOM / token / 像素">壳 vs web 对比</button>
-          <button id="runMatrixPlugin" title="用第二个插件和当前插件一起跑壳窗口">再加一个插件一起验证</button>
           <button id="runRemovePlugin" class="danger" title="只从这个持久 profile 里卸掉该插件">卸载这个插件</button>
-          <button id="runListProfiles" title="列出 .lab-profiles 下所有 profile">列出 profile</button>
+          <button id="runListProfiles" class="span2" title="打开右侧 profile 面板：看已装插件、克隆、删除">列出 profile</button>
         </div>
         <div class="actions">
           <button id="runResolvePlugin" class="strong span2" title="安装插件并把真实 name@version 写进日志和报告">安装并显示真实包名</button>
@@ -255,12 +275,11 @@
             <button data-args="doctor" title="环境自检，必须 PASS">自检 doctor</button>
             <button data-args="verify" title="不装新插件的快速验证">快速验证</button>
             <button data-args="verify|--screenshot|home|--screenshot|settings">验证 + 设置页截图</button>
-            <button data-args="verify|--fixture-variant|empty">空会话</button>
             <button data-args="verify|--fixture-variant|long">长会话（12 轮）</button>
             <button data-args="verify|--fixture-variant|rich">思考 / 代码夹具</button>
             <button data-args="scan|--list">失败签名库</button>
             <button data-args="scan|--latest">扫描最近一次日志</button>
-            <button data-args="runtimes">查看已装的 DSH 版本</button>
+            <button id="runRuntimes" title="列出本机所有官方 DSH 版本与支持判定">查看已装的 DSH 版本</button>
           </div>
           <details id="moreChecks">
             <summary>更多：矩阵（较慢）</summary>
@@ -296,8 +315,8 @@
           </select>
         </div>
         <div class="clonebar-row">
-          <label class="chk"><input type="checkbox" id="realCloneAcceptRisk" checked> 接受 peer 风险：给不兼容插件在克隆里授予 exact-version 豁免</label>
-          <label class="chk"><input type="checkbox" id="realCloneOnline" checked> 允许联网补齐离线库里缺失的插件</label>
+          <label class="chk"><input type="checkbox" id="realCloneAcceptRisk" checked> 接受 peer 风险（克隆内 exact-version 豁免）</label>
+          <label class="chk"><input type="checkbox" id="realCloneOnline" checked> 允许联网补齐缺失插件</label>
         </div>
         <div class="clonebar-row">
           <button type="button" id="cloneRealPersistent" class="strong" title="克隆成一个持久的 lab profile，可复用">克隆为持久 profile</button>
@@ -323,6 +342,15 @@
         <div class="dialogactions">
           <button type="button" id="confirmDialogOk" class="danger">确定</button>
           <button type="button" id="confirmDialogCancel" class="small">取消</button>
+        </div>
+      </div>
+    </div>
+    <div id="listDialog" class="dialog" hidden role="dialog" aria-modal="true">
+      <div class="dialogbox wide">
+        <h3 id="listDialogTitle"></h3>
+        <div id="listDialogBody" class="dialoglist"></div>
+        <div class="dialogactions">
+          <button type="button" id="listDialogClose" class="small">关闭</button>
         </div>
       </div>
     </div>
@@ -381,6 +409,9 @@
   const textDialogInput = document.getElementById('textDialogInput');
   const confirmDialog = document.getElementById('confirmDialog');
   const confirmDialogTitle = document.getElementById('confirmDialogTitle');
+  const listDialog = document.getElementById('listDialog');
+  const listDialogTitle = document.getElementById('listDialogTitle');
+  const listDialogBody = document.getElementById('listDialogBody');
   const progressWrap = document.getElementById('progressWrap');
   const progressBar = document.getElementById('progress');
   const progressFill = document.getElementById('progressFill');
@@ -433,6 +464,68 @@
     const resolve = confirmResolve;
     confirmResolve = null;
     if (resolve) resolve(value);
+  }
+  function closeListDialog() {
+    listDialog.hidden = true;
+  }
+  /** A simple read-only list dialog, used by 查看已装的 DSH 版本. */
+  function showListDialog(title, rows) {
+    listDialogTitle.textContent = title;
+    listDialogBody.textContent = '';
+    for (const row of rows) {
+      const box = document.createElement('div');
+      box.className = 'rrow';
+      const head = document.createElement('div');
+      head.className = 'rrow-head';
+      const name = document.createElement('strong');
+      name.textContent = row.title;
+      head.appendChild(name);
+      if (row.tag) {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = row.tag;
+        head.appendChild(tag);
+      }
+      box.appendChild(head);
+      for (const line of row.lines ?? []) {
+        if (!line) continue;
+        const note = document.createElement('p');
+        note.className = 'note';
+        note.textContent = line;
+        box.appendChild(note);
+      }
+      listDialogBody.appendChild(box);
+    }
+    if (!rows.length) {
+      const note = document.createElement('p');
+      note.className = 'note';
+      note.textContent = '没有可显示的内容。';
+      listDialogBody.appendChild(note);
+    }
+    listDialog.hidden = false;
+  }
+  async function showRuntimesDialog() {
+    let payload = null;
+    if (typeof window.labGui.runtimes === 'function') {
+      try {
+        payload = await window.labGui.runtimes();
+      } catch (caught) {
+        payload = { error: String(caught?.message ?? caught) };
+      }
+    } else {
+      payload = { error: '当前宿主不支持读取版本列表，请改用命令行的 lab runtimes。' };
+    }
+    const runtimes = payload?.runtimes ?? [];
+    const rows = runtimes.map((runtime) => ({
+      title: runtime.version ?? '未知版本',
+      tag: `${runtime.status ?? 'unknown'}${runtime.isDefault ? ' · 默认' : ''}`,
+      lines: [runtime.cmd, runtime.detail ?? runtime.error ?? ''],
+    }));
+    if (!rows.length && payload?.error) {
+      showListDialog('已安装的 DSH 版本', [{ title: '读取失败', lines: [payload.error] }]);
+      return;
+    }
+    showListDialog('已安装的 DSH 版本', rows);
   }
   function startElapsed() {
     stopElapsed();
@@ -515,9 +608,6 @@
     if (!sticky) setTimeout(() => { if (banner.className.includes('ok')) banner.hidden = true; }, 8000);
   }
 
-  function isLocalSpec(spec) {
-    return /^[a-zA-Z]:[\\/]/.test(spec) || spec.startsWith('.') || spec.startsWith('/') || spec.includes('\\');
-  }
   /**
    * Compose the `--plugin` value from the source dropdown. The CLI also
    * accepts bare specs, but spelling the source out is what makes "advertised
@@ -580,9 +670,6 @@
     const text = specs.join(', ');
     return text.length > 48 ? `${text.slice(0, 45)}…` : text;
   }
-  function profileSpecs(profile) {
-    return (profile.plugins ?? []).map((entry) => entry.spec).filter(Boolean);
-  }
   function formatWhen(value) {
     if (!value) return '未运行';
     const date = new Date(value);
@@ -601,25 +688,47 @@
     refreshProfiles();
     refreshRealProfiles();
   }
-  function cloneProfileOneShot(profile) {
-    const specs = profileSpecs(profile);
-    if (!specs.length) {
-      append(`[gui] profile "${profile.name}" 没有记录插件；先安装一个再试。\n`);
-      return;
-    }
-    const args = ['verify'];
-    let online = false;
-    for (const spec of specs) {
-      args.push('--plugin', spec);
-      if (!isLocalSpec(spec) && !/^file:|^link:/i.test(spec)) online = true;
-    }
-    args.push(online ? '--online' : '--offline', '--screenshot', 'home');
-    runWithArgs(args, `一次性运行 · ${profile.name}`);
+  /** `npm:foo@1.0.0` / `github:owner/repo#ref` -> `foo` (local paths pass through). */
+  function pluginNameFromSpec(spec) {
+    const raw = String(spec ?? '').trim().replace(/^(npm|github|file|link):/i, '');
+    if (!raw || raw.startsWith('.') || raw.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(raw)) return raw;
+    const at = raw.lastIndexOf('@');
+    return at > 0 ? raw.slice(0, at) : raw;
   }
-  async function uninstallFromProfile(profile) {
-    const spec = await askText(`要从 ${profile.name} 卸载哪个插件？（包名 / name@version / 原 spec）`, '');
-    if (!spec) return;
-    runWithArgs(['profile', 'remove-plugin', profile.name, spec], `remove-plugin · ${profile.name} / ${spec}`);
+  /**
+   * One row per installed plugin: the recorded manifest entries plus the
+   * packages actually present in the profile's package.json. The second source
+   * is what makes cloned profiles (which record no plugins) uninstallable too.
+   */
+  function pluginEntries(profile) {
+    const out = [];
+    const seen = new Set();
+    const push = (label, selector, note) => {
+      const key = String(label ?? '').trim();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push({ label: key, selector: selector || key, note: note ?? '' });
+    };
+    // A recorded spec also reserves its derived package name, so the matching
+    // entry from the installed-dependencies pass is not shown twice.
+    const recordedNames = new Set();
+    for (const entry of profile.plugins ?? []) {
+      const spec = typeof entry === 'string' ? entry : entry?.spec;
+      if (!spec) continue;
+      const name = (typeof entry === 'object' && entry?.name) || null;
+      const derived = name || pluginNameFromSpec(spec);
+      if (derived) recordedNames.add(derived);
+      push(name || spec, name || derived || spec, name ? spec : '');
+    }
+    for (const dep of profile.dependencies ?? []) {
+      if (dep === 'dsh-lab-session-fixture' || recordedNames.has(dep)) continue;
+      push(dep, dep, '');
+    }
+    return out;
+  }
+  async function uninstallPluginFromProfile(profile, entry) {
+    if (!(await askConfirm(`从 profile "${profile.name}" 卸载插件 "${entry.label}"？`))) return;
+    runWithArgs(['profile', 'remove-plugin', profile.name, entry.selector], `remove-plugin · ${profile.name} / ${entry.label}`);
   }
   async function openProfileDir(profile) {
     if (typeof window.labGui.openProfileDir !== 'function') {
@@ -732,12 +841,27 @@
       name.textContent = profile.name;
       const meta = document.createElement('span');
       meta.className = 'tag';
-      const specs = profileSpecs(profile);
-      meta.textContent = `${specs.length} 个插件 · ${profile.nodeModulesExists ? `node_modules ${profile.dependenciesCount ?? 0}` : '未装 node_modules'}`;
+      const entries = pluginEntries(profile);
+      meta.textContent = `${entries.length} 个插件 · ${profile.nodeModulesExists ? `node_modules ${profile.dependenciesCount ?? 0}` : '未装 node_modules'}`;
       head.append(name, meta);
-      const specsLine = document.createElement('p');
-      specsLine.className = 'note';
-      specsLine.textContent = specs.length ? specs.join(', ') : '（空）';
+      const pluginBox = document.createElement('div');
+      pluginBox.className = 'plist';
+      if (!entries.length) {
+        const empty = document.createElement('p');
+        empty.className = 'note';
+        empty.textContent = '（这个 profile 还没有装插件）';
+        pluginBox.appendChild(empty);
+      }
+      for (const entry of entries) {
+        const item = document.createElement('div');
+        item.className = 'pitem';
+        item.dataset.plugin = entry.selector;
+        const label = document.createElement('span');
+        label.textContent = entry.label;
+        if (entry.note) label.title = `原 spec：${entry.note}`;
+        item.append(label, profileButton('卸载', () => uninstallPluginFromProfile(profile, entry), 'danger'));
+        pluginBox.appendChild(item);
+      }
       const clonedLine = document.createElement('p');
       clonedLine.className = 'note';
       if (profile.clonedFrom) {
@@ -755,12 +879,10 @@
           ['shell', '--no-compare-web', '--profile-lab', profile.name, '--keep-open'],
           `shell · ${profile.name}`,
         )),
-        profileButton('克隆为一次性运行（跑完即删）', () => cloneProfileOneShot(profile)),
-        profileButton('卸载插件', () => uninstallFromProfile(profile)),
         profileButton('打开目录', () => openProfileDir(profile)),
         profileButton('删除 profile', () => removeProfileFromDrawer(profile), 'danger'),
       );
-      row.append(head, ...(profile.clonedFrom ? [clonedLine] : []), specsLine, when, actions);
+      row.append(head, ...(profile.clonedFrom ? [clonedLine] : []), pluginBox, when, actions);
       profileList.appendChild(row);
     }
   }
@@ -839,21 +961,6 @@
     const pluginArgs = spec ? ['--plugin', spec, networkFlag()] : [];
     runWithArgs(withDesktop(withProfile(['shell', ...pluginArgs])), spec ? `壳 vs web · ${spec}` : '壳 vs web 对比');
   });
-  document.getElementById('runMatrixPlugin').addEventListener('click', async () => {
-    const spec = pluginField();
-    if (!spec) {
-      append('[gui] 先在插件输入框填第一个插件，再用「再加一个插件一起验证」。\n');
-      return;
-    }
-    const other = await askText('要和它一起验证的第二个插件（包名@版本 或本地路径）：');
-    if (!other) return;
-    runWithArgs(withDesktop(withProfile([
-      'shell', '--no-compare-web',
-      '--plugin', spec, networkFlag(),
-      '--with', other, isLocalSpec(other) ? '--offline' : '--online',
-      '--show', '--show-hold', '20000',
-    ])), `两个插件一起 · ${spec} + ${other}`);
-  });
   document.getElementById('runRemovePlugin').addEventListener('click', () => {
     const profile = currentProfile();
     const spec = pluginField();
@@ -902,6 +1009,17 @@
       closeConfirmDialog(false);
     }
   });
+  document.getElementById('listDialogClose').addEventListener('click', closeListDialog);
+  listDialog.addEventListener('click', (event) => {
+    if (event.target === listDialog) closeListDialog();
+  });
+  listDialog.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeListDialog();
+    }
+  });
+  document.getElementById('runRuntimes').addEventListener('click', showRuntimesDialog);
   document.getElementById('refreshProfiles').addEventListener('click', () => refreshProfiles());
   profileSelect.addEventListener('change', syncProfileNew);
 

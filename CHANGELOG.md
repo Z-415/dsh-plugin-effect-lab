@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.1.0 - 2026-10-06 (profile drawer, per-plugin uninstall, runtimes dialog)
+
+### Changed
+
+- The profile drawer no longer covers the page: it reserves a right-hand column
+  about the width of the 检查 column (`--drawer-w`) and the controls collapse to
+  one column while it is open, so button labels stay on one line.
+- Each profile card lists its installed plugins - the recorded specs plus the
+  third-party packages actually present in the profile's `package.json` (which
+  covers cloned profiles) - and every row has its own **卸载**
+  (`profile remove-plugin <name> <plugin>` behind a confirm).
+- Removed the per-profile **克隆为一次性运行（跑完即删）** row button and the
+  generic **卸载插件** row button; the row actions are now 在壳窗口打开 /
+  打开目录 / 删除 profile. The clone bar keeps its persistent + one-shot clone
+  buttons.
+- 插件 group re-ordered: **再加一个插件一起验证** is gone, the two 在壳窗口打开
+  buttons share the first row, 卸载这个插件 pairs with 壳 vs web 对比, and
+  列出 profile / 安装并显示真实包名 / 验证这个插件 (出报告截图) each take a full row.
+- 检查 group: the 空会话 preset is gone (长会话 and 思考 / 代码夹具 remain),
+  which leaves eight presets in four complete rows.
+- **查看已装的 DSH 版本** now opens an in-page dialog instead of logging:
+  `lab:runtimes` (`runtimes --json`) lists every discovered runtime with its
+  verified / untested / unsupported status, default marker, path and detail.
+
+### Tests
+
+- `lab profile list --json` gained a `dependencies` array, asserted by
+  `tests/integration/profile-ui.test.js`.
+- `tests/integration/gui-page.test.js`: the drawer probe asserts the merged
+  plugin list (recorded + installed dependencies), the per-plugin uninstall
+  call, the three remaining row actions, and that the drawer reserves its
+  column without overlapping the controls (`gutter >= 1`, one-column controls);
+  a new probe drives the runtimes dialog. Unit suite: 322/322.
+
 ## 0.1.0 - 2026-10-05 (flat, grid-aligned GUI)
 
 ### Changed

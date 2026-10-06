@@ -54,6 +54,7 @@ test('lab profile list --json carries the GUI fields', () => {
     assert.equal(typeof profile.lastRunAt, 'number');
     assert.equal(typeof profile.mtimeMs, 'number');
     assert.equal(Array.isArray(profile.plugins), true);
+    assert.deepEqual(profile.dependencies, ['dsh-x'], JSON.stringify(profile));
   });
 });
 

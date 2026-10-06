@@ -197,6 +197,31 @@ function realProfiles() {
   }
 }
 
+/**
+ * Official DSH launchers this machine can see, for the "查看已装的 DSH 版本"
+ * dialog. Same `runtimes --json` contract the CLI prints.
+ */
+function runtimes() {
+  const result = spawnSync(process.execPath, [path.join(repo, 'bin', 'lab.js'), 'runtimes', '--json'], {
+    cwd: repo,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', DSH_LAB_GUI: '1' },
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 60_000,
+  });
+  if (result.error) return { count: 0, runtimes: [], error: String(result.error.message ?? result.error) };
+  try {
+    const parsed = JSON.parse(result.stdout);
+    return { count: parsed.count ?? 0, runtimes: parsed.runtimes ?? [] };
+  } catch (error) {
+    return {
+      count: 0,
+      runtimes: [],
+      error: (result.stderr || '').trim() || String(error?.message ?? error),
+    };
+  }
+}
+
 ipcMain.handle('lab:run', (_event, args) => runLab(Array.isArray(args) ? args.map(String) : []));
 /**
  * The window draws its own title bar and menu (the OS one follows the Windows
@@ -255,6 +280,7 @@ ipcMain.handle('lab:notify', (_event, payload) => {
 
 ipcMain.handle('lab:profiles', () => listProfiles());
 ipcMain.handle('lab:real-profiles', () => realProfiles());
+ipcMain.handle('lab:runtimes', () => runtimes());
 
 /**
  * Resolve a profile directory through the lab CLI (`profile path <name>`), then

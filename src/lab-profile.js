@@ -239,6 +239,9 @@ export function listLabProfiles() {
       mtimeMs: fs.statSync(dir).mtimeMs,
       nodeModulesExists: fs.existsSync(path.join(dshProfileDir, 'node_modules')),
       dependenciesCount: dependencies.length,
+      // Installed third-party package names, so the GUI can offer a per-plugin
+      // uninstall for profiles whose plugins were never recorded (clones).
+      dependencies: [...dependencies].sort(),
       bundlesCount: (dshPackage?.dsh?.profile?.bundles ?? []).length,
       lastRunAt,
     });

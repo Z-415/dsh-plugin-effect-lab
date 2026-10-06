@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('labGui', {
   notify: (payload) => ipcRenderer.invoke('lab:notify', payload),
   profiles: () => ipcRenderer.invoke('lab:profiles'),
   realProfiles: () => ipcRenderer.invoke('lab:real-profiles'),
+  runtimes: () => ipcRenderer.invoke('lab:runtimes'),
   openProfileDir: (name) => ipcRenderer.invoke('lab:open-profile-dir', name),
   openReport: () => ipcRenderer.invoke('lab:open-report'),
   openArtifacts: () => ipcRenderer.invoke('lab:open-artifacts'),

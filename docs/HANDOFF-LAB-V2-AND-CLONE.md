@@ -102,3 +102,43 @@ node bin/lab.js diagnose --bundle out/diagnostics.json
 - 不复制真实 `node_modules`；克隆用官方 pnpm 重建（必要时显式 `--online`）。
 - 克隆/插件失败如实写进报告，不吞；`--clone-plugins none` / `--clone-exclude` 只是降级。
 - 删除 profile 走 `lstat` 的 `removeTreeSafely`，不追 junction。
+
+## 8. GUI 打磨（2026-10-06 续）
+
+用户点名 6 项，全部实现。改动只碰 `src/gui/*`、`src/lab-profile.js` 的 list 输出和对应
+测试，没有动 `src/electron-shell/*`、`src/runner.js` 等壳/夹具路径。
+
+1. **profile 抽屉：每个 profile 列出已装插件 + 逐插件卸载**。`profile list --json` 新增
+   `dependencies`（`package.json` 里的第三方包名，已排除 `@deepseek-ai/*`）；抽屉把
+   「记录的 spec」和「实际安装的依赖」合并按包名去重（去掉 `dsh-lab-session-fixture`），
+   每条右侧一个「卸载」→ 页内二次确认 → `profile remove-plugin <name> <selector>`。
+   克隆 profile 之前没有记录插件、没法逐条卸；现在靠依赖列表也能卸。
+2. **删掉每个 profile 下的「克隆为一次性运行（跑完即删）」**；行内只剩
+   「在壳窗口打开 / 打开目录 / 删除 profile」。克隆栏顶部的持久 / 一次性克隆按钮保留。
+3. **抽屉不再遮挡**：原来 `position: fixed; width: min(600px, 94vw)` 直接盖住右侧。
+   现在宽度 `--drawer-w: clamp(320px, 34vw, 430px)`（≈ 原来的检查栏），并用
+   `body:has(#profileDrawer:not([hidden])) main { padding-right: calc(var(--drawer-w) + 18px) }`
+   让主区主动让位；打开时 `#controls` 收成单列，按钮标签不再折行。
+4. **左侧按钮重排**：删「再加一个插件一起验证」；两个「在壳窗口打开」并排，之后
+   「壳 vs web 对比 + 卸载这个插件」，再让「列出 profile」「安装并显示真实包名」
+   「验证这个插件（出报告截图）」各占整行。
+5. **检查区**：删「空会话」（长会话 / 思考代码夹具保留），剩 8 个按钮正好四行两列。
+6. **查看已装的 DSH 版本改弹窗**：新增 `lab:runtimes` IPC（跑 `runtimes --json`），
+   页内「已安装的 DSH 版本」对话框逐条列出版本、状态（verified / untested /
+   unsupported + 默认标记）、路径与说明，不再往日志里打。
+
+验证（本机普通终端）：
+
+- `npm test` → **322/322**。
+- `node --test tests/integration/gui-page.test.js` → **2/2**：抽屉探针断言合并后的插件
+  清单、逐插件卸载调用、只剩三个行按钮、抽屉宽 ≤ 440 且 `gutter ≥ 1`（不压控件）、
+  控件单列；另有版本弹窗探针。
+- `node --test tests/integration/profile-ui.test.js` → **5/5**（含新增 `dependencies` 断言）。
+- `node --test tests/integration/shell-mode.test.js` → **3/3**。
+- 全量 `npm run test:e2e`：其余全绿，2 条壳窗口用例失败——
+  `shell-mode.test.js` 一次 `host-token: mint failed: fetch failed`（端口竞态，复跑
+  3/3 通过）；`clone-profile.test.js` 的 `shell-fixture-session: session=false` 稳定失败
+  （可见壳里没点开夹具会话）。后者的失败点在 `src/electron-shell/*` 与克隆 profile 携带的
+  真实 web profile 引导态，本次改动没有碰这些文件；属于 §5.1/§5.2 记录的同类已知问题。
+- 实拍：`artifacts/gui-shot-review/drawer2/screenshots/drawer.png`（抽屉打开、逐插件卸载、
+  左侧单列）。
