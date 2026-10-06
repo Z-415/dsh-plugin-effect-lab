@@ -332,3 +332,49 @@ cwd 下读不到 → `result=null`。默认 artifacts（`<cwd>/artifacts`，绝�
   `GET /dsh-lab-bridge/latest.json` → 404，证明启动器形态已加载。
 - **人工确认通过（2026-10-06）**：真实桌面版里 设置 → 插件 → 实验舱桥接 → 点击
   「启动实验舱」，实验舱自己的 Electron GUI 正常在外部启动，DSH 界面保持不变。
+
+## 9. 样式统一 + 左侧栏入口（2026-10-06）
+
+需求：设置里的「实验舱桥接」区块改成实验舱的整体风格；并在 DSH 左侧栏加一个
+像「记忆系统」「1024 Store」那样的入口。
+
+### 9.1 官方契约（从随桌面版分发的 `app.asar` 核对，非猜测）
+
+- `sidebar.panellist`：root 作用域的 list slot；注册项带 `id`、可选 `order`、
+  `label`（字符串或 locale 函数），**注册的组件就是那一行的图标**（收到
+  `{ size }`，选中态由行自己通过 `usePanelInfo` 读）。同一个 `id` 寻址布局中
+  root 作用域的 `main` keyed slot；选中不存在的 main 会抛错并保留当前选中态。
+- `main`：全局面板的 keyed slot，`conversation` 保留给会话界面。官方「插件」页
+  就是这样注册的：`main` 里 `key: PANEL_ID` + `sidebar.panellist` 里
+  `id: PANEL_ID`。
+- 出处：`app.asar` 里 `@deepseek-ai/dsh-client-ui-slots` 的注册代码、官方
+  「插件」页客户端，以及随包分发的说明（「插件在 root 作用域的 `sidebar.panellist`
+  list 中注册图标组件…同一个 id 寻址 `main` keyed slot 的组件」）。
+
+### 9.2 实现（`bridge-plugin/lib/client.js`）
+
+1. 设置区块改成「标题 + 说明 + 无边框浅蓝按钮」；样式表通过
+   `<style id="dsh-lab-bridge-style">` 注入一次，按钮 hover 换背景色、不画描边，
+   文字色优先 `--dsw-alias-label-*`（暗色主题可读）。
+2. 新增 `main` 面板（key `effect-lab-bridge`）：标题「实验舱桥接」+ 说明 +
+   启动按钮 + 一行提示。
+3. 新增 `sidebar.panellist` 入口：`id: effect-lab-bridge`、`order: 100`、
+   `label: () => '实验舱'`，图标是内联 SVG 烧瓶（按 `size` 缩放）。
+4. 三个座位都走 `ctx.slots.inject`，宿主没声明某个座位时静默跳过（不阻断插件）。
+
+### 9.3 验证
+
+- `npm test` → **255** 通过（新增 `bridge-plugin/test/client.test.js` 6 条：三个座位
+  注册与 id/key 配对、图标按 `size` 渲染、带 nonce 的 `POST {}`、缺 nonce 不发请求、
+  样式只注入一次且按钮无边框、缺座位不报错）。
+- `$env:DSH_LAB_E2E='1'; npm run test:e2e` → **24** 通过。`bridge-launcher.test.js`
+  新增左侧栏探针：`sidebar.panellist` 出现「实验舱」行 → 点击 → `main` 面板出现、
+  标题「实验舱桥接」、带自己的启动按钮；并在真实宿主里断言按钮为
+  `rgb(242, 246, 255)` / `rgba(0,0,0,0)` 边框 / `6px` 圆角、样式表已注入。
+- 反向验证：临时删掉 `sidebar.panellist` 注册 → 集成测试变红，报
+  `the 实验舱 sidebar row must be present`，此时侧边栏只剩官方「插件」行；恢复后全绿。
+- 实拍：隔离宿主截图（左侧栏入口 + 面板、设置页）在
+  `artifacts/bridge-scan/shots/screenshots/`。
+- 稳定性：一次全量 e2e 中 `stability.test.js` 报
+  `fixture-ui-clicked: workspace=true, session=false`，单独复跑该用例通过——
+  是已知的夹具 UI 点击竞态，与本改动无关（该用例不安装桥接插件）。

@@ -1,7 +1,8 @@
 # dsh-plugin-effect-lab-bridge
 
 一个极小的 DSH 启动器插件：插件本体装进 DSH profile，实验舱本体不进 profile。
-面板里只有一个「启动实验舱」按钮，点击后由 host 在实验舱仓库根目录分离启动：
+DSH 里有两个入口，都只有一个「启动实验舱」按钮，点击后由 host 在实验舱仓库根目录
+分离启动：
 
 ```text
 node <lab>/bin/lab.js gui
@@ -10,6 +11,19 @@ node <lab>/bin/lab.js gui
 外层是实验舱自己的 Electron GUI；DSH 界面保持不变。host 只提供
 `POST /dsh-lab-bridge/launch`（loopback + 注入 nonce 校验，固定只启动这条命令，
 不接受任何调用方 argv）。
+
+## DSH 里的入口
+
+装进 profile 后，插件注册三个座位（0.2.0-rc.2 契约）：
+
+1. **设置 → 实验舱桥接**：`settings.section` 区块（标题 + 说明 + 启动按钮）；
+2. **左侧栏 → 实验舱**：`sidebar.panellist` 入口（烧瓶图标，`order: 100`），
+   点开后显示 `main` keyed slot 里的同名面板；入口 `id` 与面板 `key` 都是
+   `effect-lab-bridge`，这是官方要求的配对方式；
+3. `main` 面板本身：标题 + 说明 + 启动按钮 + 一行提示。
+
+界面沿用实验舱的扁平风格：无边框浅蓝按钮、悬停换背景色；文字色优先取 DSH 的
+`--dsw-alias-label-*` token，暗色主题下也能读。样式表只在首次 `apply` 注入一次。
 
 ## 配置
 
