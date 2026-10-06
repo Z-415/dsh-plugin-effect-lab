@@ -191,6 +191,34 @@ async function openFixtureSession(window) {
   const visibleExpression = expectedText
     ? `document.body ? document.body.textContent.includes(${JSON.stringify(expectedText)}) : false`
     : "!!document.querySelector('[data-slot=\"conversation.chat.node\"]')";
+  // Evidence for a fixture that does not open: which workspace/session rows the
+  // sidebar actually rendered, whether an onboarding modal covers the view, and
+  // what the body says. Written into shell-result.json on failure.
+  const diagnosticsExpression = `(() => {
+    const clip = (value, max = 160) => String(value ?? '').replace(/\\s+/g, ' ').trim().slice(0, max);
+    const facts = (el) => ({
+      slot: el.getAttribute('data-slot'),
+      text: clip(el.textContent),
+      selected: el.getAttribute('aria-selected'),
+      current: el.getAttribute('aria-current'),
+      expanded: el.getAttribute('aria-expanded'),
+      className: clip(el.className, 80),
+    });
+    const sidebar = document.querySelector('[data-slot="sidebar.workspaces"]');
+    const slots = [...new Set([...document.querySelectorAll('[data-slot]')].map((el) => el.getAttribute('data-slot')))].sort();
+    const bodyText = clip(document.body ? document.body.textContent : '', 500);
+    return JSON.stringify({
+      url: location.href,
+      title: document.title,
+      bodyText,
+      onboarding: /add an api key|api key|sign in|log in|登录|添加 api|欢迎|welcome/i.test(bodyText),
+      sidebarPresent: Boolean(sidebar),
+      slotNames: slots.slice(0, 80),
+      workspaceSlots: (sidebar ? [...sidebar.querySelectorAll('[data-slot*="workspace"]')] : []).slice(0, 20).map(facts),
+      sessionSlots: (sidebar ? [...sidebar.querySelectorAll('[data-slot*="session"]')] : []).slice(0, 20).map(facts),
+      conversationChatNode: Boolean(document.querySelector('[data-slot="conversation.chat.node"]')),
+    });
+  })()`;
   const deadline = Date.now() + (config.show || config.keepOpen ? 25_000 : 10_000);
   let clickedWorkspace = false;
   let clickedSession = false;
@@ -221,7 +249,16 @@ async function openFixtureSession(window) {
     }
     await sleep(400);
   }
-  return { opened: clickedSession && mounted, clickedWorkspace, clickedSession, mounted };
+  const opened = clickedSession && mounted;
+  let dom = null;
+  if (!opened) {
+    try {
+      dom = JSON.parse(await evaluate(diagnosticsExpression));
+    } catch (error) {
+      dom = { error: String(error?.message ?? error) };
+    }
+  }
+  return { opened, clickedWorkspace, clickedSession, mounted, ...(dom ? { dom } : {}) };
 }
 
 /** Does the rendered conversation text contain the seeded thinking/code? */

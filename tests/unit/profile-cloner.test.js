@@ -135,6 +135,10 @@ test('the cloned package.json is filtered but the real one is untouched', () => 
       dropLocal: true,
     });
     const cloned = JSON.parse(fs.readFileSync(path.join(target.profileDir, 'package.json'), 'utf8'));
+    // The clone lives in .../profiles/lab-clone, so its manifest name must
+    // match that profile name, not the real profile's name.
+    assert.equal(cloned.name, 'dsh-profile-lab-clone');
+    assert.notEqual(cloned.name, `dsh-profile-web`);
     assert.deepEqual(Object.keys(cloned.dependencies), ['@deepseek-ai/dsh-base']);
     assert.deepEqual(cloned.dsh.profile.bundles, ['@deepseek-ai/dsh-base']);
     assert.equal(fs.readFileSync(path.join(real.dir, 'package.json'), 'utf8'), realPackage);

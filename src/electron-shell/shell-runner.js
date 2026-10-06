@@ -11,11 +11,11 @@ import { defaultArtifactsRoot } from '../config.js';
 import { createIsolatedHome, describeHomeCleanup } from '../home-manager.js';
 import { mintAuthCookie } from '../port-and-token.js';
 import {
-  clearLabFixtureState,
   FIXTURE_SESSION_ID,
   FIXTURE_SESSION_TITLE,
   fixtureEnv,
   readFixtureSpec,
+  resetLabWorkspaceState,
 } from '../fixture-manager.js';
 import { installProfilePlugins, listInstalledProfilePlugins } from '../plugin-install.js';
 import { describePluginInstall, installFailureMessage } from '../plugin-install-diagnostics.js';
@@ -173,9 +173,9 @@ export async function runShell(options = {}) {
     const fixtureTitle = fixtureSpec?.title ?? FIXTURE_SESSION_TITLE;
     const fixtureHasSession = fixtureEnabled && (fixtureSpec?.turns?.length ?? 0) > 0;
     if (fixtureEnabled) {
-      const cleared = clearLabFixtureState(iso.home);
-      if (cleared.removed.length) {
-        progress('install-plugins', `cleared ${cleared.removed.length} stale lab fixture file(s)`);
+      const reset = resetLabWorkspaceState(iso.home);
+      if (reset.removed.length) {
+        progress('install-plugins', `reset ${reset.removed.length} stale lab workspace file(s)`);
       }
     }
     const pipeline = await installProfilePlugins({

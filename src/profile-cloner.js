@@ -272,7 +272,12 @@ export function cloneProfileInto(options = {}) {
       copiedPatches.push(`${sub}/${file.relative}`);
     }
   }
-  fs.writeFileSync(path.join(target, 'package.json'), `${JSON.stringify(plan.manifest, null, 2)}\n`, 'utf8');
+  // DSH keys the profile (and therefore the client's workspace/session view)
+  // off `package.json.name`. The clone lives in `.../profiles/<profileName>`
+  // (e.g. lab-clone-web), so keeping the real profile's name (`dsh-profile-web`)
+  // leaves the shell unable to render the registered fixture workspace/session.
+  const clonedManifest = { ...plan.manifest, name: `dsh-profile-${path.basename(target)}` };
+  fs.writeFileSync(path.join(target, 'package.json'), `${JSON.stringify(clonedManifest, null, 2)}\n`, 'utf8');
   // The copied lockfile still resolves local deps relative to the real profile;
   // make those paths absolute so the clone installs from the same real source.
   const lockfile = path.join(target, 'pnpm-lock.yaml');

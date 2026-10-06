@@ -76,60 +76,27 @@ export function fixtureEnv(options = {}) {
 }
 
 /**
- * The session ids owned by the lab fixture. Only these are ever cleared from a
- * profile home; the user's own sessions are left alone.
- */
-export function labFixtureSessionIds() {
-  const ids = [];
-  for (const file of Object.values(FIXTURE_VARIANTS)) {
-    try {
-      const spec = JSON.parse(fs.readFileSync(path.join(webSessionDir(), file), 'utf8'));
-      if (spec.sessionId) ids.push(spec.sessionId);
-    } catch {
-      // A missing/broken spec is reported by the variant test instead.
-    }
-  }
-  return [...new Set(ids)];
-}
-
-/**
- * Remove the lab fixture's own session files and their projection-cache
- * entries from an isolated home.
+ * Make a lab home deterministic for a fixture run.
  *
- * A persistent profile keeps its home between runs, so an old fixture session
- * (and its cache entry) can survive. The seeder then sees `stat()` true and
- * skips writing, while the UI renders a stale/empty row. Clearing only the
- * lab-owned fixture ids makes each run seed the current variant fresh without
- * touching the user's sessions.
+ * A persistent lab profile keeps its home between runs, and a fixture-less run
+ * (for example the clone-creation / --force pass) leaves DSH's own
+ * `default-workspace` plus an untitled session behind. On the next
+ * fixture-enabled run DSH keeps that stale workspace active, only the default
+ * workspace's session list is reconciled, and the freshly-seeded fixture
+ * workspace is never rendered or selected — `shell-fixture-session` then fails
+ * with `session=false` even though the fixture session exists over RPC.
+ *
+ * The lab home is isolated and lab-owned, so a fixture run can clear its
+ * `sessions/` and `storages/` before the host starts; the fixture is reseeded
+ * under the only workspace. `--no-fixture` runs never call this.
  */
-export function clearLabFixtureState(homeDir) {
-  const ids = new Set(labFixtureSessionIds());
+export function resetLabWorkspaceState(homeDir) {
   const removed = [];
-  const sessionsRoot = path.join(homeDir, 'sessions');
-  if (fs.existsSync(sessionsRoot)) {
-    const walk = (dir) => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          if (ids.has(entry.name)) {
-            removeTreeSafely(full);
-            removed.push(full);
-          } else {
-            walk(full);
-          }
-        }
-      }
-    };
-    walk(sessionsRoot);
-  }
-  const cacheDir = path.join(homeDir, 'storages', 'session_projcache', 'sessions');
-  if (fs.existsSync(cacheDir)) {
-    for (const id of ids) {
-      const file = path.join(cacheDir, `${id}.json`);
-      if (fs.existsSync(file)) {
-        removeTreeSafely(file);
-        removed.push(file);
-      }
+  for (const name of ['sessions', 'storages']) {
+    const dir = path.join(homeDir, name);
+    if (fs.existsSync(dir)) {
+      removeTreeSafely(dir);
+      removed.push(dir);
     }
   }
   return { removed };

@@ -1,8 +1,34 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import { buildEventsFromSpec, buildFixtureEvents } from '../../fixtures/plugins/session-seeder/lib/index.js';
-import { FIXTURE_VARIANTS, fixtureVariantPath, readFixtureSpec } from '../../src/fixture-manager.js';
+import {
+  FIXTURE_VARIANTS,
+  fixtureVariantPath,
+  readFixtureSpec,
+  resetLabWorkspaceState,
+} from '../../src/fixture-manager.js';
+
+test('resetLabWorkspaceState clears stale sessions/storages but keeps the rest of the lab home', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-fixture-reset-'));
+  try {
+    const sessionFile = path.join(home, 'sessions', '--x--', 'session-a', 'session.v4.jsonl.zstd');
+    fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
+    fs.writeFileSync(sessionFile, 'x', 'utf8');
+    fs.mkdirSync(path.join(home, 'storages', 'session_projcache', 'sessions'), { recursive: true });
+    fs.writeFileSync(path.join(home, 'storages', 'workspace.json'), '{"global":{}}\n', 'utf8');
+    fs.mkdirSync(path.join(home, 'agents'), { recursive: true });
+    const result = resetLabWorkspaceState(home);
+    assert.equal(result.removed.length, 2, JSON.stringify(result));
+    assert.equal(fs.existsSync(path.join(home, 'sessions')), false);
+    assert.equal(fs.existsSync(path.join(home, 'storages')), false);
+    assert.equal(fs.existsSync(path.join(home, 'agents')), true);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
 
 test('fixture events are contiguous and cover user/assistant/tool', () => {
   const events = buildFixtureEvents(1000);
