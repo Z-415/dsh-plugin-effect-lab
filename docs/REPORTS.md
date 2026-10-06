@@ -75,8 +75,10 @@ shell-result.json       raw shell result (DOM, console errors, page errors, sett
   the delete attempt (`attempts`, `elapsedMs`) and, when it fails, the locked
   path, `errorCode` (EBUSY/EPERM for a real lock, or ENOENT/ENOTDIR for a
   concurrent-delete race), and the pid/name of every process still referencing
-  the root. The same object is what `cleanup-home` / `cleanup-no-residue`
-  detail and `lab clean` print;
+  the root. On success `reaped` lists the pid/name of every process the
+  between-retry reaper killed (the shell, Edge, or a plugin helper such as
+  dsh-orb's `electron.exe`). The same object is what `cleanup-home` /
+  `cleanup-no-residue` detail and `lab clean` print;
 - `realHome.diff`: structural file hash comparison against the real `~/.dsh`.
 - `plugin-validation.json`: manifest findings for each installed plugin.
 - `fixture.json`: fixed session id, workspace id, and event types.

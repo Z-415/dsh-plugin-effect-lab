@@ -113,12 +113,13 @@ true`) instead of letting Electron quit and reporting "shell-result missing".
 A hidden run that closes early is still a failure.
 
 Cleanup does not assume the window closed synchronously: after the shell is
-stopped the runner reaps every `DeepSeek Harness.exe` / `msedge.exe` process
-that references the run root, waits for them to disappear, and retries the
-delete with exponential backoff for a 30s budget. If the root still cannot be
-removed, `cleanup-home` / `cleanup-no-residue` and `cleanup.json` carry the
-locked path, the EBUSY/EPERM code, and the holding pid/name. The
-`isolated-root-removed` criterion itself is not relaxed.
+stopped the runner reaps every process whose command line or executable path
+references the run root — the shell and Edge, and dsh-orb's extracted
+`electron.exe` helper — waits for them to disappear, and retries the delete
+with exponential backoff for a 30s budget. If the root still cannot be removed,
+`cleanup-home` / `cleanup-no-residue` and `cleanup.json` carry the locked path,
+the EBUSY/EPERM code, and the holding pid/name. The `isolated-root-removed`
+criterion itself is not relaxed.
 
 The delete walk is also race-tolerant: a plugin such as `dsh-orb` extracts and
 then removes its own Electron runtime under the isolated home, so a path can

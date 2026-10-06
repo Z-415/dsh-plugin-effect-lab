@@ -127,6 +127,8 @@ test('disposeIsolatedHome reaps holders between retries', {
     });
     assert.equal(result.removed, true, JSON.stringify(result));
     assert.equal(reapCalls >= 1, true, 'the reaper must run between retries');
+    assert.equal(result.reapCalls >= 1, true, JSON.stringify(result));
+    assert.equal(result.reaped.some((entry) => entry.pid === child.pid), true, JSON.stringify(result));
   } finally {
     await releaseRoot(child, iso.root);
   }
@@ -298,5 +300,39 @@ test('disposeIsolatedHome survives a plugin deleting the same tree (ENOENT race)
   } finally {
     fs.unlinkSync = originalUnlink;
     fs.rmSync(iso.root, { recursive: true, force: true });
+  }
+});
+
+test('the default reaper kills a non-shell holder by its command line (electron.exe shape)', {
+  skip: process.platform !== 'win32',
+  timeout: 60_000,
+}, async () => {
+  const iso = createIsolatedHome({ withAgents: true });
+  // dsh-orb spawns an `electron.exe` under the isolated home. A plain node.exe
+  // with the root on its command line and as its CWD reproduces the same EBUSY:
+  // only the name-agnostic, command-line/executable-path match can reap it.
+  const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)', iso.root], {
+    cwd: iso.root,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  try {
+    await sleep(400);
+    const result = await disposeIsolatedHome(iso.root, {
+      totalBudgetMs: 25_000,
+      initialDelayMs: 200,
+      maxDelayMs: 500,
+      holderWaitMs: 3_000,
+      pollMs: 200,
+    });
+    assert.equal(result.removed, true, JSON.stringify(result));
+    assert.equal(result.reapCalls >= 1, true, JSON.stringify(result));
+    assert.equal(
+      result.reaped.some((entry) => entry.pid === child.pid),
+      true,
+      `the non-shell holder must be reaped: ${JSON.stringify(result.reaped)}`,
+    );
+  } finally {
+    await releaseRoot(child, iso.root);
   }
 });

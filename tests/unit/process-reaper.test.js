@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,7 +22,13 @@ test('buildProcessQueryScript filters by process name and escapes the target', (
   assert.match(script, /\$_.Name -eq 'msedge\.exe'/);
   assert.match(script, /dsh-lab-o''brien/, 'single quotes must be doubled for PowerShell');
   assert.match(script, /ProcessId -ne 42/);
+  assert.match(script, /ExecutablePath/, 'an executable under the run root must match too');
+  assert.match(script, /ProcessId -ne \$PID/, 'the query must not match itself');
   assert.equal(script.includes('Stop-Process'), false, 'listing must not kill by default');
+
+  const anyName = buildProcessQueryScript('dsh-lab-abc', { names: null });
+  assert.equal(anyName.includes("$_.Name -eq"), false, 'names:null must drop the name filter');
+  assert.match(anyName, /1 -eq 1/);
 
   const killing = buildProcessQueryScript('dsh-lab', { kill: true });
   assert.equal(killing.includes('Stop-Process'), true);
@@ -148,4 +155,52 @@ test('reapProcessesByCommandLine matches nothing for a name that cannot exist', 
   const result = reapProcessesByCommandLine('dsh-lab-nonexistent-target', { names: ['dsh-lab-no-such-process.exe'] });
   assert.equal(result.supported, true);
   assert.equal(result.matched, 0);
+});
+
+test('the name-agnostic query excludes its own PowerShell process', {
+  skip: process.platform !== 'win32',
+  timeout: 60_000,
+}, () => {
+  // The PowerShell command line necessarily contains the target string; if the
+  // query did not exclude $PID it would match itself and this would be 1.
+  const target = `dsh-lab-no-such-root-${Date.now()}`;
+  const listed = listProcessesByCommandLine(target, { names: null });
+  assert.equal(listed.supported, true);
+  assert.deepEqual(listed.processes, []);
+});
+
+test('reapProcessesByCommandLine actually kills a matched process', {
+  skip: process.platform !== 'win32',
+  timeout: 60_000,
+}, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-reaper-kill-'));
+  const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)', root], {
+    cwd: root,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const result = reapProcessesByCommandLine(root, { names: null });
+    assert.equal(result.status, 0, JSON.stringify(result));
+    assert.equal(result.matched >= 1, true, JSON.stringify(result));
+    assert.equal(result.processes.some((entry) => entry.pid === child.pid), true, JSON.stringify(result));
+    if (child.exitCode === null && child.signalCode === null) {
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 5_000);
+        child.once('exit', () => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+    }
+    assert.equal(
+      child.exitCode !== null || child.signalCode !== null,
+      true,
+      'the matched process must actually be terminated',
+    );
+  } finally {
+    try { child.kill(); } catch { /* already gone */ }
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 200 });
+  }
 });

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { REAL_HOME, TEMP_PREFIX } from './config.js';
-import { listProcessesByCommandLine, reapProcessesByCommandLine, ROOT_PROCESS_NAMES } from './process-reaper.js';
+import { listProcessesByCommandLine, reapProcessesByCommandLine } from './process-reaper.js';
 import { ensureDir, sleep } from './util.js';
 
 /**
@@ -145,14 +145,19 @@ export const DEFAULT_CLEANUP_MAX_DELAY_MS = 2_000;
 export const DEFAULT_HOLDER_WAIT_MS = 5_000;
 const HOLDER_POLL_MS = 250;
 
-/** Processes referencing this exact root (the shell's user-data-dir is under it). */
+/**
+ * Processes referencing this exact root, by any name: the shell and Edge by
+ * their `--user-data-dir`, and dsh-orb's extracted helper (`electron.exe`,
+ * pinned to `home\dsh-orb\electron-runtime`). The random `dsh-lab-*` root is
+ * the unique identifier, so a name-agnostic match stays run-scoped.
+ */
 function defaultProbeHolders(root) {
-  return listProcessesByCommandLine(root, { names: ROOT_PROCESS_NAMES }).processes;
+  return listProcessesByCommandLine(root, { names: null }).processes;
 }
 
 /** Reap shell/Edge processes still referencing this root, between retries. */
 function defaultReapHolders(root) {
-  return reapProcessesByCommandLine(root, { names: ROOT_PROCESS_NAMES });
+  return reapProcessesByCommandLine(root, { names: null });
 }
 
 /** EBUSY/EPERM-style code from a removal failure, for the report. */
@@ -213,6 +218,8 @@ export async function disposeIsolatedHome(root, options = {}) {
   let attempts = 0;
   let lastError = null;
   let holders = [];
+  const reaped = new Map();
+  let reapCalls = 0;
   let delay = Math.max(0, initialDelayMs);
   for (;;) {
     attempts += 1;
@@ -231,13 +238,19 @@ export async function disposeIsolatedHome(root, options = {}) {
         errorCode: null,
         lockedPath: null,
         holders: [],
+        reaped: [...reaped.values()],
+        reapCalls,
       };
     }
     // Still locked: reap whatever references this exact root before retrying,
     // then wait for the process tree to actually disappear.
     try {
       holders = probeHolders(root) ?? [];
-      reapHolders(root);
+      const reapResult = reapHolders(root);
+      reapCalls += 1;
+      for (const entry of reapResult?.processes ?? holders ?? []) {
+        if (entry?.pid) reaped.set(entry.pid, { pid: entry.pid, name: entry.name });
+      }
     } catch {
       // Reaping is best-effort; the backoff below still gives the handles time.
     }
@@ -269,6 +282,8 @@ export async function disposeIsolatedHome(root, options = {}) {
     errorCode: cleanupErrorCode(lastError),
     lockedPath: lastError?.path ?? root,
     holders: (holders ?? []).map((entry) => ({ pid: entry.pid, name: entry.name })),
+    reaped: [...reaped.values()],
+    reapCalls,
   };
 }
 
@@ -288,6 +303,9 @@ export function describeHomeCleanup(cleanup) {
   else if (cleanup.error) parts.push(`error=${String(cleanup.error).slice(0, 200)}`);
   if (cleanup.holders?.length) {
     parts.push(`holders=${cleanup.holders.map((entry) => `${entry.pid} ${entry.name}`).join(', ')}`);
+  }
+  if (cleanup.reaped?.length) {
+    parts.push(`reaped=${cleanup.reaped.map((entry) => `${entry.pid} ${entry.name}`).join(', ')}`);
   }
   parts.push(`attempts=${cleanup.attempts ?? '?'}`);
   if (cleanup.elapsedMs !== undefined && cleanup.elapsedMs !== null) parts.push(`elapsedMs=${cleanup.elapsedMs}`);

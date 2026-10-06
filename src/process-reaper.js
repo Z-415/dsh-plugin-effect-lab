@@ -46,13 +46,19 @@ export function buildProcessQueryScript(target, options = {}) {
     kill = false,
   } = options;
   const quotedTarget = String(target ?? '').replace(/'/g, "''");
-  const nameFilter = names
-    .map((name) => `$_.Name -eq '${String(name).replace(/'/g, "''")}'`)
-    .join(' -or ');
+  // `names: null` means "any process name": still precise because the target is
+  // the run's unique `dsh-lab-*` root, which only this run's shell/Edge/plugin
+  // helper processes reference. `$PID` excludes the PowerShell query itself,
+  // whose command line necessarily contains the target string.
+  const nameFilter = Array.isArray(names) && names.length > 0
+    ? names.map((name) => `$_.Name -eq '${String(name).replace(/'/g, "''")}'`).join(' -or ')
+    : '1 -eq 1';
   const lines = [
     `$target = '${quotedTarget}';`,
-    `$p = @(Get-CimInstance Win32_Process | Where-Object { (${nameFilter}) -and $_.CommandLine -and $_.CommandLine.Contains($target) -and $_.ProcessId -ne ${Number(keepPid) || 0} });`,
-    '$p | ForEach-Object { "$($_.ProcessId)|$($_.Name)|$($_.CommandLine)" }',
+    `$p = @(Get-CimInstance Win32_Process | Where-Object { (${nameFilter}) -and (($_.CommandLine -and $_.CommandLine.Contains($target)) -or ($_.ExecutablePath -and $_.ExecutablePath.Contains($target))) -and $_.ProcessId -ne ${Number(keepPid) || 0} -and $_.ProcessId -ne $PID });`,
+    // The trailing `;` matters: without it the `foreach` below is a PowerShell
+    // parse error, the query exits 1, and the kill silently never happens.
+    '$p | ForEach-Object { "$($_.ProcessId)|$($_.Name)|$($_.CommandLine)" };',
   ];
   if (kill) {
     lines.push('foreach ($proc in $p) { Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue }');
@@ -90,8 +96,9 @@ export function runProcessQuery(target, options = {}) {
 
 /**
  * Kill every process whose command line carries `target`. Used per-run (Edge
- * by its user-data-dir, the shell by its per-run user-data-dir), so it is
- * deliberately unconditional.
+ * by its user-data-dir, the shell by its per-run user-data-dir, dsh-orb's
+ * extracted electron.exe by its executable path), so it is deliberately
+ * unconditional. Pass `names: null` to match any process name.
  */
 export function reapProcessesByCommandLine(target, options = {}) {
   const query = runProcessQuery(target, { ...options, kill: true });
