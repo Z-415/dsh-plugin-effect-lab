@@ -133,6 +133,84 @@ async function probeInjectedRows() {
   }
 }
 
+/**
+ * Click the fixture workspace and its seeded session so the visible shell
+ * window shows the conversation (thinking + code + tool), not the empty
+ * landing page. The workspace itself is registered by the runner over RPC.
+ */
+async function openFixtureSession(window) {
+  const workspaceName = config.fixtureWorkspaceName;
+  const sessionTitle = config.fixtureSessionTitle;
+  // The `empty` variant has a workspace but no session row; nothing to open.
+  if (!sessionTitle) return { opened: false, reason: 'no fixture session configured' };
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const evaluate = (expression) => window.webContents.executeJavaScript(expression);
+  const workspaceClickExpression = `(() => {
+    const primary = [...document.querySelectorAll('button, a, [role="button"]')];
+    const all = [...document.querySelectorAll('body *')];
+    const find = (nodes) => nodes.find((node) => node.textContent && node.textContent.includes(${JSON.stringify(workspaceName)}));
+    const element = find(primary) ?? find(all)?.closest('button, a, [role="button"], [role="treeitem"], li') ?? find(all);
+    if (!element) return false;
+    element.click();
+    return true;
+  })()`;
+  const sessionRowExpression = `(() => {
+    const root = document.querySelector('[data-slot="sidebar.workspaces"]');
+    if (!root) return false;
+    const all = [...root.querySelectorAll('*')];
+    const wanted = ${JSON.stringify(sessionTitle)};
+    const matches = (text) => (wanted ? text.includes(wanted) : false) || /未命名|Untitled|New session/i.test(text);
+    const leaf = all.find((node) => node.children.length === 0 && matches(node.textContent || ''));
+    const rowSlot = root.querySelector('[data-slot="sidebar.workspaces.session.row.action"]');
+    if (!leaf && !rowSlot) return false;
+    const clickable = leaf?.closest('button, [role="button"], a, li');
+    const target = clickable ?? leaf ?? rowSlot?.closest('button, [role="button"], a, li') ?? rowSlot
+      ?? [...root.querySelectorAll('button, [role="button"], a')].at(-1);
+    if (!target) return false;
+    target.click();
+    return true;
+  })()`;
+  const mountExpression = "!!document.querySelector('[data-slot=\"conversation.chat.node\"], [data-slot=\"conversation.session\"]')";
+  const deadline = Date.now() + (config.show || config.keepOpen ? 25_000 : 10_000);
+  let clickedWorkspace = false;
+  let clickedSession = false;
+  let mounted = false;
+  while (Date.now() < deadline) {
+    try {
+      if (await evaluate(workspaceClickExpression)) clickedWorkspace = true;
+    } catch {
+      // The page may re-render between clicks.
+    }
+    try {
+      if (await evaluate(sessionRowExpression)) {
+        clickedSession = true;
+        if (await evaluate(mountExpression)) {
+          mounted = true;
+          break;
+        }
+      }
+    } catch {
+      // The sidebar may still be mounting.
+    }
+    await sleep(400);
+  }
+  return { opened: clickedSession && mounted, clickedWorkspace, clickedSession, mounted };
+}
+
+/** Does the rendered conversation text contain the seeded thinking/code? */
+async function probeFixtureText(window) {
+  const reasoning = config.fixtureReasoning ?? '';
+  const codeLine = config.fixtureCodeLine ?? '';
+  return window.webContents.executeJavaScript(`(() => {
+    const text = document.body ? document.body.textContent : '';
+    return {
+      textLength: text.length,
+      reasoningFound: ${reasoning ? `text.includes(${JSON.stringify(reasoning)})` : 'false'},
+      codeFound: ${codeLine ? `text.includes(${JSON.stringify(codeLine)})` : 'false'},
+    };
+  })()`);
+}
+
 app.setName('dsh-lab-electron-shell');
 app.setPath('userData', config.userDataDir);
 app.commandLine.appendSwitch('disable-gpu');
@@ -583,8 +661,11 @@ app.whenReady().then(async () => {
   window.webContents.on('did-fail-load', (_event, code, description, url) => pageErrors.push(`did-fail-load ${code} ${description} ${url}`));
   try {
     await window.loadURL('dsh-app://app/');
+    const hasFixture = Boolean(config.fixtureWorkspaceName || config.fixtureSessionTitle);
+    const fixtureProbe = hasFixture ? await openFixtureSession(window) : null;
     const settle = await waitForStableShell(window, { minSlots: Number(config.minSlots) || 0 });
     const dom = await probeDom(window);
+    const fixtureText = hasFixture ? await probeFixtureText(window) : null;
     const capabilities = await probeDesktopCapabilities(window, desktopBridge);
     const bootGlobals = await probeBootGlobals(window);
     const derivedInjections = await probeInjectedRows();
@@ -596,6 +677,7 @@ app.whenReady().then(async () => {
     const payload = {
       dom,
       settle,
+      fixture: fixtureProbe ? { ...fixtureProbe, ...fixtureText } : null,
       capabilities,
       capture: { attempts: frame.attempts, unpainted: frame.unpainted, error: frame.error ?? null },
       bootGlobals,

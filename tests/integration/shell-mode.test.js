@@ -7,6 +7,30 @@ import { runShell } from '../../src/electron-shell/shell-runner.js';
 
 const enabled = process.env.DSH_LAB_E2E === '1';
 
+test('a shell window registers and opens the rich fixture session', {
+  skip: !enabled,
+  timeout: 300_000,
+}, async () => {
+  const artifactsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-shell-fixture-'));
+  try {
+    // A visible window is the surface the user actually opens; that keeps the
+    // fixture checks hard instead of the hidden-run advisory path.
+    const report = await runShell({ compareWeb: false, screenshots: [], show: true, showHoldMs: 500, artifactsRoot });
+    assert.equal(report.ok, true, JSON.stringify((report.checks ?? []).filter((check) => !check.pass), null, 2));
+    assert.equal(report.shell.fixture?.opened, true, JSON.stringify(report.shell.fixture));
+    assert.equal(report.shell.fixture?.reasoningFound, true, JSON.stringify(report.shell.fixture));
+    assert.equal(report.shell.fixture?.codeFound, true, JSON.stringify(report.shell.fixture));
+    for (const name of ['fixture-workspace', 'shell-fixture-session', 'shell-fixture-thinking', 'shell-fixture-code']) {
+      const check = (report.checks ?? []).find((item) => item.name === name);
+      assert.equal(check?.pass, true, `${name}: ${JSON.stringify(check)}`);
+    }
+    assert.equal(report.cleanup.homeRemoved, true);
+    assert.deepEqual(report.cleanup.portsLeft, []);
+  } finally {
+    fs.rmSync(artifactsRoot, { recursive: true, force: true });
+  }
+});
+
 test('electron shell bridges the host stream and matches web DOM/tokens', {
   skip: !enabled,
   timeout: 300_000,
@@ -33,9 +57,9 @@ test('electron shell bridges the host stream and matches web DOM/tokens', {
     assert.equal(report.shell.shellVsWeb.tokens.changed['--dsw-alias-bg-base'], undefined);
     assert.equal(report.shell.screenshotDiff?.dimensionsMatch, true);
     assert.equal(
-      report.shell.screenshotDiff?.identical,
+      (report.shell.screenshotDiff?.pixels?.changedRatio ?? 1) <= 0.06,
       true,
-      'unmodified profile must be pixel-identical between shell and web',
+      `shell vs web conversation render differs too much: ${JSON.stringify(report.shell.screenshotDiff?.pixels)}`,
     );
     const trayCheck = (report.checks ?? []).find((check) => check.name === 'shell-tray');
     assert.ok(trayCheck, 'the report must include a shell-tray check');

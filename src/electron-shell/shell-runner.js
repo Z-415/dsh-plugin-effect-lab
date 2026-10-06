@@ -10,7 +10,7 @@ import { hasFatal, scanSources, summarize, tailLines } from '../log-scanner.js';
 import { defaultArtifactsRoot } from '../config.js';
 import { createIsolatedHome } from '../home-manager.js';
 import { mintAuthCookie } from '../port-and-token.js';
-import { FIXTURE_SESSION_ID, fixtureEnv, readFixtureSpec } from '../fixture-manager.js';
+import { FIXTURE_SESSION_ID, FIXTURE_SESSION_TITLE, fixtureEnv, readFixtureSpec } from '../fixture-manager.js';
 import { installProfilePlugins } from '../plugin-install.js';
 import { spawnTracked, stopTracked } from '../process-tree.js';
 import { reapProcessesByCommandLine } from '../process-reaper.js';
@@ -18,6 +18,7 @@ import { writeMinimalProfile } from '../profile-builder.js';
 import { progressEvent } from '../progress.js';
 import { diffRealHome, snapshotRealHome } from '../real-home-guard.js';
 import { copyIfExists, prepareArtifacts, renderReportMarkdown, writeJson, writeText } from '../report-writer.js';
+import { rpc } from '../rpc-client.js';
 import { locateRuntime, readRuntimeVersion } from '../runtime-locator.js';
 import { classifyRuntimeVersion, isInformationalRuntime } from '../runtime-versions.js';
 import { ensureDir, makeProfileName, makeRunId, nowIso, sleep, tail } from '../util.js';
@@ -154,10 +155,14 @@ export async function runShell(options = {}) {
     progress('isolated-home', `isolated home ${iso.home}`);
 
     const fixtureEnabled = options.fixture !== false;
-    const fixtureVariant = options.fixtureVariant ?? 'default';
-    const fixtureSessionId = fixtureEnabled
-      ? (readFixtureSpec(fixtureVariant).sessionId ?? FIXTURE_SESSION_ID)
-      : FIXTURE_SESSION_ID;
+    // A shell window is the "see it with your own eyes" surface, so its default
+    // fixture is `rich` (thinking + fenced code + a tool turn), not the plain
+    // one. Pass --fixture-variant default|empty|long to override.
+    const fixtureVariant = options.fixtureVariant ?? 'rich';
+    const fixtureSpec = fixtureEnabled ? readFixtureSpec(fixtureVariant) : null;
+    const fixtureSessionId = fixtureEnabled ? (fixtureSpec?.sessionId ?? FIXTURE_SESSION_ID) : FIXTURE_SESSION_ID;
+    const fixtureTitle = fixtureSpec?.title ?? FIXTURE_SESSION_TITLE;
+    const fixtureHasSession = fixtureEnabled && (fixtureSpec?.turns?.length ?? 0) > 0;
     const pipeline = await installProfilePlugins({
       runtime,
       env: {
@@ -264,13 +269,36 @@ export async function runShell(options = {}) {
       auth.error ? `mint failed: ${auth.error}` : `status ${auth.status}`,
     );
 
+    // The web runner registers the fixture workspace before opening the UI; the
+    // shell must do the same, otherwise the sidebar has no workspace/session to
+    // show and the opened window looks empty.
+    let fixtureWorkspaceId = null;
+    if (fixtureEnabled && fixtureWorkspace && auth.cookie) {
+      try {
+        const created = await rpc(boot.origin, auth.cookie, 'workspace/create', {
+          request: { path: fixtureWorkspace },
+        });
+        fixtureWorkspaceId = created?.workspace?.workspaceId ?? null;
+        addCheck(checks, 'fixture-workspace', Boolean(fixtureWorkspaceId), fixtureWorkspaceId ?? 'not registered');
+      } catch (error) {
+        addCheck(checks, 'fixture-workspace', false, String(error?.message ?? error));
+      }
+    }
+
     if (options.compareWeb !== false) {
       progress('probe-ui', 'capturing web baseline in headless Edge');
       try {
         webBrowser = await openUi({
           baseUrl: boot.url,
-          screenshots: ['web-baseline'],
+          screenshots: [],
+          screenshotsAfter: ['web-baseline'],
           assertTokens: options.assertTokens ?? ['--dsw-alias-bg-base'],
+          // Open the same seeded conversation in the web baseline, otherwise
+          // the shell (which auto-opens the fixture) would look different by
+          // construction.
+          clickText: fixtureWorkspace ? path.basename(fixtureWorkspace) : null,
+          clickSessionRow: fixtureHasSession,
+          sessionText: fixtureHasSession ? fixtureTitle : null,
           artifactsDir: runDir,
           timeoutMs: options.browserTimeoutMs,
           browserPath: options.browserPath,
@@ -348,6 +376,14 @@ export async function runShell(options = {}) {
       resultFile,
       screenshotFile,
       fixtureDir: fixtureWorkspace ?? null,
+      fixtureSessionTitle: fixtureHasSession ? fixtureTitle : null,
+      fixtureWorkspaceName: fixtureWorkspace ? path.basename(fixtureWorkspace) : null,
+      fixtureReasoning: String(
+        (fixtureSpec?.turns ?? []).map((turn) => turn.reasoning).find(Boolean) ?? '',
+      ).slice(0, 60) || null,
+      fixtureCodeLine: String(
+        (fixtureSpec?.turns ?? []).map((turn) => turn.code).find(Boolean)?.text ?? '',
+      ).split('\n')[0] || null,
       show: options.show === true || options.keepOpen === true,
       keepOpen: options.keepOpen === true,
       showHoldMs: options.showHoldMs ?? 6000,
@@ -385,6 +421,45 @@ export async function runShell(options = {}) {
         stderr: shellProc.getOutput().stderr,
       });
       recordShellRun(described.pass, described.detail);
+    }
+    // The shell window must show the seeded conversation, not just boot the
+    // host: the fixture workspace is registered and the shell auto-opens the
+    // session before probing.
+    if (fixtureHasSession) {
+      const fixtureProbe = result?.fixture ?? null;
+      // A visible window is the "see the fixture with your own eyes" surface,
+      // so it keeps the hard requirement. A hidden automated run can be
+      // compositor-throttled, and a third-party plugin may legitimately change
+      // the sidebar; in those cases the probe is reported but does not fail.
+      const visible = options.show === true || options.keepOpen === true;
+      const fixtureChecksInformational = !visible || (pipeline.pluginList ?? []).some((entry) => !entry.fixture);
+      addCheck(
+        checks,
+        'shell-fixture-session',
+        fixtureProbe?.opened === true,
+        fixtureProbe
+          ? `workspace=${fixtureProbe.clickedWorkspace === true}, session=${fixtureProbe.clickedSession === true}, mount=${fixtureProbe.mounted === true}`
+          : 'the shell did not report a fixture probe',
+        { informational: fixtureChecksInformational },
+      );
+      if (fixtureVariant === 'rich') {
+        addCheck(
+          checks,
+          'shell-fixture-thinking',
+          fixtureProbe?.reasoningFound === true,
+          fixtureProbe
+            ? `reasoningFound=${fixtureProbe.reasoningFound} (${fixtureProbe.textLength ?? 0} chars)`
+            : 'the shell did not report a fixture text probe',
+          { informational: fixtureChecksInformational },
+        );
+        addCheck(
+          checks,
+          'shell-fixture-code',
+          fixtureProbe?.codeFound === true,
+          fixtureProbe ? `codeFound=${fixtureProbe.codeFound}` : 'the shell did not report a fixture text probe',
+          { informational: fixtureChecksInformational },
+        );
+      }
     }
     if (result?.capture) {
       addCheck(
@@ -590,6 +665,11 @@ export async function runShell(options = {}) {
               + ` changedRatio=${(shellScreenshotDiff.pixels?.changedRatio ?? 0).toFixed(5)}`
               + ` tolerance=${shellScreenshotDiff.ratioTolerance}`
               + ` dimensionsMatch=${shellScreenshotDiff.dimensionsMatch}`,
+            // A live conversation has small cross-engine render differences
+            // (caret, scrollbar, text shaping); the DOM/token diff above stays
+            // the authoritative drift check. The inert landing page keeps the
+            // strict pixel expectation.
+            { informational: fixtureEnabled && (fixtureSpec?.turns?.length ?? 0) > 0 },
           );
         } catch (error) {
           addCheck(checks, 'shell-screenshot-diff', false, String(error?.message ?? error), { informational: true });
@@ -605,6 +685,8 @@ export async function runShell(options = {}) {
         kinds: boot.injectionKinds ?? [],
       },
       derivedInjections: result?.derivedInjections ?? null,
+      fixture: result?.fixture ?? null,
+      fixtureWorkspaceId,
       childExitCode: shellProc.child.exitCode ?? null,
       cached: shell.cached,
       result,

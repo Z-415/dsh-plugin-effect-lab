@@ -43,6 +43,23 @@ The `rich` variant also seeds a second turn with a tool call, so opening it in
 the UI covers the thinking area, a fenced code block, and tool rendering at
 once. The GUI's **思考 / 代码夹具** button runs the same variant.
 
+### Shell windows show the fixture by default
+
+`lab shell` defaults to `--fixture-variant rich` (verify still defaults to
+`default`). The shell runner also registers the fixture workspace through
+`workspace/create` and the Electron window auto-opens the seeded session before
+probing, so **every opened shell window shows the conversation, the thinking
+block, and the fenced code block** without any clicking. The run records:
+
+- `fixture-workspace`: the workspace id registered over RPC;
+- `shell-fixture-session`: `workspace=true, session=true, mount=true`;
+- `shell-fixture-thinking` / `shell-fixture-code`: the rendered text contains
+  the seeded reasoning prefix and the code's first line;
+- `report.shell.fixture`: the same probe object.
+
+`--fixture-variant empty` still works: there is no session row, so the shell
+skips the open step instead of waiting for one.
+
 Each spec has its own `sessionId`, so variants never collide. A turn expands to
 the official event sequence below; every message-producing event carries
 `surfaceOp: "append"`, which the 0.2.0-rc.2 session format requires.

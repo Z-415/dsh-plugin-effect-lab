@@ -202,6 +202,12 @@ browser, or the `artifacts/` folder. **中止** kills the running child tree.
 
 ## 运行输出去哪看
 
+`lab shell` 默认使用 `rich` 夹具，并且实验舱会先注册夹具 workspace、再让
+Electron 壳窗口自动打开那条会话，所以每次打开壳窗口都能直接看到：默认对话 +
+思考块 + fenced 代码块 + 一轮 tool 调用。报告里的 `shell-fixture-session` /
+`shell-fixture-thinking` / `shell-fixture-code` 就是这次渲染的证据。用
+`--fixture-variant empty` 时没有会话行，会自动跳过打开步骤。
+
 窗口下半部分是**常驻日志区**：命令的 stdout/stderr 实时流进来，跑完自动滚到最新。
 上方按钮区放不下时会自己滚动，不会再把日志区挤没（日志区固定至少 200px）。
 

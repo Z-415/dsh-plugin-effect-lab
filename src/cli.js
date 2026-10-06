@@ -271,7 +271,9 @@ export async function main(argv) {
         plugins: flags.plugin ?? [],
         withPlugins: flags.with ?? [],
         fixture: flags['no-fixture'] !== true,
-        fixtureVariant: flags['fixture-variant'] ?? 'default',
+        // The shell runner defaults to `rich`; leave it undefined so the
+        // window shows thinking + code unless the caller overrides it.
+        fixtureVariant: flags['fixture-variant'],
         profileLab: flags['profile-lab'],
         online: flags.online === true,
         installTimeoutMs: numberFlag(flags, 'install-timeout'),
@@ -358,7 +360,10 @@ install the report prints the advertised spec next to the real name@version
 read back from the isolated profile.
 --fixture-variant rich seeds an assistant turn with a reasoning content block
 ({ type: 'reasoning', text }) plus a fenced code block, and a second turn
-with a tool call, so thinking/code/tool rendering are all covered.
+with a tool call, so thinking/code/tool rendering are all covered. lab shell
+defaults to rich (and auto-opens the seeded workspace/session), so every shell
+window shows the thinking block and the fenced code; lab verify defaults to
+default.
 --clone-profile web|desktop starts from the real profile's structural files
 (package.json / cordis.yml / cordis.patch.yml / pnpm-*.yaml / compatibility.json
 / patches/), never
