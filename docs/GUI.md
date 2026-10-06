@@ -172,12 +172,17 @@ browser, or the `artifacts/` folder. **中止** kills the running child tree.
 
 | 按钮 | 走 lab 的哪条命令 |
 |---|---|
-| 克隆为持久 profile | `verify --clone-to <name> --clone-profile <kind> --clone-plugins all\|none --no-fixture`（先弹出名字输入框） |
-| 克隆为一次性运行（跑完即删） | `verify --clone-profile <kind> --clone-plugins all\|none --no-fixture` |
+| 克隆为持久 profile | `verify --clone-to <name> --clone-profile <kind> --clone-plugins all\|none [--clone-accept-risk] --no-fixture`（先弹出名字输入框） |
+| 克隆为一次性运行（跑完即删） | `verify --clone-profile <kind> --clone-plugins all\|none [--clone-accept-risk] --no-fixture` |
 
 持久克隆会出现在下方列表里，行内显示 `克隆自 web`（来自
 `lab-profile.json` 的 `clonedFrom`），可以立刻用「在壳窗口打开」复用。同名目标默认被
 拒绝；需要覆盖时在 CLI 上加 `--force`。
+
+克隆栏默认「带真实插件」并勾选「接受 peer 风险」：在**克隆出来的 profile 里**为 DSH
+拒绝的不兼容插件授予 exact-version 豁免，然后重新安装，让它们真正加载。真实 profile
+永远只读；不想接受风险的插件可以取消勾选，或在列表里用
+`--clone-exclude <plugin>` / `--clone-plugins none` 降级。
 
 ## 原生桌面开关
 

@@ -35,7 +35,7 @@ import { installProfilePlugins } from './plugin-install.js';
 import { mintAuthCookie } from './port-and-token.js';
 import { MOCK_API_KEY_ENV, MOCK_MODEL, MOCK_PROVIDER, writeMockProviderPatch } from './provider-patcher.js';
 import { writeMinimalProfile } from './profile-builder.js';
-import { cloneProfileInto, rebuildClonedProfile } from './profile-cloner.js';
+import { cloneProfileInto, grantClonedProfileExemptions, rebuildClonedProfile } from './profile-cloner.js';
 import { progressEvent } from './progress.js';
 import { diffRealHome, snapshotRealHome } from './real-home-guard.js';
 import {
@@ -246,6 +246,82 @@ export async function runLab(options = {}) {
     if (!fs.existsSync(path.join(profileDir, 'package.json'))) {
       writeMinimalProfile(profileDir, { name: profileName });
     }
+    if (clone && !iso.persistent) {
+      report.hints.push('本次克隆是临时的，已随隔离 home 删除；想保留请加 --profile-lab <名字>（或 --clone-to <名字>）。');
+    }
+    report.profile = { name: profileName, dir: profileDir, ...(clone ? { clonedFrom: clone.kind } : {}) };
+    addCheck(checks, 'profile-minimal', true, path.join(profileDir, 'package.json'));
+
+    const env = isolatedEnv(iso);
+    if (clone) {
+      const installOptions = {
+        runtime,
+        env,
+        profileDir,
+        profileName,
+        timeoutMs: options.installTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS,
+      };
+      let rebuilt = await rebuildClonedProfile(installOptions);
+      clone.install = rebuilt;
+      clone.incompatibleBefore = rebuilt.incompatible;
+      // A peer-gate denial is a policy rejection, not a failed install: if the
+      // incompatible plugins can be granted an exact-version exemption, do it
+      // inside the clone and re-run so they actually load.
+      if (options.cloneAcceptRisk === true && rebuilt.incompatible.length) {
+        const exemptions = await grantClonedProfileExemptions({
+          ...installOptions,
+          runtimeVersion: report.runtime.version,
+          incompatible: rebuilt.incompatible,
+        });
+        clone.exemptions = exemptions;
+        if (exemptions.granted.length) {
+          rebuilt = await rebuildClonedProfile(installOptions);
+          clone.installRecheck = rebuilt;
+          clone.install = rebuilt;
+        }
+      }
+      writeText(runDir, 'clone-install.log', `$ dsh ${rebuilt.args.join(' ')}\n\n${rebuilt.stdout}\n${rebuilt.stderr}`);
+      const gateNote = rebuilt.incompatible.length
+        ? `; DSH denied ${rebuilt.incompatible.length} incompatible plugin(s) (peer range)`
+        : '';
+      addCheck(
+        checks,
+        'clone-install',
+        rebuilt.missing.length === 0,
+        `pnpm/DSH exit ${rebuilt.code}${rebuilt.timedOut ? ' (timeout)' : ''}`
+          + `; ${rebuilt.installed.length} present, ${rebuilt.missing.length} missing${gateNote}`,
+      );
+      addCheck(
+        checks,
+        'clone-plugins-present',
+        rebuilt.missing.length === 0,
+        rebuilt.missing.length
+          ? `${rebuilt.missing.length} plugin(s) failed to install: ${rebuilt.missing.join(', ')}`
+          : 'every cloned dependency is present in node_modules',
+      );
+      addCheck(
+        checks,
+        'clone-compat',
+        rebuilt.incompatible.length === 0,
+        rebuilt.incompatible.length
+          ? `DSH denied (peer range): ${rebuilt.incompatible.map((plugin) => `${plugin.name}@${plugin.version}`).join(', ')}`
+            + '; re-run with --clone-accept-risk to grant exact-version exemptions inside the clone'
+          : 'no incompatible plugin was denied by DSH',
+        { informational: rebuilt.incompatible.length > 0 },
+      );
+      if (clone.exemptions) {
+        const failed = (clone.exemptions.failures ?? []).map((item) => `${item.name}@${item.version}`).join(', ');
+        addCheck(
+          checks,
+          'clone-exemptions',
+          (clone.exemptions.failures ?? []).length === 0,
+          clone.exemptions.granted.length
+            ? `granted ${clone.exemptions.granted.length} exact-version exemption(s) inside the clone`
+              + `${failed ? `; failed: ${failed}` : ''}`
+            : `no exemption was granted${failed ? `; failed: ${failed}` : ''}`,
+        );
+      }
+    }
     if (clone && iso.persistent) {
       const clonedFrom = {
         kind: clone.kind,
@@ -257,47 +333,15 @@ export async function runLab(options = {}) {
           ...clone.droppedLocal.map((entry) => entry.spec ?? entry.name),
         ],
         plugins: clone.plugins,
+        installed: clone.install?.installed?.length ?? 0,
+        missing: clone.install?.missing ?? [],
+        denied: (clone.install?.incompatible ?? []).map((plugin) => `${plugin.name}@${plugin.version}`),
+        acceptedRisk: clone.exemptions?.granted?.length ?? 0,
       };
       recordProfileClone(iso.name, clonedFrom);
       clone.persistent = true;
       clone.profile = iso.name;
       clone.clonedFrom = clonedFrom;
-    }
-    if (clone && !iso.persistent) {
-      report.hints.push('本次克隆是临时的，已随隔离 home 删除；想保留请加 --profile-lab <名字>（或 --clone-to <名字>）。');
-    }
-    report.profile = { name: profileName, dir: profileDir, ...(clone ? { clonedFrom: clone.kind } : {}) };
-    addCheck(checks, 'profile-minimal', true, path.join(profileDir, 'package.json'));
-
-    const env = isolatedEnv(iso);
-    if (clone) {
-      const rebuilt = await rebuildClonedProfile({
-        runtime,
-        env,
-        profileDir,
-        profileName,
-        timeoutMs: options.installTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS,
-      });
-      clone.install = rebuilt;
-      writeText(runDir, 'clone-install.log', `$ dsh ${rebuilt.args.join(' ')}\n\n${rebuilt.stdout}\n${rebuilt.stderr}`);
-      addCheck(
-        checks,
-        'clone-install',
-        rebuilt.ok,
-        rebuilt.ok
-          ? `pnpm install --offline exit 0; ${rebuilt.installed.length} package(s) present`
-          : `exit ${rebuilt.code}${rebuilt.timedOut ? ' (timeout)' : ''}`
-            + `; ${rebuilt.installed.length} present, ${rebuilt.missing.length} missing`
-            + `${rebuilt.rejected ? `; DSH rejected ${rebuilt.incompatible.length} incompatible plugin(s)` : ''}`,
-      );
-      addCheck(
-        checks,
-        'clone-plugins-present',
-        rebuilt.missing.length === 0,
-        rebuilt.missing.length
-          ? `${rebuilt.missing.length} plugin(s) failed to install: ${rebuilt.missing.join(', ')}`
-          : 'every cloned dependency is present in node_modules',
-      );
     }
     const fixtureEnabled = options.fixture !== false;
     const fixtureVariant = options.fixtureVariant ?? 'default';

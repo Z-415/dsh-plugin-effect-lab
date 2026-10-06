@@ -102,6 +102,7 @@ cordis.yml
 cordis.patch.yml
 pnpm-workspace.yaml
 pnpm-lock.yaml
+compatibility.json    (exact-version peer exemptions, when present)
 patches/**            (regular files only; symlinks are skipped)
 ```
 
@@ -146,6 +147,38 @@ The run is executed with the isolated `DSH_HOME` and `cwd = <clone profile>`.
 Afterwards every dependency is checked for a real
 `node_modules/<name>/package.json`.
 
+## Cloning the real plugins (the default)
+
+The point of a clone is to start from the plugins the user actually runs, so
+`--clone-plugins` defaults to `all`: every third-party dependency in the real
+profile is installed into the clone.
+
+DSH refuses to *approve* a plugin whose peer range does not match the current
+runtime (`Plugin name@version is incompatible with dsh ...`). With the real web
+profile that is 6 of 20 plugins. The lab now:
+
+- copies `compatibility.json` (if the real profile has one), so existing
+  exact-version exemptions carry over;
+- installs every dependency anyway: `clone-install` passes when all packages
+  are present, and `missing` is the hard failure;
+- lists the denied plugins under `clone-compat` (informational);
+- with `--clone-accept-risk`, runs
+  `dsh plugin --profile <clone> allow-version <name>@<version> --dsh-version <runtime> --accept-risk`
+  **inside the clone** for each denied plugin, then re-runs the install so the
+  gate approves and the plugins actually load. The real profile is untouched.
+
+```powershell
+# full clone: 20 plugins installed, 6 exemptions granted in the clone
+node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-accept-risk --no-fixture
+# -> [通过] clone-install: pnpm/DSH exit 0; 20 present, 0 missing
+# -> [通过] clone-compat: no incompatible plugin was denied by DSH
+# -> [通过] clone-exemptions: granted 6 exact-version exemption(s) inside the clone
+```
+
+Without `--clone-accept-risk` the plugins are still installed and the clone is
+still created; the denied ones are listed and stay denied at startup until you
+grant them (in the clone) with `dsh plugin --profile <clone> allow-version`.
+
 ## Expected failures (reported, not hidden)
 
 A clone is not guaranteed to boot. The real desktop profile has ~25
@@ -154,8 +187,10 @@ missing, or the installation may need the network. The lab reports:
 
 - `clone-install`: the pnpm/DSH exit code, `installed` and `missing` counts;
 - `clone-plugins-present`: every dependency that has no installed manifest;
-- `DSH 拒绝的不兼容插件`: parsed from the install output
-  (`Plugin <name>@<version> is incompatible ...`).
+- `clone-compat`: the plugins DSH denied by peer range, parsed from the install
+  output (`Plugin <name>@<version> is incompatible ...`);
+- `clone-exemptions`: with `--clone-accept-risk`, which exact-version
+  exemptions were granted (and which failed) inside the clone.
 
 `report.json` stores the same evidence under `clone`:
 
@@ -167,7 +202,9 @@ clone = {
   excluded: [{ name, spec, reason }],
   droppedLocal: [{ name, spec }],
   localPlugins: [{ name, spec, kind: 'file' | 'link' | 'path' }],
-  install: { ok, code, installed, missing, rejected, incompatible }
+  incompatibleBefore: [{ name, version }],
+  install: { ok, code, installed, missing, rejected, incompatible },
+  exemptions: { granted: [{ name, version }], failures: [{ name, version, reason }] }
 }
 ```
 
@@ -178,6 +215,8 @@ the full pnpm/DSH output next to `report.json`.
 
 | flag | effect |
 |---|---|
+| `--clone-plugins all` | default: keep every real third-party plugin |
+| `--clone-accept-risk` | grant the exact-version exemptions DSH asks for **inside the clone**, then re-install, so peer-mismatched real plugins load |
 | `--clone-plugins none` | drop every third-party dependency and trim `dsh.profile.bundles` to the first-party bundles |
 | `--clone-exclude <plugin>` | drop one dependency by package name or exact spec |
 | `--clone-drop-local` | drop `file:` / `link:` / path dependencies that would otherwise point at the real plugins directory |

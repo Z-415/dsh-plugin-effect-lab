@@ -54,7 +54,7 @@ const BOOLEAN_FLAGS = new Set([
   'no-html', 'native-desktop', 'probe-native-dialog',
   'list', 'latest', 'explain', 'runtime-matrix',
   'rebuild', 'install-shortcut', 'no-open',
-  'clone-drop-local', 'force',
+  'clone-drop-local', 'force', 'clone-accept-risk',
 ]);
 
 /**
@@ -119,6 +119,7 @@ export function browserCommandOptions(flags, common) {
     clonePlugins: flags['clone-plugins'] ?? 'all',
     cloneExclude: flags['clone-exclude'] ?? [],
     cloneDropLocal: flags['clone-drop-local'] === true,
+    cloneAcceptRisk: flags['clone-accept-risk'] === true,
     diagnosticsBundle: flags['diagnostics-bundle'],
     mockModel: flags['mock-model'] === true,
     online: flags.online === true,
@@ -321,7 +322,7 @@ Usage:
              [--fixture-variant default|empty|long|rich]
              [--profile-lab <name>]
              [--clone-profile web|desktop [--clone-plugins all|none]
-              [--clone-exclude <plugin>] [--clone-drop-local]]
+              [--clone-exclude <plugin>] [--clone-drop-local] [--clone-accept-risk]]
              [--clone-to <name> [--force]]
              [--diagnostics-bundle <file>]
              [--artifacts <dir>] [--browser <exe>] [--no-fixture]
@@ -359,7 +360,8 @@ read back from the isolated profile.
 ({ type: 'reasoning', text }) plus a fenced code block, and a second turn
 with a tool call, so thinking/code/tool rendering are all covered.
 --clone-profile web|desktop starts from the real profile's structural files
-(package.json / cordis.yml / cordis.patch.yml / pnpm-*.yaml / patches/), never
+(package.json / cordis.yml / cordis.patch.yml / pnpm-*.yaml / compatibility.json
+/ patches/), never
 from node_modules, credentials, settings, sessions, or agents. node_modules is
 rebuilt with the official runtime's pnpm install --offline. --clone-plugins
 none drops every third-party plugin, --clone-exclude <plugin> drops one, and
@@ -367,6 +369,12 @@ none drops every third-party plugin, --clone-exclude <plugin> drops one, and
 fail to install or boot are reported as failures, not hidden. --clone-profile
 is supported by lab verify / lab capture; lab shell keeps its own runner
 and rejects it.
+By default a clone keeps every real plugin. DSH may deny a plugin whose peer
+range does not match this runtime; --clone-accept-risk grants the exact-version
+exemption inside the clone (allow-version --accept-risk) and re-runs the
+install, so the plugin loads. --clone-plugins none / --clone-exclude are the
+escape hatches. The report always lists installed, missing, denied, and
+exempted plugins.
 Persistent clones: add --profile-lab <name> (or the sugar --clone-to <name>,
 which also needs --clone-profile web|desktop) to keep the clone as a visible
 lab profile. It then shows in lab profile list as "cloned from web", keeps

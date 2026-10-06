@@ -186,7 +186,7 @@ const PROFILE_DRAWER = `(async () => {
   const realOptions = [...realSelect.options].map((option) => option.value);
   const pluginModeOptions = [...realPluginMode.options].map((option) => option.value);
   window.__calls = [];
-  realPluginMode.value = 'none';
+  realPluginMode.value = 'all';
   const persistentButton = document.getElementById('cloneRealPersistent');
   const oneShotButton = document.getElementById('cloneRealOneShot');
   persistentButton.disabled = false;
@@ -623,16 +623,16 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.deepEqual(removeCall, ['profile', 'remove', 'dev']);
     // The clone bar is fed only by read-only real profiles.
     assert.deepEqual(profileDrawer.realOptions, ['web', 'desktop']);
-    assert.deepEqual(profileDrawer.pluginModeOptions, ['none', 'all']);
+    assert.deepEqual(profileDrawer.pluginModeOptions, ['all', 'none']);
     const persistentCloneCall = profileDrawer.cloneCalls.find((args) => args.includes('--clone-to'));
     assert.deepEqual(persistentCloneCall, [
       'verify', '--clone-to', 'clone-web', '--clone-profile', 'web',
-      '--clone-plugins', 'none', '--no-fixture', '--screenshot', 'home',
+      '--clone-plugins', 'all', '--clone-accept-risk', '--no-fixture', '--screenshot', 'home',
     ]);
     const oneShotCloneCall = profileDrawer.cloneCalls.find((args) => !args.includes('--clone-to'));
     assert.deepEqual(oneShotCloneCall, [
       'verify', '--clone-profile', 'web',
-      '--clone-plugins', 'none', '--no-fixture', '--screenshot', 'home',
+      '--clone-plugins', 'all', '--clone-accept-risk', '--no-fixture', '--screenshot', 'home',
     ]);
     assert.deepEqual(profileDrawer.errors, []);
 

@@ -201,3 +201,59 @@ test('--clone-to persists a marked, reusable clone, refuses a same-name rerun, a
     fs.rmSync(artifactsRoot, { recursive: true, force: true });
   }
 });
+
+test('cloning all real plugins installs them and grants in-clone exemptions so they load', {
+  skip: !enabled,
+  timeout: 600_000,
+}, async () => {
+  const profilesRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-clone-full-'));
+  const artifactsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-lab-clone-full-artifacts-'));
+  const previous = process.env.DSH_LAB_PROFILES;
+  process.env.DSH_LAB_PROFILES = profilesRoot;
+  try {
+    const report = await runLab({
+      cloneTo: 'clone-full',
+      cloneProfile: 'web',
+      clonePlugins: 'all',
+      cloneAcceptRisk: true,
+      fixture: false,
+      screenshots: ['home'],
+      artifactsRoot,
+      html: false,
+    });
+    assert.equal(report.ok, true, JSON.stringify((report.checks ?? []).filter((check) => !check.pass), null, 2));
+    assert.equal(report.clone.plugins, 'all');
+    assert.equal(report.clone.persistent, true);
+    assert.equal(report.clone.install.missing.length, 0, JSON.stringify(report.clone.install.missing));
+    assert.equal(report.clone.install.code, 0, JSON.stringify(report.clone.install));
+    assert.equal(
+      report.clone.install.incompatible.length,
+      0,
+      'after granting the exemptions the recheck must not deny any plugin',
+    );
+    assert.equal(
+      report.clone.exemptions.granted.length,
+      report.clone.incompatibleBefore.length,
+      JSON.stringify(report.clone.exemptions),
+    );
+    assert.deepEqual(report.clone.exemptions.failures, []);
+    // The plugins actually reached the renderer (more slots than a bare clone).
+    assert.equal(report.browser.dom.slotCount > 0, true);
+    const manifest = JSON.parse(fs.readFileSync(path.join(profilesRoot, 'clone-full', 'lab-profile.json'), 'utf8'));
+    assert.equal(manifest.clonedFrom.plugins, 'all');
+    assert.equal(manifest.clonedFrom.installed, report.clone.install.installed.length);
+    assert.equal(manifest.clonedFrom.acceptedRisk, report.clone.exemptions.granted.length);
+    assert.deepEqual(manifest.clonedFrom.missing, []);
+    for (const name of ['clone-real-profile-unchanged', 'clone-no-credentials', 'real-home-unchanged']) {
+      const check = (report.checks ?? []).find((item) => item.name === name);
+      assert.equal(check?.pass, true, `${name}: ${JSON.stringify(check)}`);
+    }
+    const cloneCompat = (report.checks ?? []).find((check) => check.name === 'clone-compat');
+    assert.equal(cloneCompat?.pass, true, JSON.stringify(cloneCompat));
+  } finally {
+    if (previous === undefined) delete process.env.DSH_LAB_PROFILES;
+    else process.env.DSH_LAB_PROFILES = previous;
+    fs.rmSync(profilesRoot, { recursive: true, force: true });
+    fs.rmSync(artifactsRoot, { recursive: true, force: true });
+  }
+});

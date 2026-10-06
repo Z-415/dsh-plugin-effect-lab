@@ -168,17 +168,25 @@ B alone passes.
 ### 4b. Clone your real profile (persistent or one-shot)
 
 ```powershell
-# persistent: kept under .lab-profiles/clone-web and reusable
-node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-plugins none --no-fixture
-node bin/lab.js profile list        # clone-web: cloned from web (5 file(s)), no plugins recorded
+# persistent + keeps every real plugin (the point of cloning)
+node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-accept-risk --no-fixture
+node bin/lab.js profile list        # clone-web: cloned from web (6 file(s)), 20 plugin(s) installed
 node bin/lab.js shell --profile-lab clone-web --show --show-hold 3000
 
 # overwrite an existing clone only on purpose
-node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-plugins none --no-fixture --force
+node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-accept-risk --no-fixture --force
 
 # one-shot: deleted at the end; the run prints how to keep it
+node bin/lab.js verify --clone-profile web --clone-accept-risk --no-fixture
+
+# only if you explicitly want config without plugins
 node bin/lab.js verify --clone-profile web --clone-plugins none --no-fixture
 ```
+
+`--clone-accept-risk` grants the exact-version exemptions DSH asks for **inside
+the clone** (never the real profile), so peer-mismatched real plugins actually
+load. Without it the plugins are still installed and listed, but DSH keeps the
+denied ones off at startup.
 
 The real profile is read-only: only the structural files are copied, never
 `node_modules`, credentials, settings, sessions, or agents. `lab real-profiles`

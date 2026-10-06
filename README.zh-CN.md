@@ -158,17 +158,24 @@ profile 单独保存在 `.lab-profiles/<name>/` 下，不会进你真实的 `~/.
 ### 4b. 克隆真实 profile（可持久复用 / 一次性）
 
 ```powershell
-# 持久：保存在 .lab-profiles/clone-web，可反复复用
-node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-plugins none --no-fixture
-node bin/lab.js profile list        # clone-web: cloned from web (5 file(s)), no plugins recorded
+# 持久 + 带上真实插件（克隆的意义）；不兼容插件在克隆内授予 exact-version 豁免
+node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-accept-risk --no-fixture
+node bin/lab.js profile list        # clone-web: cloned from web (6 file(s)), 20 plugin(s) installed
 node bin/lab.js shell --profile-lab clone-web --show --show-hold 3000
 
 # 只有明确要覆盖已有克隆时才加 --force
-node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-plugins none --no-fixture --force
+node bin/lab.js verify --clone-to clone-web --clone-profile web --clone-accept-risk --no-fixture --force
 
 # 一次性：跑完即删，运行结束会提示怎么保留
+node bin/lab.js verify --clone-profile web --clone-accept-risk --no-fixture
+
+# 只有明确"只要配置不要插件"时才用
 node bin/lab.js verify --clone-profile web --clone-plugins none --no-fixture
 ```
+
+`--clone-accept-risk` 只对**克隆出来的 profile** 授予 DSH 要求的精确版本豁免
+（绝不碰真实 profile），让 peer 不满足的真实插件也能真正加载。不加它时插件仍会
+安装并在报告里列出，只是启动时会被 DSH 拒绝。
 
 真实 profile 始终只读：只复制结构文件，不复制 `node_modules`、凭据、settings、
 sessions、agents。`lab real-profiles` 列出可用作克隆来源的真实 profile；GUI 抽屉里有

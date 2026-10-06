@@ -11,6 +11,7 @@ import {
   classifyLocalSpec,
   cloneProfileInto,
   diffCloneSource,
+  grantClonedProfileExemptions,
   parseIncompatiblePlugins,
   planClone,
   rebuildClonedProfile,
@@ -38,6 +39,11 @@ function makeRealHome(kind = 'web') {
   for (const name of ['cordis.yml', 'cordis.patch.yml', 'pnpm-workspace.yaml', 'pnpm-lock.yaml']) {
     fs.writeFileSync(path.join(dir, name), `${name}\n`, 'utf8');
   }
+  fs.writeFileSync(
+    path.join(dir, 'compatibility.json'),
+    `${JSON.stringify({ 'dsh-x@1.2.0': ['0.2.0-rc.2'] }, null, 2)}\n`,
+    'utf8',
+  );
   fs.mkdirSync(path.join(dir, 'patches'));
   fs.writeFileSync(path.join(dir, 'patches', 'a.patch'), 'patch-a\n', 'utf8');
   // Forbidden material that must never be read or copied.
@@ -247,4 +253,53 @@ test('rebuildClonedProfile runs the official pnpm install offline and reports mi
   } finally {
     fs.rmSync(profileDir, { recursive: true, force: true });
   }
+});
+
+test('grantClonedProfileExemptions runs allow-version --accept-risk in the clone only', async () => {
+  const calls = [];
+  const result = await grantClonedProfileExemptions({
+    runtime: { cmd: 'dsh.cmd' },
+    env: { DSH_HOME: 'C:/clone/home' },
+    profileDir: 'C:/clone/home/profiles/lab-clone-web',
+    profileName: 'lab-clone-web',
+    runtimeVersion: '0.2.0-rc.2',
+    incompatible: [
+      { name: 'dsh-better-sidebar', version: '0.19.1' },
+      { name: '@scope/x', version: '1.0.0' },
+    ],
+    timeoutMs: 1000,
+    runCommandImpl: async (file, args, options) => {
+      calls.push({ file, args, options });
+      return { code: 0, stdout: 'dsh: allowed', stderr: '' };
+    },
+  });
+  assert.deepEqual(result.granted.map((plugin) => `${plugin.name}@${plugin.version}`), [
+    'dsh-better-sidebar@0.19.1',
+    '@scope/x@1.0.0',
+  ]);
+  assert.deepEqual(result.failures, []);
+  assert.deepEqual(calls[0].args, [
+    'plugin', '--profile', 'lab-clone-web',
+    'allow-version', 'dsh-better-sidebar@0.19.1',
+    '--dsh-version', '0.2.0-rc.2', '--accept-risk',
+  ]);
+  assert.equal(calls[0].options.cwd, 'C:/clone/home/profiles/lab-clone-web');
+  assert.equal(calls.length, 2);
+});
+
+test('grantClonedProfileExemptions reports per-plugin failures', async () => {
+  const result = await grantClonedProfileExemptions({
+    runtime: { cmd: 'dsh.cmd' },
+    env: {},
+    profileDir: 'C:/clone',
+    profileName: 'lab-clone',
+    runtimeVersion: '0.2.0-rc.2',
+    incompatible: [{ name: 'dsh-x', version: '1.0.0' }, { name: 'dsh-y' }],
+    timeoutMs: 1000,
+    runCommandImpl: async () => ({ code: 1, stdout: '', stderr: 'boom' }),
+  });
+  assert.equal(result.granted.length, 0);
+  assert.equal(result.failures.length, 2);
+  assert.match(result.failures[0].reason, /exit 1: boom/);
+  assert.match(result.failures[1].reason, /incomplete/);
 });

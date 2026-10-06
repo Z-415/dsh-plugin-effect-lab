@@ -25,6 +25,9 @@ export const CLONE_FILES = [
   'cordis.patch.yml',
   'pnpm-workspace.yaml',
   'pnpm-lock.yaml',
+  // DSH stores exact-version peer exemptions here; carrying it means a clone
+  // inherits the same compatibility decisions as the real profile.
+  'compatibility.json',
 ];
 
 /** The only directory a clone may read from the real profile (regular files only). */
@@ -323,4 +326,50 @@ export async function rebuildClonedProfile(options = {}) {
     installed,
     missing,
   };
+}
+
+/**
+ * Grant the exact-version exemptions DSH's compatibility gate asked for, in
+ * the isolated clone only. This is what lets a peer-mismatched real plugin
+ * actually load in the clone instead of being denied at startup.
+ *
+ * The real profile is never touched: the command runs with the isolated
+ * `DSH_HOME` and `cwd = <clone profile>`.
+ */
+export async function grantClonedProfileExemptions(options = {}) {
+  const {
+    runtime,
+    env,
+    profileDir,
+    profileName,
+    runtimeVersion,
+    incompatible = [],
+    timeoutMs,
+    runCommandImpl = runCommand,
+  } = options;
+  const granted = [];
+  const failures = [];
+  for (const plugin of incompatible) {
+    if (!plugin?.name || !plugin?.version || !runtimeVersion) {
+      failures.push({ ...plugin, reason: 'incomplete package version or runtime version' });
+      continue;
+    }
+    const args = [
+      'plugin',
+      '--profile', profileName,
+      'allow-version', `${plugin.name}@${plugin.version}`,
+      '--dsh-version', runtimeVersion,
+      '--accept-risk',
+    ];
+    let command;
+    try {
+      command = await runCommandImpl(runtime.cmd, args, { cwd: profileDir, env, timeoutMs });
+    } catch (error) {
+      failures.push({ ...plugin, reason: String(error?.message ?? error) });
+      continue;
+    }
+    if (command.code === 0) granted.push(plugin);
+    else failures.push({ ...plugin, reason: `exit ${command.code}: ${(command.stderr || command.stdout || '').trim().slice(0, 400)}` });
+  }
+  return { granted, failures };
 }

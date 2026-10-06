@@ -291,9 +291,12 @@
         <div class="clonebar-row">
           <select id="realProfileSelect" title="真实 profile 来源（只读）" aria-label="真实 profile 来源"></select>
           <select id="realClonePlugins" title="克隆插件范围" aria-label="克隆插件范围">
-            <option value="none">不带插件（推荐，能启动）</option>
-            <option value="all">带真实插件（可能因 peer 不兼容失败）</option>
+            <option value="all">带真实插件（克隆的意义）</option>
+            <option value="none">不带插件（降级）</option>
           </select>
+        </div>
+        <div class="clonebar-row">
+          <label class="chk"><input type="checkbox" id="realCloneAcceptRisk" checked> 接受 peer 风险：给不兼容插件在克隆里授予 exact-version 豁免</label>
         </div>
         <div class="clonebar-row">
           <button type="button" id="cloneRealPersistent" class="strong" title="克隆成一个持久的 lab profile，可复用">克隆为持久 profile</button>
@@ -368,6 +371,7 @@
   const profileRoot = document.getElementById('profileRoot');
   const realProfileSelect = document.getElementById('realProfileSelect');
   const realClonePlugins = document.getElementById('realClonePlugins');
+  const realCloneAcceptRisk = document.getElementById('realCloneAcceptRisk');
   const realProfileNote = document.getElementById('realProfileNote');
   const textDialog = document.getElementById('textDialog');
   const textDialogForm = document.getElementById('textDialogForm');
@@ -630,6 +634,13 @@
   function selectedClonePluginMode() {
     return realClonePlugins.value === 'none' ? 'none' : 'all';
   }
+  function cloneScopeFlags() {
+    const flags = ['--clone-plugins', selectedClonePluginMode()];
+    // Opt in to granting the exact-version exemptions DSH asks for, inside the
+    // clone only, so peer-mismatched real plugins actually load.
+    if (realCloneAcceptRisk.checked) flags.push('--clone-accept-risk');
+    return flags;
+  }
   function cloneRealOneShotRun() {
     const kind = selectedRealProfile();
     if (!kind) {
@@ -637,7 +648,7 @@
       return;
     }
     runWithArgs(
-      ['verify', '--clone-profile', kind, '--clone-plugins', selectedClonePluginMode(), '--no-fixture', '--screenshot', 'home'],
+      ['verify', '--clone-profile', kind, ...cloneScopeFlags(), '--no-fixture', '--screenshot', 'home'],
       `一次性克隆 · ${kind}（跑完即删）`,
     );
   }
@@ -654,7 +665,7 @@
       return;
     }
     runWithArgs(
-      ['verify', '--clone-to', name, '--clone-profile', kind, '--clone-plugins', selectedClonePluginMode(), '--no-fixture', '--screenshot', 'home'],
+      ['verify', '--clone-to', name, '--clone-profile', kind, ...cloneScopeFlags(), '--no-fixture', '--screenshot', 'home'],
       `持久克隆 · ${name} <- ${kind}`,
     );
   }
@@ -724,6 +735,7 @@
       clonedLine.className = 'note';
       if (profile.clonedFrom) {
         clonedLine.textContent = `克隆自 ${profile.clonedFrom.kind} · ${profile.clonedFrom.copiedFiles ?? 0} 个结构文件`
+          + `${profile.clonedFrom.installed ? ` · ${profile.clonedFrom.installed} 个插件已安装` : ''}`
           + ` · hash ${profile.clonedFrom.sourceHash ?? ''}`;
       }
       const when = document.createElement('p');

@@ -241,14 +241,22 @@ export function listLabProfiles() {
 export function removeLabProfile(name) {
   const dir = labProfileDir(name);
   if (!fs.existsSync(dir)) return { removed: false, dir };
-  try {
-    removeTreeSafely(dir);
-  } catch (error) {
-    return {
-      removed: false,
-      dir,
-      error: `lab profile "${name}" could not be removed (it may be in use by a running lab process): ${String(error?.message ?? error)}`,
-    };
+  // Windows can hold a transient handle on a just-installed node_modules file
+  // (pnpm/AV/host shutdown). Retry briefly before reporting a readable error.
+  let lastError = null;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      removeTreeSafely(dir);
+    } catch (error) {
+      lastError = error;
+    }
+    if (!fs.existsSync(dir)) return { removed: true, dir, attempts: attempt + 1 };
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
   }
-  return { removed: !fs.existsSync(dir), dir };
+  return {
+    removed: false,
+    dir,
+    attempts: 6,
+    error: `lab profile "${name}" could not be removed (it may be in use by a running lab process): ${String(lastError?.message ?? lastError)}`,
+  };
 }

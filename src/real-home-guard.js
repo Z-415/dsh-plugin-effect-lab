@@ -13,11 +13,13 @@ export const HASH_ALLOWLIST = [
   'profiles/web/cordis.patch.yml',
   'profiles/web/pnpm-workspace.yaml',
   'profiles/web/pnpm-lock.yaml',
+  'profiles/web/compatibility.json',
   'profiles/desktop/package.json',
   'profiles/desktop/cordis.yml',
   'profiles/desktop/cordis.patch.yml',
   'profiles/desktop/pnpm-workspace.yaml',
   'profiles/desktop/pnpm-lock.yaml',
+  'profiles/desktop/compatibility.json',
 ];
 
 function sha256(file) {

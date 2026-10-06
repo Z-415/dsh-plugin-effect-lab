@@ -96,6 +96,13 @@ export function renderReportMarkdown(report) {
         lines.push('  - 说明: DSH 安装后的兼容性检查拒绝了该克隆 profile；这是如实记录的预期失败，不会被吞掉。');
       }
     }
+    if (clone.exemptions) {
+      lines.push(
+        `- 克隆内 exact-version 豁免: 成功 ${clone.exemptions.granted?.length ?? 0}，失败 ${clone.exemptions.failures?.length ?? 0}`,
+      );
+      for (const entry of clone.exemptions.granted ?? []) lines.push(`  - 已豁免: ${entry.name}@${entry.version}`);
+      for (const entry of clone.exemptions.failures ?? []) lines.push(`  - 豁免失败: ${entry.name}@${entry.version} (${entry.reason})`);
+    }
   }
   if (report.signatureHits?.length) {
     lines.push('', '## 启动日志特征', '');

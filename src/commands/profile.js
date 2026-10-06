@@ -33,7 +33,8 @@ export async function runProfileCommand(options = {}) {
       for (const profile of profiles) {
         const specs = profile.plugins.map((entry) => entry.spec);
         const cloneNote = profile.clonedFrom
-          ? `cloned from ${profile.clonedFrom.kind} (${profile.clonedFrom.copiedFiles ?? 0} file(s)), `
+          ? `cloned from ${profile.clonedFrom.kind} (${profile.clonedFrom.copiedFiles ?? 0} file(s))`
+            + `${profile.clonedFrom.installed ? `, ${profile.clonedFrom.installed} plugin(s) installed` : ''}, `
           : '';
         process.stdout.write(`- ${profile.name}: ${cloneNote}${specs.length ? specs.join(', ') : 'no plugins recorded'}\n`);
       }
