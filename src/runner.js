@@ -30,6 +30,7 @@ import { mintAuthCookie } from './port-and-token.js';
 import { MOCK_API_KEY_ENV, MOCK_MODEL, MOCK_PROVIDER, writeMockProviderPatch } from './provider-patcher.js';
 import { writeMinimalProfile } from './profile-builder.js';
 import { cloneProfileInto, rebuildClonedProfile } from './profile-cloner.js';
+import { progressEvent } from './progress.js';
 import { diffRealHome, snapshotRealHome } from './real-home-guard.js';
 import {
   createSession,
@@ -75,7 +76,14 @@ function isolatedEnv(iso) {
  *   stop -> delete -> hash compare -> report.
  */
 export async function runLab(options = {}) {
-  const progress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
+  const progress = (phase, detail) => {
+    try {
+      onProgress(progressEvent(phase, detail));
+    } catch {
+      // Progress reporting must never break a run.
+    }
+  };
   const runId = options.runId ?? makeRunId();
   const realHomePath = options.realHome ?? REAL_HOME;
   const artifactsRoot = options.artifactsRoot ?? defaultArtifactsRoot();
@@ -136,7 +144,7 @@ export async function runLab(options = {}) {
     addCheck(checks, 'runtime-version', runtimeCompat.supported, runtimeCompat.detail, {
       informational: isInformationalRuntime(runtimeCompat),
     });
-    progress(`runtime ${version.version ?? 'unknown'}`);
+    progress('locate-runtime', `runtime ${version.version ?? 'unknown'}`);
 
     realBefore = snapshotRealHome(realHomePath);
     residueBefore = snapshotLabResidue();
@@ -146,6 +154,7 @@ export async function runLab(options = {}) {
       true,
       `${Object.keys(realBefore.files).length} structural files hashed; credentials/sessions/settings untouched`,
     );
+    progress('snapshot', `${Object.keys(realBefore.files).length} structural file(s) hashed`);
 
     iso = options.profileLab
       ? openLabProfileHome(options.profileLab)
@@ -163,7 +172,7 @@ export async function runLab(options = {}) {
       true,
       iso.persistent ? `reused lab profile "${iso.name}": ${iso.home}` : iso.home,
     );
-    progress(`isolated home ${iso.home}`);
+    progress('isolated-home', `isolated home ${iso.home}`);
     const credentials = scanForCredentials(iso.home);
     report.agentCoverage = describeAgentCoverage({ mockModel: options.mockModel === true, credentials });
     addCheck(
@@ -213,6 +222,7 @@ export async function runLab(options = {}) {
           : `found ${cloneCredentials.files.length} credential file(s), ${cloneCredentials.keys.length} inline key(s)`,
       );
       progress(
+        'install-plugins',
         `cloned real ${clone.kind} profile: ${clone.copiedFiles.length} file(s), `
           + `${clone.excluded.length + clone.droppedLocal.length} plugin(s) dropped`,
       );
@@ -325,9 +335,12 @@ export async function runLab(options = {}) {
     const recordedPlugins = (pluginPipeline.pluginList ?? []).filter((entry) => !entry.fixture);
     if (options.profileLab && recordedPlugins.length) {
       recordProfilePlugins(options.profileLab, recordedPlugins);
-      progress(`lab profile "${options.profileLab}" now records ${recordedPlugins.length} plugin spec(s)`);
+      progress('install-plugins', `lab profile "${options.profileLab}" now records ${recordedPlugins.length} plugin spec(s)`);
     }
-    progress(pluginPipeline.install ? `installed ${pluginPipeline.resolvedSpecs.length} plugin spec(s)` : 'no plugins requested');
+    progress(
+      'install-plugins',
+      pluginPipeline.install ? `installed ${pluginPipeline.resolvedSpecs.length} plugin spec(s)` : 'no plugins requested',
+    );
 
     if (options.mockModel) {
       mockServer = await startMockLlmServer({ model: MOCK_MODEL });
@@ -379,7 +392,7 @@ export async function runLab(options = {}) {
         : `stdout fallback (${boot.fallbackReason ?? 'unknown'})`,
       { informational: true },
     );
-    progress(`isolated host booted on port ${boot.port}`);
+    progress('boot-host', `isolated host booted on port ${boot.port}`);
 
     report.signatureHits = scanLogs(`${bootOutput.stdout}\n${bootOutput.stderr}`);
     report.noise = scanNoise(`${bootOutput.stdout}\n${bootOutput.stderr}`);
@@ -558,7 +571,7 @@ export async function runLab(options = {}) {
     }
 
     const assertTokens = options.assertTokens ?? ['--dsw-alias-bg-base'];
-    progress('opening the UI in headless Edge');
+    progress('probe-ui', 'opening the UI in headless Edge');
     const requestedScreenshots = options.screenshots ?? ['home'];
     const wantsSettings = requestedScreenshots.includes('settings');
     // A fixture with no events has no sidebar session row to click; only the
@@ -702,7 +715,7 @@ export async function runLab(options = {}) {
     errors.push(message);
     addCheck(checks, 'run', false, message.split('\n')[0].slice(0, 500));
   } finally {
-    progress('cleaning up processes and the isolated home');
+    progress('cleanup', 'cleaning up processes and the isolated home');
     let processesLeft = 0;
     if (browser) {
       try {
@@ -866,6 +879,7 @@ export async function runLab(options = {}) {
     report.ok = checks.every((check) => check.pass || check.informational === true);
     report.diagnostics = summarizeDiagnostics(report);
     report.errorCode = report.diagnostics.primaryCode;
+    progress('write-report', 'writing report.json / report.md');
     writeJson(runDir, 'report.json', report);
     writeText(runDir, 'report.md', renderReportMarkdown(report));
     if (options.html !== false) {

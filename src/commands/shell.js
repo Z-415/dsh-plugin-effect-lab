@@ -1,24 +1,28 @@
 import { runShell } from '../electron-shell/shell-runner.js';
+import { createProgressReporter } from '../progress.js';
 
 export async function runShellCommand(options) {
-  const progress = options.json ? null : (message) => process.stdout.write(`[lab] ${message}\n`);
-  if (progress && options.keepOpen) {
-    progress('--keep-open: a real Electron window will open in a few seconds; close it to finish the run.');
-  } else if (progress && options.show) {
-    progress('--show: a real Electron window will open in a few seconds.');
+  const reporter = options.json ? null : createProgressReporter({ structured: process.env.DSH_LAB_GUI === '1' });
+  const note = (message) => {
+    if (!options.json) process.stdout.write(`[lab] ${message}\n`);
+  };
+  if (options.keepOpen) {
+    note('--keep-open: a real Electron window will open in a few seconds; close it to finish the run.');
+  } else if (options.show) {
+    note('--show: a real Electron window will open in a few seconds.');
   }
-  if (progress && options.nativeDesktop) {
-    progress('--native-desktop: the shell will use the real folder dialog and a real OS notification.');
+  if (options.nativeDesktop) {
+    note('--native-desktop: the shell will use the real folder dialog and a real OS notification.');
   }
-  if (progress && options.probeNativeDialog) {
+  if (options.probeNativeDialog) {
     if (options.nativeDesktop && (options.show || options.keepOpen)) {
-      progress('--probe-native-dialog: a real folder dialog will open; pick a folder or cancel to continue the run.');
+      note('--probe-native-dialog: a real folder dialog will open; pick a folder or cancel to continue the run.');
     } else {
-      progress('--probe-native-dialog ignored: it needs --native-desktop plus --show/--keep-open.');
+      note('--probe-native-dialog ignored: it needs --native-desktop plus --show/--keep-open.');
     }
   }
   const report = await runShell({
-    onProgress: progress,
+    onProgress: reporter,
     runtimePath: options.runtimePath,
     artifactsRoot: options.artifactsRoot,
     noCache: options.noCache,

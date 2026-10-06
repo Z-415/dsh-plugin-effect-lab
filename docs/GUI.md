@@ -193,6 +193,13 @@ browser, or the `artifacts/` folder. **中止** kills the running child tree.
 要完整证据再点 **打开最新 HTML 报告**；原始日志也会写入
 `gui-runtime/gui-<version>/userdata/gui.log`。
 
+日志栏还带一条**阶段进度**：lab 传出结构化的 `{ phase, index, total, detail }`
+事件，GUI 把它渲染成 `[n/8] 阶段 · 详情`。完成过的阶段决定进度条填充比例，
+当前阶段（尤其是安装插件、启动宿主）用不确定动画表示——lab 不会为不可预测的
+等待伪造百分比。右侧的 `已用 Xs` 计时器每秒更新，`--keep-open` 等你自己关窗时
+会一直保持“运行中”，不会显示成完成。阶段名与协议见
+[PROGRESS.md](PROGRESS.md)。
+
 ## Troubleshooting
 
 **"A JavaScript error occurred in the main process ... Received undefined" on

@@ -101,6 +101,22 @@
             background: var(--panel); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11.5px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: #9aa1ab; }
   .dot.run { background: #e0a23a; } .dot.ok { background: #35b06a; } .dot.bad { background: #e0544a; }
+  /* Phase progress: a real completed-phase fraction plus an indeterminate
+     shimmer for the in-flight phase (never a guessed time percentage). */
+  .progresswrap { display: flex; align-items: center; gap: 8px; flex: 0 1 340px; min-width: 150px; }
+  .progresswrap[hidden] { display: none; }
+  .progress { position: relative; display: block; flex: 1 1 auto; min-width: 80px; height: 6px;
+              background: #e5e7eb; border-radius: 999px; overflow: hidden; }
+  .progress .fill { display: block; height: 100%; width: 0%; background: var(--accent); border-radius: 999px;
+                    transition: width .25s ease; }
+  .progress.running .fill::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 35%;
+                                   border-radius: 999px; background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.6), rgba(255,255,255,0));
+                                   animation: lab-slide 1.2s linear infinite; }
+  .progress.done .fill { background: var(--ok); }
+  .progress.fail .fill { background: var(--bad); }
+  @keyframes lab-slide { from { transform: translateX(-120%); } to { transform: translateX(340%); } }
+  #progressText { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
+  #elapsed { white-space: nowrap; }
   pre { flex: 1; margin: 0; padding: 12px 14px; overflow: auto; color: var(--text);
         font: 12px/1.55 Consolas, "Cascadia Mono", monospace; white-space: pre-wrap; word-break: break-word; }
   footer { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
@@ -261,7 +277,17 @@
     </div>
     <div id="banner" class="banner" role="status" aria-live="polite" hidden></div>
     <div class="logwrap">
-      <div class="logbar"><span class="dot" id="dot"></span><span id="status" role="status" aria-live="polite">空闲</span><span style="flex:1"></span><span id="hint"></span></div>
+      <div class="logbar">
+        <span class="dot" id="dot"></span>
+        <span id="status" role="status" aria-live="polite">空闲</span>
+        <span class="progresswrap" id="progressWrap" hidden>
+          <span class="progress" id="progress"><span class="fill" id="progressFill"></span></span>
+          <span id="progressText"></span>
+        </span>
+        <span style="flex:1"></span>
+        <span id="elapsed"></span>
+        <span id="hint"></span>
+      </div>
       <pre id="log">选择上面的按钮开始。所有操作都在隔离的 DSH_HOME 里进行，不会碰你的真实配置。
 </pre>
     </div>
@@ -293,8 +319,16 @@
   const profileDrawer = document.getElementById('profileDrawer');
   const profileList = document.getElementById('profileList');
   const profileRoot = document.getElementById('profileRoot');
+  const progressWrap = document.getElementById('progressWrap');
+  const progressBar = document.getElementById('progress');
+  const progressFill = document.getElementById('progressFill');
+  const progressText = document.getElementById('progressText');
+  const elapsed = document.getElementById('elapsed');
+  const PROGRESS_MARKER = '\u001eLABPROG\u001e';
   let runStartedAt = 0;
   let runLabel = '';
+  let progressTimer = null;
+  let outputBuffer = '';
 
   function setBusy(busy, label) {
     allButtons.forEach((b) => { b.disabled = busy; });
@@ -306,12 +340,69 @@
     log.textContent += text;
     log.scrollTop = log.scrollHeight;
   }
+  function startElapsed() {
+    stopElapsed();
+    runStartedAt = Date.now();
+    elapsed.textContent = '已用 0s';
+    progressTimer = setInterval(() => {
+      const seconds = Math.round((Date.now() - runStartedAt) / 1000);
+      elapsed.textContent = `已用 ${seconds}s`;
+    }, 1000);
+  }
+  function stopElapsed() {
+    if (progressTimer) {
+      clearInterval(progressTimer);
+      progressTimer = null;
+    }
+  }
+  function updateProgress(event) {
+    if (!event || typeof event !== 'object') return;
+    progressWrap.hidden = false;
+    progressBar.classList.remove('done', 'fail');
+    progressBar.classList.add('running');
+    const total = Number(event.total) || 8;
+    const index = Number(event.index) || 1;
+    // Real phase fraction only: index-1 phases are done. The in-flight phase
+    // is shown by the indeterminate shimmer, not by a guessed percentage.
+    const completed = Math.max(0, index - 1);
+    progressFill.style.width = `${Math.round((completed / total) * 100)}%`;
+    progressText.textContent = `[${index}/${total}] ${event.label ?? event.phase ?? ''}${event.detail ? ` · ${event.detail}` : ''}`;
+  }
+  function finishProgress(ok) {
+    stopElapsed();
+    progressWrap.hidden = false;
+    progressBar.classList.remove('running');
+    progressBar.classList.add(ok ? 'done' : 'fail');
+    progressFill.style.width = '100%';
+    progressText.textContent = ok ? '完成' : '结束';
+  }
+  function handleOutput(text) {
+    outputBuffer += String(text ?? '');
+    const lines = outputBuffer.split('\n');
+    outputBuffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (line.startsWith(PROGRESS_MARKER)) {
+        try {
+          updateProgress(JSON.parse(line.slice(PROGRESS_MARKER.length)));
+        } catch {
+          // A malformed progress line is ignored; the human line still logs.
+        }
+      } else {
+        append(`${line}\n`);
+      }
+    }
+  }
 
   async function runWithArgs(args, label) {
     log.textContent = '';
     hint.textContent = label || args.join(' ');
     runLabel = label || args.join(' ');
-    runStartedAt = Date.now();
+    progressWrap.hidden = false;
+    progressBar.classList.remove('done', 'fail');
+    progressBar.classList.add('running');
+    progressFill.style.width = '0%';
+    progressText.textContent = '准备…';
+    startElapsed();
     banner.hidden = true;
     setBusy(true, '运行中');
     const result = await window.labGui.run(args);
@@ -659,21 +750,27 @@
     });
   }
 
-  window.labGui.onOutput((text) => append(text));
+  window.labGui.onOutput((text) => handleOutput(text));
   window.labGui.onDone(({ code }) => {
+    if (outputBuffer) {
+      append(outputBuffer);
+      outputBuffer = '';
+    }
     const ok = code === 0;
     const seconds = runStartedAt ? (Date.now() - runStartedAt) / 1000 : null;
-    const elapsed = seconds === null ? '?' : seconds.toFixed(1);
+    const elapsedText = seconds === null ? '?' : seconds.toFixed(1);
+    finishProgress(ok);
+    elapsed.textContent = seconds === null ? '' : `已用 ${elapsedText}s`;
     setBusy(false, ok ? '完成' : `结束（退出码 ${code}）`);
     dot.className = 'dot' + (ok ? ' ok' : ' bad');
-    append(`\n[gui] 退出码 ${code} · 用时 ${elapsed}s${ok ? '，可点下方按钮打开报告' : ''}\n`);
-    showBanner(ok, `${ok ? '完成' : '失败'}：${runLabel} · 退出码 ${code} · 用时 ${elapsed}s`, !ok);
+    append(`\n[gui] 退出码 ${code} · 用时 ${elapsedText}s${ok ? '，可点下方按钮打开报告' : ''}\n`);
+    showBanner(ok, `${ok ? '完成' : '失败'}：${runLabel} · 退出码 ${code} · 用时 ${elapsedText}s`, !ok);
     // Quick successful commands only flash the banner; long or failed ones
     // also raise a real desktop notification so the result is not missed.
     if ((!ok || (seconds !== null && seconds >= 5)) && typeof window.labGui.notify === 'function') {
       window.labGui.notify({
         title: ok ? '实验舱：完成' : '实验舱：失败',
-        body: `${runLabel} · 退出码 ${code} · 用时 ${elapsed}s`,
+        body: `${runLabel} · 退出码 ${code} · 用时 ${elapsedText}s`,
       });
     }
     refreshProfiles();

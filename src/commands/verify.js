@@ -1,8 +1,11 @@
 import { runLab } from '../runner.js';
+import { createProgressReporter } from '../progress.js';
 
 export async function runVerifyCommand(options) {
   const pluginSpecs = [...(options.plugins ?? []), ...(options.withPlugins ?? [])];
-  const progress = options.json ? null : (message) => process.stdout.write(`[lab] ${message}\n`);
+  const progress = options.json
+    ? null
+    : createProgressReporter({ structured: process.env.DSH_LAB_GUI === '1' });
   const report = await runLab({
     onProgress: progress,
     mode: options.mode ?? 'web',

@@ -15,6 +15,7 @@ import { installProfilePlugins } from '../plugin-install.js';
 import { spawnTracked, stopTracked } from '../process-tree.js';
 import { reapProcessesByCommandLine } from '../process-reaper.js';
 import { writeMinimalProfile } from '../profile-builder.js';
+import { progressEvent } from '../progress.js';
 import { diffRealHome, snapshotRealHome } from '../real-home-guard.js';
 import { copyIfExists, prepareArtifacts, renderReportMarkdown, writeJson, writeText } from '../report-writer.js';
 import { locateRuntime, readRuntimeVersion } from '../runtime-locator.js';
@@ -60,7 +61,14 @@ export function describeShellRun(result, facts = {}) {
 
 /** Minimal standalone Electron shell prototype: official frontend + isolated host. */
 export async function runShell(options = {}) {
-  const progress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
+  const progress = (phase, detail) => {
+    try {
+      onProgress(progressEvent(phase, detail));
+    } catch {
+      // Progress reporting must never break a run.
+    }
+  };
   const runId = options.runId ?? makeRunId();
   const artifactsRoot = options.artifactsRoot ?? defaultArtifactsRoot();
   const runDir = prepareArtifacts(artifactsRoot, runId);
@@ -111,7 +119,7 @@ export async function runShell(options = {}) {
   try {
     const runtime = locateRuntime(options.runtimePath);
     const version = await readRuntimeVersion(runtime);
-    progress(`runtime ${version.version ?? 'unknown'}`);
+    progress('locate-runtime', `runtime ${version.version ?? 'unknown'}`);
     report.runtime = { cmd: runtime.cmd, installDir: runtime.installDir, version: version.version };
     addCheck(checks, 'runtime-located', fs.existsSync(runtime.cmd), runtime.cmd);
     const runtimeCompat = classifyRuntimeVersion(version.version);
@@ -122,6 +130,7 @@ export async function runShell(options = {}) {
     realBefore = snapshotRealHome();
     residueBefore = snapshotLabResidue();
     addCheck(checks, 'real-home-baseline', true, `${Object.keys(realBefore.files).length} structural files hashed`);
+    progress('snapshot', `${Object.keys(realBefore.files).length} structural file(s) hashed`);
 
     iso = options.profileLab
       ? openLabProfileHome(options.profileLab)
@@ -142,7 +151,7 @@ export async function runShell(options = {}) {
       true,
       iso.persistent ? `reused lab profile "${iso.name}": ${iso.home}` : iso.home,
     );
-    progress(`isolated home ${iso.home}`);
+    progress('isolated-home', `isolated home ${iso.home}`);
 
     const fixtureEnabled = options.fixture !== false;
     const fixtureVariant = options.fixtureVariant ?? 'default';
@@ -218,9 +227,12 @@ export async function runShell(options = {}) {
     const recordedPlugins = (pipeline.pluginList ?? []).filter((entry) => !entry.fixture);
     if (options.profileLab && recordedPlugins.length) {
       recordProfilePlugins(options.profileLab, recordedPlugins);
-      progress(`lab profile "${options.profileLab}" now records ${recordedPlugins.length} plugin spec(s)`);
+      progress('install-plugins', `lab profile "${options.profileLab}" now records ${recordedPlugins.length} plugin spec(s)`);
     }
-    progress(pipeline.install ? `installed ${pipeline.resolvedSpecs.length} plugin spec(s)` : 'no plugins requested');
+    progress(
+      'install-plugins',
+      pipeline.install ? `installed ${pipeline.resolvedSpecs.length} plugin spec(s)` : 'no plugins requested',
+    );
 
     boot = await bootWeb({
       runtime,
@@ -236,7 +248,7 @@ export async function runShell(options = {}) {
         : fixtureEnv({ enabled: false }),
     });
     addCheck(checks, 'host-boot', Number(boot.port) > 0, `port ${boot.port}`);
-    progress(`isolated host booted on port ${boot.port}`);
+    progress('boot-host', `isolated host booted on port ${boot.port}`);
     let auth = { status: 0, cookie: '', error: null };
     try {
       auth = await mintAuthCookie(boot.url);
@@ -252,7 +264,7 @@ export async function runShell(options = {}) {
     );
 
     if (options.compareWeb !== false) {
-      progress('capturing web baseline in headless Edge');
+      progress('probe-ui', 'capturing web baseline in headless Edge');
       try {
         webBrowser = await openUi({
           baseUrl: boot.url,
@@ -273,7 +285,7 @@ export async function runShell(options = {}) {
           `${webBrowser.consoleErrors.length} console error(s)`,
           { informational: true },
         );
-        progress(`web baseline captured (${webProbe.slotCount} slots, ${webProbe.tokenCount} tokens)`);
+        progress('probe-ui', `web baseline captured (${webProbe.slotCount} slots, ${webProbe.tokenCount} tokens)`);
         webConsoleTexts = [...(webBrowser.consoleErrors ?? []), ...(webBrowser.pageErrors ?? [])];
       } catch (error) {
         addCheck(checks, 'web-baseline-ui', false, String(error?.message ?? error), { informational: true });
@@ -307,7 +319,7 @@ export async function runShell(options = {}) {
         : desktop.detail,
       { informational: desktop.ok },
     );
-    progress(`launching Electron shell window${options.keepOpen ? ' (close it to finish)' : ''}`);
+    progress('probe-ui', `launching Electron shell window${options.keepOpen ? ' (close it to finish)' : ''}`);
 
     const userDataDir = ensureDir(path.join(iso.root, 'electron-userdata'));
     shellUserDataDir = userDataDir;
@@ -364,7 +376,7 @@ export async function runShell(options = {}) {
     }
     const result = fs.existsSync(resultFile) ? JSON.parse(fs.readFileSync(resultFile, 'utf8')) : null;
     shellResult = result;
-    progress(result ? 'shell result received' : 'shell result missing');
+    progress('probe-ui', result ? 'shell result received' : 'shell result missing');
     addCheck(checks, 'shell-result', result?.ok === true, result?.error ?? (result ? 'written' : 'missing'));
     {
       const described = describeShellRun(result, {
@@ -610,7 +622,7 @@ export async function runShell(options = {}) {
     errors.push(String(error?.stack ?? error));
     recordShellRun(false, `shell-run 异常: ${String(error?.message ?? error)}（详见 errors 与 shell-result）`);
   } finally {
-    progress('cleaning up processes and the isolated home');
+    progress('cleanup', 'cleaning up processes and the isolated home');
     if (webBrowser) {
       try {
         await webBrowser.close();
@@ -749,6 +761,7 @@ export async function runShell(options = {}) {
       report.artifacts.reportHtml = path.join(runDir, 'report.html');
     }
     writeJson(runDir, 'runtime.json', report.runtime);
+    progress('write-report', 'writing report.json / report.md');
     writeJson(runDir, 'report.json', report);
     writeText(runDir, 'report.md', renderReportMarkdown(report));
     if (options.html !== false) {

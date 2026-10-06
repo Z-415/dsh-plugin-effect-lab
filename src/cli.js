@@ -312,6 +312,11 @@ and rejects it.
 codes + failed checks + a bounded boot tail). It never contains credentials,
 sessions, settings, raw logs, or absolute home paths. lab diagnose turns a
 report.json / bundle / log into the same structured codes for the agent.
+Progress: verify/shell print [n/8] <phase> lines. The phases are
+locate-runtime / snapshot / isolated-home / install-plugins / boot-host /
+probe-ui / cleanup / write-report. The GUI renders the completed-phase
+fraction plus an indeterminate animation and an elapsed timer for the
+in-flight phase; no time percentage is invented.
 lab shell boots the same isolated Host, opens it once in headless Edge and once
 through a minimal Electron shell, then diffs DOM slots, body attributes, and
 --dsw-* tokens. Pass --no-compare-web to skip the Edge baseline. --show makes

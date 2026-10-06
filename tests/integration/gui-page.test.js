@@ -411,6 +411,38 @@ const BUTTONS = `(() => {
   });
 })()`;
 
+/** A structured progress line must drive the bar, and plain lines still log. */
+const PROGRESS = `(() => {
+  const marker = '\\u001eLABPROG\\u001e';
+  window.__handlers.output(marker + JSON.stringify({
+    phase: 'boot-host', index: 5, total: 8, label: '启动宿主', detail: 'port 1', elapsedMs: 1000, phaseMs: 500,
+  }) + '\\n');
+  const wrap = document.getElementById('progressWrap');
+  const bar = document.getElementById('progress');
+  const fill = document.getElementById('progressFill');
+  const text = document.getElementById('progressText');
+  const running = {
+    hidden: wrap.hidden,
+    width: fill.style.width,
+    text: text.textContent,
+    running: bar.classList.contains('running'),
+  };
+  window.__handlers.output('plain progress line\\n');
+  window.__handlers.done({ code: 0 });
+  const done = {
+    width: fill.style.width,
+    text: text.textContent,
+    done: bar.classList.contains('done'),
+    running: bar.classList.contains('running'),
+  };
+  return JSON.stringify({
+    running,
+    done,
+    logTail: document.getElementById('log').textContent.includes('plain progress line'),
+    errors: window.__rendererErrors,
+  });
+})()`;
+
 test('every GUI button dispatches a lab command without a renderer error', {
   skip: !enabled,
   timeout: 180_000,
@@ -438,6 +470,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
         menus: MENUS,
         longLog: LONG_LOG,
         buttons: BUTTONS,
+        progress: PROGRESS,
       },
     });
     const result = JSON.parse(ui.extra.clickAll);
@@ -451,6 +484,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
     const menus = JSON.parse(ui.extra.menus);
     const longLog = JSON.parse(ui.extra.longLog);
     const buttons = JSON.parse(ui.extra.buttons);
+    const progress = JSON.parse(ui.extra.progress);
 
     assert.deepEqual(result.errors, [], `renderer errors: ${JSON.stringify(result.errors)}`);
     assert.deepEqual(result.thrown, [], `click handlers threw: ${JSON.stringify(result.thrown)}`);
@@ -614,6 +648,17 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.equal(buttons.danger.bg, 'rgb(253, 241, 240)', JSON.stringify(buttons));
     // Title-bar menu buttons keep plain text instead of the accent colour.
     assert.equal(buttons.menu.color, 'rgb(31, 35, 41)', JSON.stringify(buttons));
+
+    // Structured progress drives a real phase fraction; plain lines still log.
+    assert.equal(progress.running.hidden, false);
+    assert.equal(progress.running.width, '50%', JSON.stringify(progress));
+    assert.match(progress.running.text, /\[5\/8\] 启动宿主 · port 1/);
+    assert.equal(progress.running.running, true);
+    assert.equal(progress.done.width, '100%');
+    assert.equal(progress.done.done, true);
+    assert.equal(progress.done.running, false);
+    assert.equal(progress.logTail, true);
+    assert.deepEqual(progress.errors, []);
   } finally {
     if (ui) await ui.close();
     fs.rmSync(page.dir, { recursive: true, force: true });
