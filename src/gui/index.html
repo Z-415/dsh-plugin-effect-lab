@@ -137,6 +137,16 @@
   .clonebar select { flex: 1 1 0; min-width: 0; }
   .clonebar .note { margin: 0; }
   .drawerlist { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; }
+  /* In-page text prompt. Electron does not implement window.prompt(), so the
+     launcher uses this dialog instead of the browser API. */
+  .dialog { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+            background: rgba(15, 23, 42, .28); }
+  .dialog[hidden] { display: none; }
+  .dialogbox { width: min(440px, 92vw); display: flex; flex-direction: column; gap: 10px; padding: 14px;
+               background: var(--panel); border: 1px solid var(--line-strong); border-radius: 8px; }
+  .dialogbox h3 { margin: 0; font-size: 12.5px; font-weight: 650; }
+  .dialogbox input { width: 100%; }
+  .dialogactions { display: flex; justify-content: flex-end; gap: 8px; }
   .prow { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
   .prow-head { display: flex; align-items: center; gap: 8px; }
   .prow-head strong { font-size: 12.5px; }
@@ -281,8 +291,8 @@
         <div class="clonebar-row">
           <select id="realProfileSelect" title="真实 profile 来源（只读）" aria-label="真实 profile 来源"></select>
           <select id="realClonePlugins" title="克隆插件范围" aria-label="克隆插件范围">
-            <option value="all">带真实插件</option>
-            <option value="none">不带插件</option>
+            <option value="none">不带插件（推荐，能启动）</option>
+            <option value="all">带真实插件（可能因 peer 不兼容失败）</option>
           </select>
         </div>
         <div class="clonebar-row">
@@ -292,6 +302,25 @@
         <p class="note" id="realProfileNote"></p>
       </div>
       <div class="drawerlist" id="profileList"></div>
+    </div>
+    <div id="textDialog" class="dialog" hidden role="dialog" aria-modal="true">
+      <form id="textDialogForm" class="dialogbox">
+        <h3 id="textDialogTitle"></h3>
+        <input type="text" id="textDialogInput" autocomplete="off">
+        <div class="dialogactions">
+          <button type="submit" class="primary">确定</button>
+          <button type="button" id="textDialogCancel" class="small">取消</button>
+        </div>
+      </form>
+    </div>
+    <div id="confirmDialog" class="dialog" hidden role="dialog" aria-modal="true">
+      <div class="dialogbox">
+        <h3 id="confirmDialogTitle"></h3>
+        <div class="dialogactions">
+          <button type="button" id="confirmDialogOk" class="danger">确定</button>
+          <button type="button" id="confirmDialogCancel" class="small">取消</button>
+        </div>
+      </div>
     </div>
     <div id="banner" class="banner" role="status" aria-live="polite" hidden></div>
     <div class="logwrap">
@@ -340,6 +369,12 @@
   const realProfileSelect = document.getElementById('realProfileSelect');
   const realClonePlugins = document.getElementById('realClonePlugins');
   const realProfileNote = document.getElementById('realProfileNote');
+  const textDialog = document.getElementById('textDialog');
+  const textDialogForm = document.getElementById('textDialogForm');
+  const textDialogTitle = document.getElementById('textDialogTitle');
+  const textDialogInput = document.getElementById('textDialogInput');
+  const confirmDialog = document.getElementById('confirmDialog');
+  const confirmDialogTitle = document.getElementById('confirmDialogTitle');
   const progressWrap = document.getElementById('progressWrap');
   const progressBar = document.getElementById('progress');
   const progressFill = document.getElementById('progressFill');
@@ -350,6 +385,8 @@
   let runLabel = '';
   let progressTimer = null;
   let outputBuffer = '';
+  let dialogResolve = null;
+  let confirmResolve = null;
 
   function setBusy(busy, label) {
     allButtons.forEach((b) => { b.disabled = busy; });
@@ -360,6 +397,35 @@
   function append(text) {
     log.textContent += text;
     log.scrollTop = log.scrollHeight;
+  }
+  function askText(title, initial = '') {
+    return new Promise((resolve) => {
+      textDialogTitle.textContent = title;
+      textDialogInput.value = initial;
+      textDialog.hidden = false;
+      dialogResolve = resolve;
+      textDialogInput.focus();
+      textDialogInput.select();
+    });
+  }
+  function closeTextDialog(value) {
+    textDialog.hidden = true;
+    const resolve = dialogResolve;
+    dialogResolve = null;
+    if (resolve) resolve(value);
+  }
+  function askConfirm(title) {
+    return new Promise((resolve) => {
+      confirmDialogTitle.textContent = title;
+      confirmDialog.hidden = false;
+      confirmResolve = resolve;
+    });
+  }
+  function closeConfirmDialog(value) {
+    confirmDialog.hidden = true;
+    const resolve = confirmResolve;
+    confirmResolve = null;
+    if (resolve) resolve(value);
   }
   function startElapsed() {
     stopElapsed();
@@ -523,6 +589,8 @@
   }
   function openProfileDrawer() {
     profileDrawer.hidden = false;
+    refreshProfiles();
+    refreshRealProfiles();
   }
   function cloneProfileOneShot(profile) {
     const specs = profileSpecs(profile);
@@ -539,8 +607,8 @@
     args.push(online ? '--online' : '--offline', '--screenshot', 'home');
     runWithArgs(args, `一次性运行 · ${profile.name}`);
   }
-  function uninstallFromProfile(profile) {
-    const spec = window.prompt(`要从 ${profile.name} 卸载哪个插件？（包名 / name@version / 原 spec）`, '');
+  async function uninstallFromProfile(profile) {
+    const spec = await askText(`要从 ${profile.name} 卸载哪个插件？（包名 / name@version / 原 spec）`, '');
     if (!spec) return;
     runWithArgs(['profile', 'remove-plugin', profile.name, spec], `remove-plugin · ${profile.name} / ${spec}`);
   }
@@ -552,8 +620,8 @@
     const result = await window.labGui.openProfileDir(profile.name);
     if (!result || result.opened !== true) append(`\n[gui] ${result?.reason || result?.error || '打开目录失败'}\n`);
   }
-  function removeProfileFromDrawer(profile) {
-    if (!window.confirm(`删除 lab profile "${profile.name}"？这会删除它已安装的插件。`)) return;
+  async function removeProfileFromDrawer(profile) {
+    if (!(await askConfirm(`删除 lab profile "${profile.name}"？这会删除它已安装的插件。`))) return;
     runWithArgs(['profile', 'remove', profile.name], `profile remove · ${profile.name}`);
   }
   function selectedRealProfile() {
@@ -573,13 +641,13 @@
       `一次性克隆 · ${kind}（跑完即删）`,
     );
   }
-  function cloneRealPersistentRun() {
+  async function cloneRealPersistentRun() {
     const kind = selectedRealProfile();
     if (!kind) {
       append('[gui] 没有可选的只读真实 profile。\n');
       return;
     }
-    const name = window.prompt(`新 lab profile 名字（从 ${kind} 克隆）`, `${kind}-clone`);
+    const name = await askText(`新 lab profile 名字（从 ${kind} 克隆）`, `${kind}-clone`);
     if (!name) return;
     if (!/^[a-z0-9][a-z0-9._-]{0,31}$/.test(name)) {
       append('[gui] profile 名字只能用小写字母、数字、. _ -，最多 32 位。\n');
@@ -701,7 +769,8 @@
     for (const profile of list) {
       const option = document.createElement('option');
       option.value = profile.name;
-      option.textContent = `${profile.name}（${shortSpecs(profile)}）`;
+      const cloneTag = profile.clonedFrom ? ` · 克隆自 ${profile.clonedFrom.kind}` : '';
+      option.textContent = `${profile.name}（${shortSpecs(profile)}${cloneTag}）`;
       profileSelect.appendChild(option);
     }
     const create = document.createElement('option');
@@ -751,13 +820,13 @@
     const pluginArgs = spec ? ['--plugin', spec, networkFlag()] : [];
     runWithArgs(withDesktop(withProfile(['shell', ...pluginArgs])), spec ? `壳 vs web · ${spec}` : '壳 vs web 对比');
   });
-  document.getElementById('runMatrixPlugin').addEventListener('click', () => {
+  document.getElementById('runMatrixPlugin').addEventListener('click', async () => {
     const spec = pluginField();
     if (!spec) {
       append('[gui] 先在插件输入框填第一个插件，再用「再加一个插件一起验证」。\n');
       return;
     }
-    const other = window.prompt('要和它一起验证的第二个插件（包名@版本 或本地路径）：');
+    const other = await askText('要和它一起验证的第二个插件（包名@版本 或本地路径）：');
     if (!other) return;
     runWithArgs(withDesktop(withProfile([
       'shell', '--no-compare-web',
@@ -789,6 +858,31 @@
   });
   document.getElementById('cloneRealPersistent').addEventListener('click', cloneRealPersistentRun);
   document.getElementById('cloneRealOneShot').addEventListener('click', cloneRealOneShotRun);
+  textDialogForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    closeTextDialog(textDialogInput.value.trim());
+  });
+  document.getElementById('textDialogCancel').addEventListener('click', () => closeTextDialog(null));
+  textDialog.addEventListener('click', (event) => {
+    if (event.target === textDialog) closeTextDialog(null);
+  });
+  textDialog.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeTextDialog(null);
+    }
+  });
+  document.getElementById('confirmDialogOk').addEventListener('click', () => closeConfirmDialog(true));
+  document.getElementById('confirmDialogCancel').addEventListener('click', () => closeConfirmDialog(false));
+  confirmDialog.addEventListener('click', (event) => {
+    if (event.target === confirmDialog) closeConfirmDialog(false);
+  });
+  confirmDialog.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeConfirmDialog(false);
+    }
+  });
   document.getElementById('refreshProfiles').addEventListener('click', () => refreshProfiles());
   profileSelect.addEventListener('change', syncProfileNew);
 
@@ -866,6 +960,11 @@
       });
     }
     refreshProfiles();
+    refreshRealProfiles();
+  });
+  window.addEventListener('focus', () => {
+    refreshProfiles();
+    refreshRealProfiles();
   });
 
   refreshProfiles();

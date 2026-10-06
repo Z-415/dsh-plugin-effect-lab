@@ -27,6 +27,9 @@ function makeRealHome() {
   );
   // Must be filtered out: no package.json.
   fs.mkdirSync(path.join(profiles, 'half-created'), { recursive: true });
+  // Must be filtered out: a custom profile the cloner does not accept.
+  fs.mkdirSync(path.join(profiles, 'dsh-tui'), { recursive: true });
+  fs.writeFileSync(path.join(profiles, 'dsh-tui', 'package.json'), '{ "name": "dsh-profile-tui" }\n', 'utf8');
   // Must be filtered out by name.
   fs.mkdirSync(path.join(profiles, 'node_modules', 'pkg'), { recursive: true });
   fs.writeFileSync(path.join(profiles, 'node_modules', 'package.json'), '{}\n', 'utf8');
@@ -37,13 +40,14 @@ test('discoverRealProfiles accepts only package.json profile directories', () =>
   const root = makeRealHome();
   try {
     const profiles = discoverRealProfiles(root);
-    assert.deepEqual(profiles.map((profile) => profile.name), ['desktop', 'web']);
+    assert.deepEqual(profiles.map((profile) => profile.name), ['web', 'desktop']);
     const web = profiles.find((profile) => profile.name === 'web');
     assert.equal(web.dependenciesCount, 1, 'only third-party deps are counted');
     assert.equal(web.bundlesCount, 2);
     assert.equal(web.hasPatches, true);
     assert.equal(profiles.some((profile) => profile.name === 'node_modules'), false);
     assert.equal(profiles.some((profile) => profile.name === 'half-created'), false);
+    assert.equal(profiles.some((profile) => profile.name === 'dsh-tui'), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

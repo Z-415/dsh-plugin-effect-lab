@@ -19,8 +19,10 @@ window.__menuCalls = [];
 window.__rendererErrors = [];
 window.__profileDirCalls = [];
 window.addEventListener('error', (event) => window.__rendererErrors.push(String(event.message)));
-window.prompt = () => null;
-window.confirm = () => false;
+// Electron does not implement window.prompt(); the launcher must use its own
+// in-page dialog instead, so any window.prompt() call is a test failure.
+window.prompt = () => { throw new Error('window.prompt is not supported in Electron'); };
+window.confirm = () => { throw new Error('the launcher must use its in-page confirm dialog'); };
 window.labGui = {
   run: async (args) => { window.__calls.push(args); return { started: true }; },
   menu: async (action) => { window.__menuCalls.push(action); return { ok: true }; },
@@ -101,6 +103,7 @@ const PROFILE_SELECT = `(async () => {
   await new Promise((resolve) => setTimeout(resolve, 60));
   const select = document.getElementById('profileSelect');
   const options = [...select.options].map((option) => option.value);
+  const labels = [...select.options].map((option) => option.textContent);
   window.__calls = [];
   select.value = 'dev';
   select.dispatchEvent(new Event('change'));
@@ -114,7 +117,7 @@ const PROFILE_SELECT = `(async () => {
   const verifyButton = document.getElementById('runVerifyPlugin');
   verifyButton.disabled = false;
   verifyButton.click();
-  return JSON.stringify({ options, calls: window.__calls, newVisible, errors: window.__rendererErrors });
+  return JSON.stringify({ options, labels, calls: window.__calls, newVisible, errors: window.__rendererErrors });
 })()`;
 
 /** The source dropdown must build npm:/github: specs and pick the network flag. */
@@ -158,8 +161,6 @@ const PROFILE_DRAWER = `(async () => {
   window.__calls = [];
   const cloneButton = first ? [...first.querySelectorAll('button')].find((button) => button.textContent.includes('克隆')) : null;
   if (cloneButton) cloneButton.click();
-  window.prompt = () => 'dsh-ui-tweaks';
-  window.confirm = () => true;
   const clickRowButton = (label) => {
     const button = first ? [...first.querySelectorAll('button')].find((item) => item.textContent.includes(label)) : null;
     if (!button) return;
@@ -169,7 +170,16 @@ const PROFILE_DRAWER = `(async () => {
   window.__profileDirCalls = [];
   clickRowButton('打开目录');
   clickRowButton('卸载插件');
+  await Promise.resolve();
+  document.getElementById('textDialogInput').value = 'dsh-ui-tweaks';
+  document.getElementById('textDialogForm').requestSubmit();
+  await new Promise((resolve) => setTimeout(resolve, 10));
   clickRowButton('删除 profile');
+  await Promise.resolve();
+  const confirmOk = document.getElementById('confirmDialogOk');
+  confirmOk.disabled = false;
+  confirmOk.click();
+  await new Promise((resolve) => setTimeout(resolve, 10));
   const rowCalls = [...window.__calls];
   const realSelect = document.getElementById('realProfileSelect');
   const realPluginMode = document.getElementById('realClonePlugins');
@@ -177,11 +187,12 @@ const PROFILE_DRAWER = `(async () => {
   const pluginModeOptions = [...realPluginMode.options].map((option) => option.value);
   window.__calls = [];
   realPluginMode.value = 'none';
-  window.prompt = () => 'clone-web';
   const persistentButton = document.getElementById('cloneRealPersistent');
   const oneShotButton = document.getElementById('cloneRealOneShot');
   persistentButton.disabled = false;
   persistentButton.click();
+  document.getElementById('textDialogInput').value = 'clone-web';
+  document.getElementById('textDialogForm').requestSubmit();
   oneShotButton.disabled = false;
   oneShotButton.click();
   await new Promise((resolve) => setTimeout(resolve, 20));
@@ -557,6 +568,11 @@ test('every GUI button dispatches a lab command without a renderer error', {
 
     // The profile dropdown lists the existing profiles and drives --profile-lab.
     assert.deepEqual(profiles.options, ['', 'dev', 'plain', '__new__']);
+    assert.match(
+      profiles.labels.find((label) => label.includes('dev')) ?? '',
+      /克隆自 web/,
+      'the dropdown must mark a cloned profile as 克隆自 web',
+    );
     assert.equal(profiles.calls.length, 2, JSON.stringify(profiles.calls));
     const selected = profiles.calls[0];
     assert.equal(selected.includes('--profile-lab'), true, JSON.stringify(selected));
@@ -607,7 +623,7 @@ test('every GUI button dispatches a lab command without a renderer error', {
     assert.deepEqual(removeCall, ['profile', 'remove', 'dev']);
     // The clone bar is fed only by read-only real profiles.
     assert.deepEqual(profileDrawer.realOptions, ['web', 'desktop']);
-    assert.deepEqual(profileDrawer.pluginModeOptions, ['all', 'none']);
+    assert.deepEqual(profileDrawer.pluginModeOptions, ['none', 'all']);
     const persistentCloneCall = profileDrawer.cloneCalls.find((args) => args.includes('--clone-to'));
     assert.deepEqual(persistentCloneCall, [
       'verify', '--clone-to', 'clone-web', '--clone-profile', 'web',

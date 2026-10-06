@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { REAL_HOME } from './config.js';
+import { CLONE_KINDS } from './profile-cloner.js';
 
 /**
  * Read-only discovery of the real DSH profiles on this machine, for the GUI's
@@ -15,6 +16,10 @@ export function discoverRealProfiles(realHome = REAL_HOME) {
   const out = [];
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.name === 'node_modules') continue;
+    // Only the kinds the cloner accepts (`web`/`desktop`) are real clone
+    // sources; a custom profile such as `dsh-tui` would be rejected by
+    // --clone-profile, so it must not appear in the clone-source dropdown.
+    if (!CLONE_KINDS.includes(entry.name)) continue;
     const dir = path.join(root, entry.name);
     const manifestFile = path.join(dir, 'package.json');
     if (!fs.existsSync(manifestFile)) continue;
@@ -33,5 +38,8 @@ export function discoverRealProfiles(realHome = REAL_HOME) {
       hasPatches: fs.existsSync(path.join(dir, 'patches')),
     });
   }
-  return out.sort((a, b) => a.name.localeCompare(b.name));
+  // `web` first (the common case), then `desktop`, then anything else
+  // alphabetically, so the GUI clone-source dropdown defaults to web.
+  const order = { web: 0, desktop: 1 };
+  return out.sort((a, b) => (order[a.name] ?? 9) - (order[b.name] ?? 9) || a.name.localeCompare(b.name));
 }

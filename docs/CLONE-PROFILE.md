@@ -87,9 +87,10 @@ are not confused.
 
 `lab real-profiles [--json]` lists the read-only clone sources discovered under
 `<real home>\profiles\*` (only directories containing `package.json`;
-`node_modules` is filtered out). The GUI uses it to fill the clone-source
-dropdown. Real profiles are **read-only**: the lab never offers delete,
-uninstall, or any write action for them.
+`node_modules` is filtered out; only the `web`/`desktop` kinds the cloner
+accepts are listed). The GUI uses it to fill the clone-source dropdown. Real
+profiles are **read-only**: the lab never offers delete, uninstall, or any
+write action for them.
 
 ## What is copied
 
