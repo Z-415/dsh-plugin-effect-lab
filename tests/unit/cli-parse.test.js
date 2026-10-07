@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { browserRunners, main, parseArgv, resolveCloneOptions } from '../../src/cli.js';
+import { bridgeRunners, browserRunners, main, parseArgv, resolveCloneOptions } from '../../src/cli.js';
 import { createLabProfile } from '../../src/lab-profile.js';
 
 test('--assert-token accepts token names that themselves start with --', () => {
@@ -236,4 +236,57 @@ test('main refuses an existing --clone-to target with exit 2', async () => {
 
 test('lab shell rejects --clone-to', async () => {
   assert.equal(await main(['shell', '--clone-to', 'x', '--clone-profile', 'web']), 2);
+});
+
+test('lab bridge install parses and forwards every flag', async () => {
+  const original = { ...bridgeRunners };
+  let seen = null;
+  bridgeRunners.run = async (options) => {
+    seen = options;
+    return 0;
+  };
+  try {
+    assert.equal(
+      await main([
+        'bridge', 'install',
+        '--profile', 'desktop',
+        '--home', 'C:/tmp/.dsh',
+        '--lab-path', 'D:/lab',
+        '--runtime', 'D:/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd',
+        '--online', '--dry-run', '--force', '--json',
+      ]),
+      0,
+    );
+  } finally {
+    Object.assign(bridgeRunners, original);
+  }
+  assert.equal(seen.action, 'install');
+  assert.equal(seen.profile, 'desktop');
+  assert.equal(seen.home, 'C:/tmp/.dsh');
+  assert.equal(seen.labPath, 'D:/lab');
+  assert.equal(seen.online, true);
+  assert.equal(seen.dryRun, true);
+  assert.equal(seen.force, true);
+  assert.equal(seen.json, true);
+});
+
+test('lab bridge defaults to status on the desktop profile', async () => {
+  const original = { ...bridgeRunners };
+  let seen = null;
+  bridgeRunners.run = async (options) => {
+    seen = options;
+    return 0;
+  };
+  try {
+    assert.equal(await main(['bridge']), 0);
+  } finally {
+    Object.assign(bridgeRunners, original);
+  }
+  assert.equal(seen.action, 'status');
+  assert.equal(seen.profile, 'desktop');
+  assert.equal(seen.dryRun, false);
+});
+
+test('an unknown bridge action is refused with exit 2', async () => {
+  assert.equal(await main(['bridge', 'bogus']), 2);
 });

@@ -66,6 +66,11 @@ DSH 桌面版的启动器插件。
 > 卸载：把上面两处改动删掉（依赖 + bundles + `cordis.patch.yml` 那一段），
 > 重跑一次 pnpm install 即可；项目本体目录可以直接删除。
 
+> 0.3.0 起上述 3–5 步由一键安装器完成：先完全退出 DSH，再运行
+> `node bin/lab.js bridge install`（或双击 `安装桥接插件.cmd`），重启 DSH 即可。
+> 它会自动备份、幂等写入依赖/bundle/`cordis.patch.yml` 的 `labPath`，并用 runtime
+> 的 pnpm `install --offline` 安装；失败自动回滚。`lab bridge uninstall` 反向卸载。
+
 ## 0.2.0 相对 0.1.0 的变化
 
 - **接进 DSH**：新增启动器插件（设置页 + 侧栏入口，单一「启动实验舱」按钮）。
@@ -85,6 +90,7 @@ DSH 桌面版的启动器插件。
 
 - 满负载跑整套 e2e 时，`rich` 夹具的渲染文本探针可能偶发 `codeFound=false`
   （夹具数据本身正确，单独复跑即通过）。详见仓库 `docs/KNOWN-ISSUES.md`。
-- 当前安装步骤是手动的（改两处配置 + 跑 pnpm）。一键安装脚本尚未提供。
+- 0.2.0 的安装步骤是手动的（改两处配置 + 跑 pnpm）；0.3.0 起不再适用，
+  改用 `lab bridge install` / 双击 `安装桥接插件.cmd`（见上）。
 
 MIT License.

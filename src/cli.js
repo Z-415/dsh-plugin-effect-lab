@@ -1,4 +1,5 @@
 import { runCaptureCommand } from './commands/capture.js';
+import { runBridgeCommand } from './commands/bridge.js';
 import { runCleanCommand } from './commands/clean.js';
 import { runDiagnoseCommand } from './commands/diagnose.js';
 import { runDoctor } from './commands/doctor.js';
@@ -14,6 +15,8 @@ import { profileExists } from './lab-profile.js';
 
 const VALUE_FLAGS = new Set([
   'runtime',
+  'lab-path',
+  'home',
   'plugin',
   'with',
   'screenshot',
@@ -141,6 +144,8 @@ export function browserCommandOptions(flags, common) {
 
 /** Indirection so a unit test can assert what `main` forwards without booting a runtime. */
 export const browserRunners = { verify: runVerifyCommand, capture: runCaptureCommand };
+/** Indirection so a unit test can assert `lab bridge` forwarding without touching a profile. */
+export const bridgeRunners = { run: runBridgeCommand };
 
 /**
  * Normalize `--clone-to <name>` / `--profile-lab <name>` + `--clone-profile`
@@ -240,6 +245,21 @@ export async function main(argv) {
         dryRun: flags['dry-run'] === true,
         olderThanMs: flags['older-than'] === undefined ? 0 : Number(flags['older-than']) * 60_000,
       });
+    case 'bridge':
+      {
+        const [action = 'status'] = flags._;
+        return bridgeRunners.run({
+          action,
+          profile: flags.profile ?? 'desktop',
+          home: flags.home,
+          labPath: flags['lab-path'],
+          runtimePath: flags.runtime,
+          online: flags.online === true,
+          dryRun: flags['dry-run'] === true,
+          force: flags.force === true,
+          json: flags.json === true,
+        });
+      }
     case 'matrix':
       return runMatrixCommand({
         ...common,
@@ -349,6 +369,10 @@ Usage:
   lab scan --list [--json]
   lab diagnose --report <report.json> | --bundle <bundle.json> | --log <log> | --latest [--json]
   lab clean [--dry-run] [--older-than <minutes>] [--json]
+  lab bridge status    [--profile desktop] [--home <dir>] [--runtime <dsh.cmd>] [--json]
+  lab bridge install   [--profile desktop] [--lab-path <dir>] [--home <dir>] [--runtime <dsh.cmd>]
+                       [--online] [--dry-run] [--force] [--json]
+  lab bridge uninstall [--profile desktop] [--home <dir>] [--runtime <dsh.cmd>] [--dry-run] [--json]
 
 Phase 1 runs entirely inside a temp DSH_HOME and never installs into the real
 profile. npm/GitHub plugin specs require explicit --online. The fixed session
@@ -430,5 +454,15 @@ to add plugins one at a time:
   lab profile list                                    # what is installed
   lab profile remove-plugin dev B@2                   # uninstall one plugin
   lab profile remove dev                              # delete the profile
+
+lab bridge installs the bridge plugin into a real DSH profile
+(default desktop) without invoking "dsh plugin add" (the desktop profile is
+managed by the Electron app). It refuses while DSH is running, backs up
+package.json / cordis.patch.yml / pnpm-workspace.yaml / pnpm-lock.yaml under
+<profile>/.lab-bridge-backup/<ts>/, writes the dependency + bundle + the
+text-level "- id: effect-lab-bridge" block, and runs the runtime's pnpm
+install --offline. A failed install rolls back the four files. --dry-run never
+writes. Use --home <dir> for tests and --lab-path <dir> when the lab is not
+the current repository.
 `;
 }

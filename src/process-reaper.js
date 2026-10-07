@@ -116,6 +116,27 @@ export function listProcessesByCommandLine(target, options = {}) {
   return { supported: query.supported, processes: query.processes, status: query.status };
 }
 
+/** PowerShell that lists processes by name only (no command-line target). */
+export function buildProcessNameQueryScript(names) {
+  const list = (Array.isArray(names) ? names : [names]).filter(Boolean);
+  const nameFilter = list
+    .map((name) => `$_.Name -eq '${String(name).replace(/'/g, "''")}'`)
+    .join(' -or ') || '1 -eq 0';
+  return `$p = @(Get-CimInstance Win32_Process | Where-Object { ${nameFilter} }); $p | ForEach-Object { "$($_.ProcessId)|$($_.Name)|$($_.CommandLine)" }`;
+}
+
+/** List running processes by exact image name. Windows only. */
+export function listProcessesByName(names, options = {}) {
+  const { platform = process.platform } = options;
+  if (platform !== 'win32') return { supported: false, processes: [], status: null };
+  const list = (Array.isArray(names) ? names : [names]).filter(Boolean);
+  if (!list.length) return { supported: true, processes: [], status: 0 };
+  const result = spawnSync('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-Command', buildProcessNameQueryScript(list),
+  ], { windowsHide: true, encoding: 'utf8' });
+  return { supported: true, processes: parseProcessLines(result.stdout), status: result.status };
+}
+
 /** Lab temp-dir tokens in a command line, minus the long-lived caches. */
 export function extractLabTokens(commandLine) {
   const found = new Set();
