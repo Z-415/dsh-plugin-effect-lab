@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0 - 2026-10-07
+
+### Added
+
+- `lab bridge install | uninstall | status`: installs the launcher plugin into a real
+  DSH profile in one command. It detects the runtime and the target profile, refuses
+  while DSH Desktop is running, backs up the four structural profile files, writes the
+  dependency, the bundle entry and the `labPath` config idempotently, runs the runtime's
+  own pnpm `install --offline`, and rolls back automatically if the install fails.
+  `--dry-run` writes nothing.
+- Double-click `安装桥接插件.cmd` / `卸载桥接插件.cmd` for release users.
+
+### Fixed
+
+- `lab bridge install` defaults `--lab-path` to the repository root, and reports install
+  failures with the correct label instead of a generic error.
+
 ## 0.2.0 - 2026-10-07
 
 ### Added

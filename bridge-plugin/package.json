@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-effect-lab-bridge",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Bridge plugin for dsh-plugin-effect-lab: calls the lab CLI out of process and serves the latest report over a same-origin webServer route. The lab itself is never installed in the profile.",
   "type": "module",
