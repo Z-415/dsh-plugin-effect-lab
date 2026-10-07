@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-effect-lab",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Isolated plugin compatibility and effect verification lab for DeepSeek Harness 0.2.0-rc.2.",
   "type": "module",
   "private": true,

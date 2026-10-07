@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.2.0 - 2026-10-07
+
+### Added
+
+- Bridge launcher plugin (`bridge-plugin/`): installs into a DSH profile and adds a
+  实验舱桥接 entry under Settings → Plugins plus a sidebar entry, both with a single
+  启动实验舱 button that starts the lab's own Electron GUI as a separate process. The
+  lab itself is never installed into the profile.
+- Clone the machine's real DSH profile into a lab profile: `--clone-profile web|desktop`,
+  `--clone-to <name>` (persistent, visible, with a `clonedFrom` marker), `--clone-exclude`,
+  `--clone-drop-local`, `--clone-plugins none`, `--clone-accept-risk`, `--force`.
+- Install sources: an `npm:` prefix, `github:` / GitHub URLs with `#ref`, and a resolved
+  `name@version` echo in the report and the CLI.
+- A `rich` conversation fixture: reasoning blocks, fenced code blocks and a tool turn.
+- Stable failure codes and diagnostics: `LAB-*` codes on the signature library,
+  install-stage codes (`LAB-INSTALL-NOTFOUND` / `-NETWORK` / `-UNKNOWN`),
+  `--diagnostics-bundle`, `lab diagnose`, and the bridge's `lab_diagnose` tool.
+- Structured progress (`{phase,index,total,detail}`), CLI `[n/8]` prefixes and a GUI bar.
+- `lab real-profiles`, and a GUI profile drawer with per-plugin uninstall.
+
+### Changed
+
+- README rewritten around purpose and usage, with a Simplified Chinese version and a
+  Desktop GUI button reference.
+- Cloned profiles now write `dsh-profile-<profileDir>` and reset stale lab workspace
+  state before a fixture run, so the shell window renders the fixture session.
+
+### Fixed
+
+- Install failures surface the pnpm reason and a stable error code instead of
+  `plugin install failed (exit 1)`; GitHub download failures get their own code and a
+  bounded exit, and monorepo source repos get a hint naming the real npm package.
+- One-shot runs no longer leave the isolated root behind: disposal backs off, reaps the
+  processes holding the run root, and reports the locked path if it still cannot delete.
+- Shell windows write a result when a visible window closes early, and the fixture checks
+  become informational for profiles that carry third-party plugins.
+
+### Known issues
+
+- The `rich` fixture's renderer text probe can report `codeFound=false` under full-suite
+  load; running that file alone passes. See `docs/KNOWN-ISSUES.md`.
+
 ## 0.1.0 - 2026-10-06 (profile drawer, per-plugin uninstall, runtimes dialog)
 
 ### Changed
