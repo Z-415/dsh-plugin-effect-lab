@@ -249,6 +249,14 @@ export async function runBridgePnpm(options = {}) {
   const { pnpmScript, profileDir, env, online = false, timeoutMs } = options;
   const args = [pnpmScript, 'install'];
   if (online !== true) args.push('--offline');
+  // A real DSH profile ships pnpm-workspace.yaml (hoisted links, no auto peer
+  // install). A minimal profile may not, and pnpm's defaults would then try to
+  // fetch the bridge plugin's peers in offline mode. Match the DSH defaults
+  // only when the profile has no workspace file, so an explicit user config is
+  // never overridden.
+  if (!fs.existsSync(path.join(profileDir, 'pnpm-workspace.yaml'))) {
+    args.push('--config.node-linker=hoisted', '--config.auto-install-peers=false');
+  }
   const command = await runCommand(process.execPath, args, {
     cwd: profileDir,
     env,
@@ -292,56 +300,58 @@ function resolveContext(options) {
   const profileDir = path.join(home, 'profiles', profile);
   const manifestFile = path.join(profileDir, 'package.json');
   const patchFile = path.join(profileDir, 'cordis.patch.yml');
-  const labPath = options.labPath ? resolveBridgeLabPath(options.labPath) : null;
+  // `--lab-path` defaults to the repository that contains bin/lab.js (the
+  // extracted release directory when the .cmd is double-clicked).
+  const labPath = resolveBridgeLabPath(options.labPath ?? defaultLabPath());
   return { home, profile, profileDir, manifestFile, patchFile, labPath };
 }
 
-function requireProfile(context) {
+function requireProfile(context, action) {
   if (!fs.existsSync(context.manifestFile)) {
     return failure(
       'BRIDGE-PROFILE-MISSING',
       `profile "${context.profile}" has no package.json: ${context.manifestFile}`,
-      { ...context },
+      { ...context, action },
     );
   }
   return null;
 }
 
-function requireRuntime(options) {
+function requireRuntime(options, action) {
   try {
     return { runtime: locateRuntime(options.runtimePath) };
   } catch (error) {
-    return { error: failure('BRIDGE-RUNTIME-MISSING', String(error?.message ?? error)) };
+    return { error: failure('BRIDGE-RUNTIME-MISSING', String(error?.message ?? error), { action }) };
   }
 }
 
-function requireBridgePlugin(labPath) {
+function requireBridgePlugin(labPath, action) {
   const bridgeDir = path.join(labPath, 'bridge-plugin');
   const manifestFile = path.join(bridgeDir, 'package.json');
   if (!fs.existsSync(manifestFile)) {
-    return failure('BRIDGE-PLUGIN-MISSING', `bridge plugin not found: ${manifestFile}`, { bridgeDir });
+    return failure('BRIDGE-PLUGIN-MISSING', `bridge plugin not found: ${manifestFile}`, { bridgeDir, action });
   }
   let manifest;
   try {
     manifest = readJson(manifestFile);
   } catch (error) {
-    return failure('BRIDGE-PLUGIN-MISSING', `bridge plugin package.json is unreadable: ${String(error?.message ?? error)}`, { bridgeDir });
+    return failure('BRIDGE-PLUGIN-MISSING', `bridge plugin package.json is unreadable: ${String(error?.message ?? error)}`, { bridgeDir, action });
   }
   if (manifest.name !== BRIDGE_PLUGIN_NAME) {
     return failure(
       'BRIDGE-PLUGIN-NAME-MISMATCH',
       `bridge plugin package.json name is ${JSON.stringify(manifest.name)}, expected ${BRIDGE_PLUGIN_NAME}`,
-      { bridgeDir },
+      { bridgeDir, action },
     );
   }
   return { bridgeDir, manifest };
 }
 
-function dshRefusal(running, context) {
+function dshRefusal(running, context, action) {
   return failure(
     'BRIDGE-DSH-RUNNING',
     `DSH desktop is running (${running.reason}); quit it completely (including the tray) first`,
-    { ...context, dshRunning: running },
+    { ...context, dshRunning: running, action },
   );
 }
 
@@ -447,13 +457,13 @@ function verifyBridgeInstall(context) {
 
 export async function installBridge(options = {}) {
   const context = resolveContext(options);
-  const profileError = requireProfile(context);
+  const profileError = requireProfile(context, 'install');
   if (profileError) return profileError;
-  if (!context.labPath) return failure('BRIDGE-PLUGIN-MISSING', '--lab-path is required', context);
-  const plugin = requireBridgePlugin(context.labPath);
-  if (plugin.refused) return { ...plugin, ...context };
+  if (!context.labPath) return failure('BRIDGE-PLUGIN-MISSING', '--lab-path is required', { ...context, action: 'install' });
+  const plugin = requireBridgePlugin(context.labPath, 'install');
+  if (plugin.refused) return { action: 'install', ...plugin, ...context };
   context.bridgeDir = plugin.bridgeDir;
-  const runtimeResult = requireRuntime(options);
+  const runtimeResult = requireRuntime(options, 'install');
   if (runtimeResult.error) return { ...runtimeResult.error, ...context };
   context.runtime = runtimeResult.runtime;
 
@@ -474,7 +484,7 @@ export async function installBridge(options = {}) {
       verify: null,
     };
   }
-  if (running.running) return dshRefusal(running, context);
+  if (running.running) return dshRefusal(running, context, 'install');
 
   const backup = backupBridgeProfile(context.profileDir, { now: options.now });
   try {
@@ -521,9 +531,9 @@ export async function installBridge(options = {}) {
 
 export async function uninstallBridge(options = {}) {
   const context = resolveContext(options);
-  const profileError = requireProfile(context);
+  const profileError = requireProfile(context, 'uninstall');
   if (profileError) return profileError;
-  const runtimeResult = requireRuntime(options);
+  const runtimeResult = requireRuntime(options, 'uninstall');
   if (runtimeResult.error) return { ...runtimeResult.error, ...context };
   context.runtime = runtimeResult.runtime;
 
@@ -540,7 +550,7 @@ export async function uninstallBridge(options = {}) {
       backupDir: null,
     };
   }
-  if (running.running) return dshRefusal(running, context);
+  if (running.running) return dshRefusal(running, context, 'uninstall');
 
   const backup = backupBridgeProfile(context.profileDir, { now: options.now });
   try {

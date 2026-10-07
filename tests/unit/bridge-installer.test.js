@@ -8,6 +8,7 @@ import {
   BRIDGE_PLUGIN_NAME,
   bridgeDependencySpec,
   countBridgeBlocks,
+  defaultLabPath,
   detectDshRunning,
   extractBridgeLabPath,
   installBridge,
@@ -226,11 +227,48 @@ test('installBridge refuses while DSH is running and writes nothing', async () =
     });
     assert.equal(result.ok, false);
     assert.equal(result.refused, true);
+    assert.equal(result.action, 'install');
     assert.equal(result.errorCode, 'BRIDGE-DSH-RUNNING');
     assert.equal(dirHash(home.root), before);
   } finally {
     fs.rmSync(home.root, { recursive: true, force: true });
   }
+});
+
+test('installBridge defaults --lab-path to the repository that contains bin/lab.js', async () => {
+  const home = makeHome();
+  try {
+    const result = await installBridge({
+      home: home.root, profile: 'desktop', runtimePath: home.runtimePath,
+      isDshRunning: notRunning, runPnpm: fakePnpm(),
+    });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(result.labPath, defaultLabPath());
+    const patch = fs.readFileSync(path.join(home.profileDir, 'cordis.patch.yml'), 'utf8');
+    assert.equal(extractBridgeLabPath(patch), defaultLabPath());
+  } finally {
+    fs.rmSync(home.root, { recursive: true, force: true });
+  }
+});
+
+test('uninstallBridge refusal carries the uninstall action', async () => {
+  const home = makeHome();
+  try {
+    const result = await uninstallBridge({
+      home: home.root, profile: 'desktop', runtimePath: home.runtimePath,
+      isDshRunning: running, runPnpm: fakePnpm(),
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.action, 'uninstall');
+    assert.equal(result.errorCode, 'BRIDGE-DSH-RUNNING');
+  } finally {
+    fs.rmSync(home.root, { recursive: true, force: true });
+  }
+});
+
+test('the double-click entries call install and uninstall', () => {
+  assert.match(fs.readFileSync(path.resolve('安装桥接插件.cmd'), 'utf8'), /bridge install/);
+  assert.match(fs.readFileSync(path.resolve('卸载桥接插件.cmd'), 'utf8'), /bridge uninstall/);
 });
 
 test('installBridge refuses a missing profile or bridge plugin', async () => {

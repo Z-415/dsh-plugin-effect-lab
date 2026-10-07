@@ -46,7 +46,6 @@ function makeHome() {
     dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] } },
   }, null, 2)}\n`, 'utf8');
   fs.writeFileSync(path.join(profileDir, 'cordis.patch.yml'), SAMPLE_PATCH, 'utf8');
-  fs.writeFileSync(path.join(profileDir, 'pnpm-workspace.yaml'), 'packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n', 'utf8');
   return { root, profileDir };
 }
 
@@ -78,6 +77,13 @@ test('bridge install -> idempotent -> dry-run -> rollback -> uninstall on a temp
     assert.equal(first.verify.bundlePresent, true);
     assert.equal(first.verify.patchCount, 1);
     assert.equal(fs.existsSync(path.join(home.profileDir, 'node_modules', BRIDGE_PLUGIN_NAME, 'package.json')), true);
+    // The fake profile deliberately has no pnpm-workspace.yaml (per the task);
+    // the installer falls back to the DSH pnpm defaults and records it missing.
+    assert.equal(
+      first.backup.some((entry) => entry.name === 'pnpm-workspace.yaml' && entry.exists === false),
+      true,
+      JSON.stringify(first.backup),
+    );
     const patchAfterInstall = fs.readFileSync(path.join(home.profileDir, 'cordis.patch.yml'), 'utf8');
     assert.equal(countBridgeBlocks(patchAfterInstall), 1);
     assert.equal(patchAfterInstall.includes("!!js process.platform !== 'win32'"), true);
